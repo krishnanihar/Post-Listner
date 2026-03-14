@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import Entry from './phases/Entry'
 import Spectrum from './phases/Spectrum'
@@ -18,8 +18,12 @@ function App() {
   const [sessionData, setSessionData] = useState({})
   const inputMode = useInputMode()
 
+  const musicPromiseRef = useRef(null)
+
   const nextPhase = useCallback((data = {}) => {
-    setSessionData(prev => ({ ...prev, ...data }))
+    const { musicPromise, ...rest } = data
+    if (musicPromise) musicPromiseRef.current = musicPromise
+    setSessionData(prev => ({ ...prev, ...rest }))
     const idx = PHASES.indexOf(phase)
     if (idx < PHASES.length - 1) {
       setPhase(PHASES[idx + 1])
@@ -34,7 +38,7 @@ function App() {
     depth: <DepthDial onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
     textures: <Textures onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
     moment: <Moment onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
-    reveal: <Reveal onNext={nextPhase} avd={avdEngine} sessionData={sessionData} goToPhase={goToPhase} />,
+    reveal: <Reveal onNext={nextPhase} avd={avdEngine} sessionData={{ ...sessionData, musicPromise: musicPromiseRef.current }} goToPhase={goToPhase} />,
     result: <Result avd={avdEngine} sessionData={sessionData} />,
   }
 

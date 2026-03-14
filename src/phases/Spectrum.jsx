@@ -26,6 +26,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
   const currentChoice = useRef(null)
   const firstHovered = useRef(null)
   const pairRef = useRef(null)
+  const areaRef = useRef(null)
   const results = useRef([])
   const isMouse = inputMode === 'mouse'
 
@@ -84,6 +85,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     setDividerOffset(side === 'left' ? -40 : 40)
     setHoveredSide(null)
 
+    const transitionMs = isMouse ? 200 : 400
     setTimeout(() => {
       if (pairIdx < PAIRS.length - 1) {
         setPairIdx(prev => prev + 1)
@@ -99,35 +101,45 @@ export default function Spectrum({ onNext, avd, inputMode }) {
         avd.setPhaseData('spectrum', { pairs: results.current })
         onNext({ spectrum: results.current })
       }
-    }, 400)
+    }, transitionMs)
   }, [pairIdx, transitioning, avd, onNext, stopAudio])
 
-  // === MOUSE: Click to select with dwell-time confidence ===
-  const handleMouseClick = useCallback((side) => {
-    if (transitioning) return
-    // Switching detection via hover tracking
-    if (firstHovered.current && firstHovered.current !== side) {
+  // === MOUSE: Click anywhere to lock whichever side the divider is on ===
+  const handleMouseClick = useCallback(() => {
+    if (transitioning || !hoveredSide) return
+    // Switching detection
+    if (firstHovered.current && firstHovered.current !== hoveredSide) {
       switched.current = true
     }
-    // Confidence from dwell time (time since pair appeared)
+    // Confidence from dwell time
     const dwellSec = (Date.now() - pairStartTime.current) / 1000
     const confidence = Math.max(0.2, Math.min(1, (dwellSec - 0.5) / 4.0))
-    lockChoice(side, confidence)
-  }, [transitioning, lockChoice])
+    lockChoice(hoveredSide, confidence)
+  }, [transitioning, hoveredSide, lockChoice])
 
-  // === MOUSE: Hover to preview ===
-  const handleMouseEnter = useCallback((side) => {
-    if (transitioning) return
+  // === MOUSE: Track cursor position for divider ===
+  const handleMouseMove = useCallback((e) => {
+    if (transitioning || !areaRef.current) return
+    const rect = areaRef.current.getBoundingClientRect()
+    const centerX = rect.left + rect.width / 2
+    const relX = e.clientX - centerX // pixels from center
+    // Clamp so divider stops ~30% from edge (where text roughly is)
+    const maxOffset = rect.width * 0.35
+    const clampedOffset = Math.max(-maxOffset, Math.min(maxOffset, relX))
+
+    setDividerOffset(clampedOffset)
+
+    const side = relX < 0 ? 'left' : 'right'
     if (!firstHovered.current) firstHovered.current = side
     setHoveredSide(side)
     setActiveLabel(side)
-    if (pairRef.current) {
-      pairRef.current.setBalance(side === 'left' ? -0.7 : 0.7)
-    }
-    setDividerOffset(side === 'left' ? -15 : 15)
+
+    // Audio balance proportional to position (-1 to 1)
+    const balance = Math.max(-1, Math.min(1, relX / (rect.width / 2)))
+    if (pairRef.current) pairRef.current.setBalance(balance * 0.7)
   }, [transitioning])
 
-  const handleMouseLeave = useCallback(() => {
+  const handleMouseLeaveArea = useCallback(() => {
     if (transitioning) return
     setHoveredSide(null)
     setActiveLabel(null)
@@ -170,17 +182,27 @@ export default function Spectrum({ onNext, avd, inputMode }) {
   }, [transitioning, lockChoice])
 
   // === MOUSE: Keyboard arrow keys ===
+  const handleKeySelect = useCallback((side) => {
+    if (transitioning) return
+    if (firstHovered.current && firstHovered.current !== side) {
+      switched.current = true
+    }
+    const dwellSec = (Date.now() - pairStartTime.current) / 1000
+    const confidence = Math.max(0.2, Math.min(1, (dwellSec - 0.5) / 4.0))
+    lockChoice(side, confidence)
+  }, [transitioning, lockChoice])
+
   useEffect(() => {
     if (!isMouse) return
     const handleKey = (e) => {
-      if (e.key === 'ArrowLeft') handleMouseClick('left')
-      if (e.key === 'ArrowRight') handleMouseClick('right')
+      if (e.key === 'ArrowLeft') handleKeySelect('left')
+      if (e.key === 'ArrowRight') handleKeySelect('right')
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [isMouse, handleMouseClick])
+  }, [isMouse, handleKeySelect])
 
-  const hintText = isMouse ? 'hover to preview, click to choose' : 'hold or swipe to choose'
+  const hintText = isMouse ? 'move to lean, click to lock' : 'hold or swipe to choose'
 
   return (
     <div className="h-full w-full flex flex-col select-none" style={{ touchAction: 'manipulation' }}>
@@ -196,8 +218,15 @@ export default function Spectrum({ onNext, avd, inputMode }) {
 
       {/* Main interaction area */}
       <motion.div
+        ref={areaRef}
         className="flex-1 flex relative"
         onPanEnd={isMouse ? undefined : handleSwipe}
+        {...(isMouse ? {
+          onClick: handleMouseClick,
+          onMouseMove: handleMouseMove,
+          onMouseLeave: handleMouseLeaveArea,
+          style: { cursor: 'pointer' },
+        } : {})}
       >
         <AnimatePresence mode="wait">
           <motion.div
@@ -210,12 +239,9 @@ export default function Spectrum({ onNext, avd, inputMode }) {
           >
             {/* Left zone */}
             <div
-              className="flex-1 flex items-center justify-center cursor-pointer"
-              {...(isMouse ? {
-                onClick: () => handleMouseClick('left'),
-                onMouseEnter: () => handleMouseEnter('left'),
-                onMouseLeave: handleMouseLeave,
-              } : {
+              className="flex-1 flex items-center justify-center"
+              style={{ cursor: isMouse ? 'pointer' : 'pointer' }}
+              {...(isMouse ? {} : {
                 onPointerDown: () => handleSideDown('left'),
                 onPointerUp: handleSideUp,
                 onPointerLeave: handleSideUp,
@@ -243,7 +269,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
                 background: 'var(--accent)',
               }}
               animate={{ x: dividerOffset }}
-              transition={{ duration: 0.15 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
             >
               <span className="font-mono whitespace-nowrap absolute -bottom-8"
                     style={{ fontSize: '9px', color: 'var(--text-dim)', transform: 'translateX(-50%)' }}>
@@ -253,12 +279,9 @@ export default function Spectrum({ onNext, avd, inputMode }) {
 
             {/* Right zone */}
             <div
-              className="flex-1 flex items-center justify-center cursor-pointer"
-              {...(isMouse ? {
-                onClick: () => handleMouseClick('right'),
-                onMouseEnter: () => handleMouseEnter('right'),
-                onMouseLeave: handleMouseLeave,
-              } : {
+              className="flex-1 flex items-center justify-center"
+              style={{ cursor: isMouse ? 'pointer' : 'pointer' }}
+              {...(isMouse ? {} : {
                 onPointerDown: () => handleSideDown('right'),
                 onPointerUp: handleSideUp,
                 onPointerLeave: handleSideUp,

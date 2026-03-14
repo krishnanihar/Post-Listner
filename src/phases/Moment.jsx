@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { audioEngine } from '../engine/audio'
+import { generateMusic } from '../engine/elevenlabs'
 
 export default function Moment({ onNext, avd, inputMode }) {
   const [circleSize, setCircleSize] = useState(80)
@@ -77,10 +78,14 @@ export default function Moment({ onNext, avd, inputMode }) {
       peakTapRate: Math.round(peakTapRate * 10) / 10,
     })
 
+    // Fire generation immediately after AVD is locked
+    const musicPromise = generateMusic(avd.getPrompt())
+
     // Implode animation then advance
     setTimeout(() => {
       onNext({
-        moment: { totalTaps, tapsDuringBuild, preDropSilence, tapsDuringRelease, peakTapRate }
+        moment: { totalTaps, tapsDuringBuild, preDropSilence, tapsDuringRelease, peakTapRate },
+        musicPromise,
       })
     }, 1200)
   }, [avd, onNext])
