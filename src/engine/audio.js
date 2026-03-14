@@ -32,6 +32,9 @@ class AudioEngine {
     this.ctx = null
     this.masterGain = null
     this.activeNodes = []
+    this._textureBuffers = new Map()
+    this._textureSource = null
+    this._textureGain = null
   }
 
   init() {
@@ -339,6 +342,128 @@ class AudioEngine {
     }
   }
 
+  // --- Phase 1b: MP3 stereo pair (for Spectrum pre-generated clips) ---
+  // Uses equal-power crossfade + crossfade looping for seamless playback.
+
+  playMp3Pair(urlA, urlB, duration = 30) {
+    this.init()
+    const ctx = this.ctx
+    const XFADE = 1.0  // seconds of overlap at loop boundaries
+    const PEAK = 0.5   // max gain per voice
+
+    const loadBuffer = async (url) => {
+      const resp = await fetch(url)
+      const arr = await resp.arrayBuffer()
+      return ctx.decodeAudioData(arr)
+    }
+
+    // Master gain nodes for each side (balance target)
+    const masterA = ctx.createGain()
+    const masterB = ctx.createGain()
+    const panA = ctx.createStereoPanner()
+    const panB = ctx.createStereoPanner()
+    panA.pan.value = -0.8
+    panB.pan.value = 0.8
+    masterA.gain.value = 0
+    masterB.gain.value = 0
+    masterA.connect(panA).connect(this.masterGain)
+    masterB.connect(panB).connect(this.masterGain)
+
+    let stopped = false
+    let activeSources = []
+    let loopTimers = []
+
+    // Crossfade-looping: schedule overlapping buffer sources so the
+    // tail of one fades out while the head of the next fades in.
+    const scheduleLoop = (buffer, masterGain) => {
+      if (stopped) return
+      const clipDur = buffer.duration
+
+      const playOnce = () => {
+        if (stopped) return
+        const src = ctx.createBufferSource()
+        const env = ctx.createGain()
+        src.buffer = buffer
+        src.connect(env).connect(masterGain)
+
+        const now = ctx.currentTime
+        // Fade in over XFADE seconds
+        env.gain.setValueAtTime(0, now)
+        env.gain.linearRampToValueAtTime(1, now + XFADE)
+        // Hold
+        env.gain.setValueAtTime(1, now + clipDur - XFADE)
+        // Fade out over XFADE seconds
+        env.gain.linearRampToValueAtTime(0, now + clipDur)
+
+        src.start(now)
+        src.stop(now + clipDur + 0.05)
+        activeSources.push(src)
+
+        // Schedule next iteration to start XFADE seconds before this one ends
+        const nextIn = (clipDur - XFADE) * 1000
+        const timer = setTimeout(playOnce, nextIn)
+        loopTimers.push(timer)
+      }
+
+      playOnce()
+    }
+
+    const applyBalance = (balance) => {
+      // Map balance [-1, 1] to t [0, 1]
+      const t = (balance + 1) / 2
+      // Equal-power crossfade: cos/sin so perceived volume is constant
+      const leftGain = PEAK * Math.cos(t * Math.PI / 2)
+      const rightGain = PEAK * Math.sin(t * Math.PI / 2)
+
+      const now = ctx.currentTime
+      masterA.gain.cancelScheduledValues(now)
+      masterA.gain.setValueAtTime(masterA.gain.value, now)
+      masterA.gain.linearRampToValueAtTime(leftGain, now + 0.05)
+      masterB.gain.cancelScheduledValues(now)
+      masterB.gain.setValueAtTime(masterB.gain.value, now)
+      masterB.gain.linearRampToValueAtTime(rightGain, now + 0.05)
+    }
+
+    const ready = Promise.all([loadBuffer(urlA), loadBuffer(urlB)]).then(([bufA, bufB]) => {
+      if (stopped) return
+      // Start crossfade-looping both clips
+      scheduleLoop(bufA, masterA)
+      scheduleLoop(bufB, masterB)
+      // Fade in to center balance
+      applyBalance(0)
+    })
+
+    return {
+      ready,
+      setBalance: (balance) => {
+        if (!stopped) applyBalance(balance)
+      },
+      stop: () => {
+        stopped = true
+        // Clear all scheduled loop timers
+        loopTimers.forEach(t => clearTimeout(t))
+        loopTimers = []
+        // Fade out master gains
+        const now = ctx.currentTime
+        masterA.gain.cancelScheduledValues(now)
+        masterA.gain.setValueAtTime(masterA.gain.value, now)
+        masterA.gain.linearRampToValueAtTime(0, now + 0.15)
+        masterB.gain.cancelScheduledValues(now)
+        masterB.gain.setValueAtTime(masterB.gain.value, now)
+        masterB.gain.linearRampToValueAtTime(0, now + 0.15)
+        setTimeout(() => {
+          try {
+            activeSources.forEach(s => { try { s.stop() } catch {} })
+            activeSources = []
+            panA.disconnect()
+            panB.disconnect()
+          } catch {}
+        }, 200)
+      },
+      promise: new Promise(resolve => setTimeout(resolve, duration * 1000)),
+    }
+  }
+
   // --- Phase 2: Layered build ---
 
   playLayeredBuild(maxLayers = 8) {
@@ -436,382 +561,70 @@ class AudioEngine {
     gainNode.gain.linearRampToValueAtTime(0, time + duration)
   }
 
-  // --- Phase 3: Texture synthesis ---
+  // --- Phase 3: Texture playback (pre-recorded MP3s) ---
+
+  static TEXTURE_NAMES = ['strings', 'synthesizer', 'distortion', 'keys', 'voice', 'glitch', 'rhythm', 'field']
+
+  async preloadTextures() {
+    this.init()
+    await Promise.all(
+      AudioEngine.TEXTURE_NAMES.map(name => this._loadTextureBuffer(name))
+    )
+  }
+
+  async _loadTextureBuffer(textureName) {
+    if (this._textureBuffers.has(textureName)) {
+      return this._textureBuffers.get(textureName)
+    }
+    const resp = await fetch(`/Texture/${textureName}.mp3`)
+    const arr = await resp.arrayBuffer()
+    const buffer = await this.ctx.decodeAudioData(arr)
+    this._textureBuffers.set(textureName, buffer)
+    return buffer
+  }
+
+  stopTexture() {
+    if (!this._textureSource) return
+    const now = this.ctx.currentTime
+    try {
+      this._textureGain.gain.cancelScheduledValues(now)
+      this._textureGain.gain.setValueAtTime(this._textureGain.gain.value, now)
+      this._textureGain.gain.linearRampToValueAtTime(0, now + 0.05)
+      this._textureSource.stop(now + 0.05)
+    } catch { /* already stopped */ }
+    this._textureSource = null
+    this._textureGain = null
+  }
 
   playTexture(textureName, duration = 5) {
     this.init()
-    const now = this.ctx.currentTime
+    this.stopTexture()
+    const ctx = this.ctx
+    const FADE_IN = 0.15
+    const FADE_OUT = 0.5
 
-    const textures = {
-      strings: () => {
-        // Warm ensemble strings — detuned saws through lowpass with LFO sweep + reverb
-        const reverb = this._createReverbSend(0.3)
-        const filter = this.ctx.createBiquadFilter()
-        filter.type = 'lowpass'
-        filter.frequency.value = 1200
-        filter.Q.value = 1
-        const filterLfo = this.ctx.createOscillator()
-        const filterLfoG = this.ctx.createGain()
-        filterLfo.frequency.value = 0.3
-        filterLfoG.gain.value = 300
-        filterLfo.connect(filterLfoG).connect(filter.frequency)
-        filterLfo.start(now)
-        filterLfo.stop(now + duration)
-        this._track(filterLfo)
-        const outGain = this.ctx.createGain()
-        this._adsr(outGain, now, { a: 0.8, d: 0.3, s: 0.85, r: 1.0, peak: 0.1, duration })
-        filter.connect(outGain)
-        outGain.connect(this.masterGain)
-        outGain.connect(reverb)
-        // 3 detuned saws per note for ensemble chorus
-        ;[220, 329.63].forEach(freq => {
-          ;[-7, 0, 7].forEach(detune => {
-            const osc = this.ctx.createOscillator()
-            osc.type = 'sawtooth'
-            osc.frequency.value = freq
-            osc.detune.value = detune
-            osc.connect(filter)
-            osc.start(now)
-            osc.stop(now + duration)
-            this._track(osc)
-          })
-        })
-      },
-
-      synthesizer: () => {
-        // Evolving electronic pad — detuned saws + sub, slow filter sweep, breathing LFO
-        const reverb = this._createReverbSend(0.2)
-        const filter = this.ctx.createBiquadFilter()
-        filter.type = 'lowpass'
-        filter.frequency.setValueAtTime(300, now)
-        filter.frequency.exponentialRampToValueAtTime(2500, now + duration * 0.45)
-        filter.frequency.exponentialRampToValueAtTime(600, now + duration)
-        filter.Q.value = 3
-        const outGain = this.ctx.createGain()
-        this._adsr(outGain, now, { a: 0.6, d: 0.3, s: 0.8, r: 0.8, peak: 0.1, duration })
-        filter.connect(outGain)
-        outGain.connect(this.masterGain)
-        outGain.connect(reverb)
-        // Detuned saw pair
-        ;[-5, 5].forEach(detune => {
-          const osc = this.ctx.createOscillator()
-          osc.type = 'sawtooth'
-          osc.frequency.value = 130.81
-          osc.detune.value = detune
-          osc.connect(filter)
-          osc.start(now)
-          osc.stop(now + duration)
-          this._track(osc)
-        })
-        // Sub sine one octave below
-        const sub = this.ctx.createOscillator()
-        sub.type = 'sine'
-        sub.frequency.value = 65.41
-        const subG = this.ctx.createGain()
-        this._adsr(subG, now, { a: 0.8, d: 0.2, s: 0.9, r: 0.8, peak: 0.06, duration })
-        sub.connect(subG).connect(this.masterGain)
-        sub.start(now)
-        sub.stop(now + duration)
-        this._track(sub)
-        // Breathing LFO on detune
-        const lfo = this.ctx.createOscillator()
-        const lfoG = this.ctx.createGain()
-        lfo.frequency.value = 0.15
-        lfoG.gain.value = 8
-        lfo.connect(lfoG).connect(filter.detune)
-        lfo.start(now)
-        lfo.stop(now + duration)
-        this._track(lfo)
-      },
-
-      distortion: () => {
-        // Controlled grit — power chord through smooth tanh waveshaper, pre/post filtering, amplitude pulse
-        const reverb = this._createReverbSend(0.15)
-        // Pre-distortion filter
-        const preFilter = this.ctx.createBiquadFilter()
-        preFilter.type = 'lowpass'
-        preFilter.frequency.value = 2000
-        // Waveshaper with smooth tanh curve
-        const ws = this.ctx.createWaveShaper()
-        const curve = new Float32Array(1024)
-        for (let i = 0; i < 1024; i++) {
-          const x = (i / 512) - 1
-          curve[i] = Math.tanh(x * 2.5)
-        }
-        ws.curve = curve
-        ws.oversample = '2x'
-        // Post-distortion filter
-        const postFilter = this.ctx.createBiquadFilter()
-        postFilter.type = 'lowpass'
-        postFilter.frequency.value = 3000
-        postFilter.Q.value = 0.7
-        // Amplitude pulse LFO
-        const ampLfo = this.ctx.createOscillator()
-        const ampLfoG = this.ctx.createGain()
-        ampLfo.frequency.value = 2
-        ampLfoG.gain.value = 0.03
-        const outGain = this.ctx.createGain()
-        this._adsr(outGain, now, { a: 0.15, d: 0.2, s: 0.85, r: 0.4, peak: 0.1, duration })
-        ampLfo.connect(ampLfoG).connect(outGain.gain)
-        ampLfo.start(now)
-        ampLfo.stop(now + duration)
-        this._track(ampLfo)
-        preFilter.connect(ws).connect(postFilter).connect(outGain)
-        outGain.connect(this.masterGain)
-        outGain.connect(reverb)
-        // Root + fifth (power chord)
-        ;[110, 165].forEach(freq => {
-          const osc = this.ctx.createOscillator()
-          osc.type = 'sawtooth'
-          osc.frequency.value = freq
-          osc.connect(preFilter)
-          osc.start(now)
-          osc.stop(now + duration)
-          this._track(osc)
-        })
-        // Filtered noise layer for air
-        const bufSize = this.ctx.sampleRate * duration
-        const buf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate)
-        const data = buf.getChannelData(0)
-        for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1
-        const noiseSrc = this.ctx.createBufferSource()
-        noiseSrc.buffer = buf
-        const noiseFilt = this.ctx.createBiquadFilter()
-        noiseFilt.type = 'bandpass'
-        noiseFilt.frequency.value = 500
-        noiseFilt.Q.value = 1
-        const noiseG = this.ctx.createGain()
-        this._adsr(noiseG, now, { a: 0.3, d: 0.2, s: 0.8, r: 0.4, peak: 0.025, duration })
-        noiseSrc.connect(noiseFilt).connect(noiseG).connect(this.masterGain)
-        noiseSrc.start(now)
-        this._track(noiseSrc)
-      },
-
-      keys: () => {
-        // Intimate piano — staggered chord with overtone harmonics, exponential decay, hall reverb
-        const reverb = this._createReverbSend(0.35)
-        const hipass = this.ctx.createBiquadFilter()
-        hipass.type = 'highpass'
-        hipass.frequency.value = 80
-        hipass.connect(this.masterGain)
-        hipass.connect(reverb)
-        ;[261.63, 329.63, 392.00, 523.25].forEach((freq, i) => {
-          const start = now + i * 0.5
-          // Fundamental + octave harmonic + 12th harmonic
-          ;[
-            { mult: 1, gain: 0.12 },
-            { mult: 2, gain: 0.04 },
-            { mult: 3, gain: 0.02 },
-          ].forEach(h => {
-            const osc = this.ctx.createOscillator()
-            const g = this.ctx.createGain()
-            osc.type = 'sine'
-            osc.frequency.value = freq * h.mult
-            g.gain.setValueAtTime(0, start)
-            g.gain.linearRampToValueAtTime(h.gain, start + 0.005)
-            g.gain.exponentialRampToValueAtTime(0.001, start + 2.2)
-            osc.connect(g).connect(hipass)
-            osc.start(start)
-            osc.stop(start + 2.5)
-            this._track(osc)
-          })
-        })
-      },
-
-      voice: () => {
-        // Ethereal choir — sine voices with formant filters, vibrato, staggered entry, heavy reverb
-        const reverb = this._createReverbSend(0.4)
-        ;[220, 277.18, 330, 440].forEach((freq, i) => {
-          const onset = now + i * 0.3
-          const voiceDur = duration - i * 0.3
-          const osc = this.ctx.createOscillator()
-          osc.type = 'sine'
-          osc.frequency.value = freq
-          // Vibrato
-          const vLfo = this.ctx.createOscillator()
-          const vLfoG = this.ctx.createGain()
-          vLfo.frequency.value = 4.5 + i * 0.5
-          vLfoG.gain.value = freq * 0.008
-          vLfo.connect(vLfoG).connect(osc.frequency)
-          vLfo.start(onset)
-          vLfo.stop(onset + voiceDur)
-          this._track(vLfo)
-          // Formant filters (vowel "ah")
-          const f1 = this.ctx.createBiquadFilter()
-          f1.type = 'bandpass'
-          f1.frequency.value = 800
-          f1.Q.value = 5
-          const f2 = this.ctx.createBiquadFilter()
-          f2.type = 'bandpass'
-          f2.frequency.value = 1200
-          f2.Q.value = 5
-          const formantMix = this.ctx.createGain()
-          formantMix.gain.value = 1
-          osc.connect(f1).connect(formantMix)
-          osc.connect(f2).connect(formantMix)
-          const g = this.ctx.createGain()
-          this._adsr(g, onset, { a: 1.2, d: 0.3, s: 0.85, r: 1.2, peak: 0.08, duration: voiceDur })
-          formantMix.connect(g)
-          g.connect(this.masterGain)
-          g.connect(reverb)
-          osc.start(onset)
-          osc.stop(onset + voiceDur)
-          this._track(osc)
-        })
-      },
-
-      glitch: () => {
-        // Fragmented digital — pitched bursts with pitch-bend, varied durations, noise fills, reverb tail
-        const reverb = this._createReverbSend(0.2)
-        for (let i = 0; i < 10; i++) {
-          const start = now + i * (duration / 10)
-          const burstDur = 0.05 + Math.random() * 0.2
-          const freq = 200 + Math.random() * 1800
-          const osc = this.ctx.createOscillator()
-          const g = this.ctx.createGain()
-          osc.type = i % 3 === 0 ? 'square' : 'sawtooth'
-          osc.frequency.setValueAtTime(freq, start)
-          osc.frequency.exponentialRampToValueAtTime(freq * (0.5 + Math.random()), start + burstDur)
-          g.gain.setValueAtTime(0, start)
-          g.gain.linearRampToValueAtTime(0.07, start + 0.005)
-          g.gain.exponentialRampToValueAtTime(0.001, start + burstDur)
-          const filt = this.ctx.createBiquadFilter()
-          filt.type = 'bandpass'
-          filt.frequency.value = freq
-          filt.Q.value = 2
-          osc.connect(filt).connect(g)
-          g.connect(this.masterGain)
-          g.connect(reverb)
-          osc.start(start)
-          osc.stop(start + burstDur + 0.05)
-          this._track(osc)
-        }
-        // Filtered noise texture between bursts
-        const nBuf = this.ctx.createBuffer(1, this.ctx.sampleRate * duration, this.ctx.sampleRate)
-        const nData = nBuf.getChannelData(0)
-        for (let i = 0; i < nData.length; i++) nData[i] = Math.random() * 2 - 1
-        const nSrc = this.ctx.createBufferSource()
-        nSrc.buffer = nBuf
-        const nFilt = this.ctx.createBiquadFilter()
-        nFilt.type = 'highpass'
-        nFilt.frequency.value = 4000
-        const nG = this.ctx.createGain()
-        this._adsr(nG, now, { a: 0.2, d: 0.1, s: 0.6, r: 0.3, peak: 0.015, duration })
-        nSrc.connect(nFilt).connect(nG).connect(this.masterGain)
-        nSrc.start(now)
-        this._track(nSrc)
-      },
-
-      rhythm: () => {
-        // Drum pattern — alternating kicks (sine pitch sweep) and hi-hats (noise), room reverb
-        const reverb = this._createReverbSend(0.2)
-        const beatCount = 12
-        for (let i = 0; i < beatCount; i++) {
-          const start = now + i * (duration / beatCount)
-          const isKick = i % 2 === 0
-          if (isKick) {
-            // Kick: sine pitch sweep 200 → 60Hz
-            const osc = this.ctx.createOscillator()
-            const g = this.ctx.createGain()
-            osc.type = 'sine'
-            osc.frequency.setValueAtTime(200, start)
-            osc.frequency.exponentialRampToValueAtTime(60, start + 0.12)
-            g.gain.setValueAtTime(0.15, start)
-            g.gain.exponentialRampToValueAtTime(0.001, start + 0.3)
-            osc.connect(g).connect(this.masterGain)
-            osc.connect(g).connect(reverb)
-            osc.start(start)
-            osc.stop(start + 0.35)
-            this._track(osc)
-          } else {
-            // Hi-hat: short highpass noise
-            const bufSize = this.ctx.sampleRate * 0.08
-            const buf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate)
-            const data = buf.getChannelData(0)
-            for (let j = 0; j < bufSize; j++) data[j] = Math.random() * 2 - 1
-            const src = this.ctx.createBufferSource()
-            src.buffer = buf
-            const filt = this.ctx.createBiquadFilter()
-            filt.type = 'highpass'
-            filt.frequency.value = 6000
-            const g = this.ctx.createGain()
-            g.gain.setValueAtTime(0.1, start)
-            g.gain.exponentialRampToValueAtTime(0.001, start + 0.06)
-            src.connect(filt).connect(g).connect(this.masterGain)
-            src.connect(filt).connect(g).connect(reverb)
-            src.start(start)
-            this._track(src)
-          }
-        }
-      },
-
-      field: () => {
-        // Ambient environment — layered bandpass noise, sine chirps, drone with vibrato, heavy reverb
-        const reverb = this._createReverbSend(0.35)
-        // Two bandpass noise layers
-        ;[400, 2000].forEach(freq => {
-          const bufSize = this.ctx.sampleRate * duration
-          const buf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate)
-          const data = buf.getChannelData(0)
-          for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * 0.5
-          const src = this.ctx.createBufferSource()
-          src.buffer = buf
-          const filt = this.ctx.createBiquadFilter()
-          filt.type = 'bandpass'
-          filt.frequency.value = freq
-          filt.Q.value = 0.8
-          const g = this.ctx.createGain()
-          this._adsr(g, now, { a: 1.0, d: 0.3, s: 0.8, r: 1.0, peak: 0.04, duration })
-          src.connect(filt).connect(g).connect(this.masterGain)
-          src.connect(filt).connect(g).connect(reverb)
-          src.start(now)
-          this._track(src)
-        })
-        // Gentle drone with vibrato
-        const drone = this.ctx.createOscillator()
-        drone.type = 'sine'
-        drone.frequency.value = 80
-        const droneLfo = this.ctx.createOscillator()
-        const droneLfoG = this.ctx.createGain()
-        droneLfo.frequency.value = 0.2
-        droneLfoG.gain.value = 2
-        droneLfo.connect(droneLfoG).connect(drone.frequency)
-        droneLfo.start(now)
-        droneLfo.stop(now + duration)
-        this._track(droneLfo)
-        const droneG = this.ctx.createGain()
-        this._adsr(droneG, now, { a: 1.2, d: 0.2, s: 0.9, r: 1.0, peak: 0.05, duration })
-        drone.connect(droneG).connect(this.masterGain)
-        drone.connect(droneG).connect(reverb)
-        drone.start(now)
-        drone.stop(now + duration)
-        this._track(drone)
-        // Birdsong-like chirps — random sine pitch sweeps
-        for (let i = 0; i < 5; i++) {
-          const chirpStart = now + 1 + Math.random() * (duration - 3)
-          const chirpDur = 0.15 + Math.random() * 0.3
-          const startFreq = 1500 + Math.random() * 2000
-          const endFreq = startFreq * (0.6 + Math.random() * 0.8)
-          const osc = this.ctx.createOscillator()
-          osc.type = 'sine'
-          osc.frequency.setValueAtTime(startFreq, chirpStart)
-          osc.frequency.exponentialRampToValueAtTime(endFreq, chirpStart + chirpDur)
-          const g = this.ctx.createGain()
-          g.gain.setValueAtTime(0, chirpStart)
-          g.gain.linearRampToValueAtTime(0.03, chirpStart + 0.01)
-          g.gain.exponentialRampToValueAtTime(0.001, chirpStart + chirpDur)
-          osc.connect(g).connect(this.masterGain)
-          osc.connect(g).connect(reverb)
-          osc.start(chirpStart)
-          osc.stop(chirpStart + chirpDur + 0.05)
-          this._track(osc)
-        }
-      },
+    const buffer = this._textureBuffers.get(textureName)
+    if (!buffer) {
+      return this._loadTextureBuffer(textureName).then(() => this.playTexture(textureName, duration))
     }
 
-    if (textures[textureName]) {
-      textures[textureName]()
-    }
+    const source = ctx.createBufferSource()
+    source.buffer = buffer
+    source.loop = true
+
+    const gain = ctx.createGain()
+    const now = ctx.currentTime
+    gain.gain.setValueAtTime(0, now)
+    gain.gain.linearRampToValueAtTime(0.8, now + FADE_IN)
+    gain.gain.setValueAtTime(0.8, now + duration - FADE_OUT)
+    gain.gain.linearRampToValueAtTime(0, now + duration)
+
+    source.connect(gain).connect(this.masterGain)
+    source.start(now)
+    source.stop(now + duration)
+
+    this._textureSource = source
+    this._textureGain = gain
 
     return new Promise(resolve => setTimeout(resolve, duration * 1000))
   }

@@ -2,39 +2,25 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { audioEngine } from '../engine/audio'
 
+// Each pair has AVD coordinates from SPECTRUM-AUDIO-PROMPTS.md
+// Left = low valence pole, Right = high valence pole
 const PAIRS = [
-  // shadow: subterranean rumble, barely audible | warmth: bright mid-range chord, full & rich
   { left: 'shadow',  right: 'warmth',
-    audioL: { freq: 55, oscType: 'sine', filter: { type: 'lowpass', freq: 150, Q: 3 }, vibrato: { freq: 0.3, depth: 1 } },
-    audioR: { freqs: [220, 277.18, 329.63, 440], oscType: 'triangle', detune: 10 } },
-  // pulse: aggressive square stabs | shimmer: delicate high sparkle
+    coordL: { a: 0.30, v: 0.10, d: 0.50 }, coordR: { a: 0.30, v: 0.85, d: 0.50 } },
   { left: 'pulse',   right: 'shimmer',
-    audioL: { freq: 82.41, oscType: 'square', filter: { type: 'bandpass', freq: 400, Q: 3 }, tremolo: { freq: 8, depth: 0.12 } },
-    audioR: { freqs: [1318, 1568, 1760], oscType: 'sine', detune: 20, tremolo: { freq: 12, depth: 0.06 } } },
-  // weight: distorted bass growl | air: pure breathy noise, no pitch
+    coordL: { a: 0.55, v: 0.20, d: 0.35 }, coordR: { a: 0.55, v: 0.80, d: 0.35 } },
   { left: 'weight',  right: 'air',
-    audioL: { freq: 41.2, oscType: 'sawtooth', distortion: 30, filter: { type: 'lowpass', freq: 180, Q: 5 } },
-    audioR: { type: 'noise', filter: { type: 'highpass', freq: 4000, Q: 0.5 } } },
-  // ache: beating dissonance, semitone clash | bloom: open fifth, gentle triangle swell
+    coordL: { a: 0.20, v: 0.15, d: 0.60 }, coordR: { a: 0.20, v: 0.70, d: 0.60 } },
   { left: 'ache',    right: 'bloom',
-    audioL: { freqs: [146.83, 155.56, 293.66, 311.13], oscType: 'sawtooth', filter: { type: 'lowpass', freq: 800, Q: 2 }, vibrato: { freq: 4, depth: 6 } },
-    audioR: { freqs: [261.63, 392, 523.25], oscType: 'triangle', detune: 5 } },
-  // machine: rhythmic industrial noise | earth: deep organic drone with rumble
+    coordL: { a: 0.25, v: 0.10, d: 0.75 }, coordR: { a: 0.25, v: 0.90, d: 0.75 } },
   { left: 'machine', right: 'earth',
-    audioL: { type: 'noise', filter: { type: 'bandpass', freq: 1200, Q: 8, lfoFreq: 6, lfoDepth: 800 } },
-    audioR: { freq: 44, oscType: 'sine', noiseMix: { filterType: 'lowpass', filterFreq: 120, gain: 0.1 }, vibrato: { freq: 0.2, depth: 1 } } },
-  // tension: harsh buzzing cluster | resolve: pure clean octaves
+    coordL: { a: 0.50, v: 0.20, d: 0.40 }, coordR: { a: 0.50, v: 0.65, d: 0.40 } },
   { left: 'tension', right: 'resolve',
-    audioL: { freqs: [220, 233.08, 246.94], oscType: 'sawtooth', distortion: 10, filter: { type: 'lowpass', freq: 1500, Q: 6 } },
-    audioR: { freqs: [261.63, 523.25], oscType: 'sine' } },
-  // fog: muffled noise wash, no clear pitch | glass: piercing high sine, crystal clear
+    coordL: { a: 0.60, v: 0.05, d: 0.55 }, coordR: { a: 0.60, v: 0.85, d: 0.55 } },
   { left: 'fog',     right: 'glass',
-    audioL: { type: 'noise', filter: { type: 'lowpass', freq: 300, Q: 1, lfoFreq: 0.2, lfoDepth: 150 } },
-    audioR: { freq: 1046.5, oscType: 'sine', tremolo: { freq: 16, depth: 0.05 } } },
-  // gravity: sub-bass square drone | drift: airy high chord, slowly wandering
+    coordL: { a: 0.15, v: 0.20, d: 0.65 }, coordR: { a: 0.15, v: 0.75, d: 0.65 } },
   { left: 'gravity', right: 'drift',
-    audioL: { freq: 36.71, oscType: 'square', filter: { type: 'lowpass', freq: 120 }, distortion: 8 },
-    audioR: { freqs: [659.26, 783.99, 987.77], oscType: 'sine', detune: 25, vibrato: { freq: 0.3, depth: 8 } } },
+    coordL: { a: 0.65, v: 0.30, d: 0.30 }, coordR: { a: 0.15, v: 0.60, d: 0.70 } },
 ]
 
 export default function Spectrum({ onNext, avd, inputMode }) {
@@ -52,6 +38,8 @@ export default function Spectrum({ onNext, avd, inputMode }) {
   const pairRef = useRef(null)
   const areaRef = useRef(null)
   const results = useRef([])
+  const reversalCount = useRef(0)
+  const lastSide = useRef(null)
   const isMouse = inputMode === 'mouse'
 
   const pair = PAIRS[pairIdx]
@@ -65,10 +53,14 @@ export default function Spectrum({ onNext, avd, inputMode }) {
 
   const startPair = useCallback(() => {
     stopAudio()
-    const p = audioEngine.playPair(pair.audioL, pair.audioR, 10)
+    const urlL = `/spectrum/${pair.left}.mp3`
+    const urlR = `/spectrum/${pair.right}.mp3`
+    const p = audioEngine.playMp3Pair(urlL, urlR, 10)
     pairRef.current = p
     pairStartTime.current = Date.now()
     firstHovered.current = null
+    reversalCount.current = 0
+    lastSide.current = null
   }, [pair, stopAudio])
 
   useEffect(() => {
@@ -76,7 +68,23 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     return stopAudio
   }, [pairIdx])
 
-  const lockChoice = useCallback((side, confidenceOverride) => {
+  // Compute slide commitment weight from slider position, reversals, and dwell time
+  const getSlideCommitmentWeight = useCallback((sliderPosition) => {
+    // sliderPosition: normalized 0-1 (how far from center at moment of commitment)
+    const positionFactor = Math.max(0.2, sliderPosition)
+
+    // Reversals: more reversals = more ambivalence = lower weight
+    const reversals = reversalCount.current
+    const reversalPenalty = 1.0 / (1.0 + reversals * 0.3)
+
+    // Dwell time: longer dwell = more considered = moderate boost
+    const dwellSec = (Date.now() - pairStartTime.current) / 1000
+    const dwellFactor = Math.max(0.3, Math.min(1.2, dwellSec / 4.0))
+
+    return positionFactor * reversalPenalty * dwellFactor
+  }, [])
+
+  const lockChoice = useCallback((side, confidenceOverride, sliderPos) => {
     if (transitioning) return
     setTransitioning(true)
     stopAudio()
@@ -90,19 +98,33 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     }
 
     const reactionMs = Date.now() - (pairStartTime.current || Date.now())
+    const sliderPosition = sliderPos !== undefined ? sliderPos : 0.5
+
+    // Get the chosen clip's AVD coordinates
+    const chosenCoord = side === 'left' ? pair.coordL : pair.coordR
+    const slideCommitmentWeight = getSlideCommitmentWeight(sliderPosition)
 
     results.current.push({
       pair: pairIdx + 1,
       choice: side,
+      label: side === 'left' ? pair.left : pair.right,
       confidence,
       reactionMs,
       switched: switched.current,
+      reversals: reversalCount.current,
+      coord: chosenCoord,
     })
 
-    // Update valence
-    const delta = side === 'left' ? -0.0625 : 0.0625
-    const weight = switched.current ? 0.6 : 1.0
-    avd.updateValence(delta * weight * (1 + confidence), 1.0)
+    // Coordinate-based AVD updates
+    // delta = (chosenClip.dimension - 0.5) * confidence * slideCommitmentWeight
+    const vDelta = (chosenCoord.v - 0.5) * confidence * slideCommitmentWeight
+    const aDelta = (chosenCoord.a - 0.5) * confidence * slideCommitmentWeight * 0.5 // secondary contribution
+    const dDelta = (chosenCoord.d - 0.5) * confidence * slideCommitmentWeight * 0.5 // secondary contribution
+
+    const switchWeight = switched.current ? 0.6 : 1.0
+    avd.updateValence(vDelta * switchWeight, 1.0)
+    avd.updateArousal(aDelta * switchWeight, 1.0)
+    avd.updateDepth(dDelta * switchWeight, 1.0)
 
     if (navigator.vibrate) navigator.vibrate(10)
 
@@ -126,28 +148,37 @@ export default function Spectrum({ onNext, avd, inputMode }) {
         onNext({ spectrum: results.current })
       }
     }, transitionMs)
-  }, [pairIdx, transitioning, avd, onNext, stopAudio])
+  }, [pairIdx, transitioning, avd, onNext, stopAudio, pair, getSlideCommitmentWeight])
+
+  // Track direction reversals for commitment weight
+  const trackReversal = useCallback((side) => {
+    if (lastSide.current && lastSide.current !== side) {
+      reversalCount.current++
+    }
+    lastSide.current = side
+  }, [])
 
   // === MOUSE: Click anywhere to lock whichever side the divider is on ===
   const handleMouseClick = useCallback(() => {
     if (transitioning || !hoveredSide) return
-    // Switching detection
     if (firstHovered.current && firstHovered.current !== hoveredSide) {
       switched.current = true
     }
-    // Confidence from dwell time
     const dwellSec = (Date.now() - pairStartTime.current) / 1000
     const confidence = Math.max(0.2, Math.min(1, (dwellSec - 0.5) / 4.0))
-    lockChoice(hoveredSide, confidence)
-  }, [transitioning, hoveredSide, lockChoice])
+    // Compute slider position as fraction of max offset
+    const rect = areaRef.current?.getBoundingClientRect()
+    const maxOffset = rect ? rect.width * 0.35 : 200
+    const sliderPos = Math.min(1, Math.abs(dividerOffset) / maxOffset)
+    lockChoice(hoveredSide, confidence, sliderPos)
+  }, [transitioning, hoveredSide, lockChoice, dividerOffset])
 
   // === MOUSE: Track cursor position for divider ===
   const handleMouseMove = useCallback((e) => {
     if (transitioning || !areaRef.current) return
     const rect = areaRef.current.getBoundingClientRect()
     const centerX = rect.left + rect.width / 2
-    const relX = e.clientX - centerX // pixels from center
-    // Clamp so divider stops ~30% from edge (where text roughly is)
+    const relX = e.clientX - centerX
     const maxOffset = rect.width * 0.35
     const clampedOffset = Math.max(-maxOffset, Math.min(maxOffset, relX))
 
@@ -155,6 +186,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
 
     const side = relX < 0 ? 'left' : 'right'
     if (!firstHovered.current) firstHovered.current = side
+    trackReversal(side)
     setHoveredSide(side)
     setActiveLabel(side)
 
@@ -162,7 +194,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     const raw = Math.max(-1, Math.min(1, relX / (rect.width * 0.3)))
     const balance = Math.sign(raw) * Math.pow(Math.abs(raw), 0.6)
     if (pairRef.current) pairRef.current.setBalance(balance)
-  }, [transitioning])
+  }, [transitioning, trackReversal])
 
   const handleMouseLeaveArea = useCallback(() => {
     if (transitioning) return
@@ -180,6 +212,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
       switched.current = true
     }
     currentChoice.current = side
+    trackReversal(side)
     setActiveLabel(side)
 
     if (pairRef.current) {
@@ -188,8 +221,8 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     setDividerOffset(side === 'left' ? -15 : 15)
 
     clearTimeout(holdTimer.current)
-    holdTimer.current = setTimeout(() => lockChoice(side), 3000)
-  }, [transitioning, lockChoice])
+    holdTimer.current = setTimeout(() => lockChoice(side, undefined, 1.0), 3000)
+  }, [transitioning, lockChoice, trackReversal])
 
   const handleSideUp = useCallback(() => {
     clearTimeout(holdTimer.current)
@@ -197,12 +230,13 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     setDividerOffset(0)
   }, [])
 
-  const handleSwipe = useCallback((e, info) => {
+  const handleSwipe = useCallback((_e, info) => {
     if (transitioning) return
     if (Math.abs(info.offset.x) > 30) {
       const side = info.offset.x < 0 ? 'left' : 'right'
       if (!startTime.current) startTime.current = Date.now()
-      lockChoice(side)
+      const swipeStrength = Math.min(1, Math.abs(info.offset.x) / 150)
+      lockChoice(side, undefined, swipeStrength)
     }
   }, [transitioning, lockChoice])
 
@@ -214,7 +248,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     }
     const dwellSec = (Date.now() - pairStartTime.current) / 1000
     const confidence = Math.max(0.2, Math.min(1, (dwellSec - 0.5) / 4.0))
-    lockChoice(side, confidence)
+    lockChoice(side, confidence, 0.5)
   }, [transitioning, lockChoice])
 
   useEffect(() => {

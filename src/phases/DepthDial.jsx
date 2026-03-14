@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { audioEngine } from '../engine/audio'
 
 const LAYER_LABELS = ['root', 'harmony', 'octave', 'texture', 'sub', 'drift', 'overtone', 'everything']
@@ -8,9 +8,8 @@ export default function DepthDial({ onNext, avd, inputMode }) {
   const [lockedCount, setLockedCount] = useState(1)
   const [hoverCount, setHoverCount] = useState(null)
   const [justLocked, setJustLocked] = useState(null) // flash feedback on click
-  const [idleCountdown, setIdleCountdown] = useState(false) // show countdown bar
+  const [hasSelected, setHasSelected] = useState(false)
   const layerControl = useRef(null)
-  const idleTimer = useRef(null)
   const phaseTimer = useRef(null)
   const prevCount = useRef(1)
   const containerRef = useRef(null)
@@ -21,14 +20,13 @@ export default function DepthDial({ onNext, avd, inputMode }) {
   const pointerDownRef = useRef(false)
   const isMouse = inputMode === 'mouse'
 
-  // The displayed active count: hover preview or locked value
-  const displayCount = isMouse ? (hoverCount ?? lockedCount) : lockedCount
+  // Before first selection: hover previews visuals+audio. After: locked only.
+  const displayCount = (!hasSelected && isMouse && hoverCount !== null) ? hoverCount : lockedCount
 
   const finish = useCallback(() => {
     if (finishedRef.current) return
     finishedRef.current = true
     clearTimeout(phaseTimer.current)
-    clearTimeout(idleTimer.current)
     if (layerControl.current) layerControl.current.stop()
 
     const finalLayer = lockedCountRef.current
@@ -51,21 +49,8 @@ export default function DepthDial({ onNext, avd, inputMode }) {
     return () => {
       if (layerControl.current) layerControl.current.stop()
       clearTimeout(phaseTimer.current)
-      clearTimeout(idleTimer.current)
-      clearTimeout(idleCountdownTimer.current)
     }
   }, [])
-
-  const idleCountdownTimer = useRef(null)
-
-  const resetIdleTimer = useCallback(() => {
-    clearTimeout(idleTimer.current)
-    clearTimeout(idleCountdownTimer.current)
-    setIdleCountdown(false)
-    // Show countdown immediately, finish after 5s
-    setIdleCountdown(true)
-    idleTimer.current = setTimeout(finish, 5000)
-  }, [finish])
 
   // Commit a locked count (click, scroll, keyboard)
   const commitCount = useCallback((count) => {
@@ -85,22 +70,22 @@ export default function DepthDial({ onNext, avd, inputMode }) {
     setJustLocked(count)
     setTimeout(() => setJustLocked(null), 400)
 
-    resetIdleTimer()
-  }, [resetIdleTimer])
+    setHasSelected(true)
+  }, [])
 
-  // Preview count on hover (audio follows hover)
+  // Preview on hover (only before first selection)
   const previewCount = useCallback((count) => {
-    if (finishedRef.current) return
+    if (finishedRef.current || hasSelected) return
     count = Math.max(1, Math.min(8, count))
     setHoverCount(count)
     if (layerControl.current) layerControl.current.setActiveCount(count)
-  }, [])
+  }, [hasSelected])
 
-  // Revert audio to locked count when hover ends
   const clearPreview = useCallback(() => {
+    if (hasSelected) return
     setHoverCount(null)
     if (layerControl.current) layerControl.current.setActiveCount(lockedCountRef.current)
-  }, [])
+  }, [hasSelected])
 
   // Touch: drag handler
   const handleDrag = useCallback((e) => {
@@ -127,17 +112,10 @@ export default function DepthDial({ onNext, avd, inputMode }) {
     return () => el.removeEventListener('wheel', handleWheel)
   }, [isMouse, commitCount])
 
-  // Mouse: hover over a layer to preview
-  const handleLayerHover = useCallback((layerIndex) => {
-    if (!isMouse) return
-    previewCount(layerIndex + 1)
-  }, [isMouse, previewCount])
-
   // Mouse: click to lock
   const handleLayerClick = useCallback((layerIndex) => {
-    if (!isMouse) return
     commitCount(layerIndex + 1)
-  }, [isMouse, commitCount])
+  }, [commitCount])
 
   // Keyboard: arrow keys
   useEffect(() => {
@@ -165,7 +143,7 @@ export default function DepthDial({ onNext, avd, inputMode }) {
       <div
         ref={containerRef}
         className="flex-1 flex flex-col justify-center items-center px-8 relative"
-        onMouseLeave={isMouse ? clearPreview : undefined}
+        onMouseLeave={!hasSelected && isMouse ? clearPreview : undefined}
         {...(isMouse ? {} : {
           onPointerDown: () => { pointerDownRef.current = true },
           onPointerUp: () => { pointerDownRef.current = false },
@@ -178,7 +156,7 @@ export default function DepthDial({ onNext, avd, inputMode }) {
         <div className="w-full flex flex-col-reverse gap-5 sm:gap-6" style={{ maxWidth: '60vw' }}>
           {LAYER_LABELS.map((label, i) => {
             const isActive = i < displayCount
-            const isHovered = hoverCount !== null && i < hoverCount && i >= lockedCount
+            const isHovered = !hasSelected && hoverCount !== null && i < hoverCount && i >= lockedCount
             const isLocked = i < lockedCount
             const isFlash = justLocked !== null && i < justLocked
 
@@ -191,7 +169,7 @@ export default function DepthDial({ onNext, avd, inputMode }) {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.5, delay: i * 0.06 }}
                 onClick={() => handleLayerClick(i)}
-                onMouseEnter={() => handleLayerHover(i)}
+                onMouseEnter={() => !hasSelected && isMouse && previewCount(i + 1)}
               >
                 {/* Label — left side */}
                 <motion.span
@@ -280,30 +258,27 @@ export default function DepthDial({ onNext, avd, inputMode }) {
           {hintText}
         </motion.p>
 
-        {/* Idle countdown bar */}
-        <AnimatePresence>
-          {idleCountdown && (
-            <motion.div
-              className="mt-6 flex flex-col items-center gap-2"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <span className="font-mono" style={{ fontSize: '10px', color: 'var(--text-dim)', opacity: 0.5 }}>
-                continuing...
-              </span>
-              <div style={{ width: 120, height: 2, background: 'var(--text-dim)', borderRadius: 1, opacity: 0.2, overflow: 'hidden' }}>
-                <motion.div
-                  style={{ height: '100%', background: 'var(--accent)', borderRadius: 1 }}
-                  initial={{ width: '0%' }}
-                  animate={{ width: '100%' }}
-                  transition={{ duration: 5, ease: 'linear' }}
-                />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Continue button — only after user has selected a depth */}
+        {hasSelected && (
+          <motion.button
+            onClick={finish}
+            className="font-mono mt-6"
+            style={{
+              fontSize: '11px',
+              color: 'var(--accent)',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              letterSpacing: '0.1em',
+            }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.6 }}
+            whileHover={{ opacity: 1 }}
+            transition={{ duration: 0.4 }}
+          >
+            continue →
+          </motion.button>
+        )}
       </div>
     </div>
   )
