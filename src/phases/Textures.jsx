@@ -3,14 +3,14 @@ import { motion } from 'framer-motion'
 import { audioEngine } from '../engine/audio'
 
 const TEXTURE_DATA = [
-  { name: 'strings',     vDelta: 0.10, dDelta: 0.10, pattern: 'wavy' },
-  { name: 'synthesizer', vDelta: -0.05, dDelta: 0.15, pattern: 'flow' },
-  { name: 'distortion',  vDelta: -0.15, dDelta: -0.05, pattern: 'jagged' },
-  { name: 'keys',        vDelta: 0.15, dDelta: 0.05, pattern: 'dots' },
-  { name: 'voice',       vDelta: 0.05, dDelta: 0.20, pattern: 'circle' },
-  { name: 'glitch',      vDelta: -0.10, dDelta: 0.10, pattern: 'grid' },
-  { name: 'rhythm',      vDelta: 0.05, dDelta: -0.10, pattern: 'lines' },
-  { name: 'field',       vDelta: -0.05, dDelta: 0.05, pattern: 'noise' },
+  { name: 'strings',     coord: { a: 0.25, v: 0.70, d: 0.65 }, pattern: 'wavy' },
+  { name: 'synthesizer', coord: { a: 0.35, v: 0.40, d: 0.80 }, pattern: 'flow' },
+  { name: 'distortion',  coord: { a: 0.85, v: 0.20, d: 0.30 }, pattern: 'jagged' },
+  { name: 'keys',        coord: { a: 0.30, v: 0.75, d: 0.45 }, pattern: 'dots' },
+  { name: 'voice',       coord: { a: 0.20, v: 0.55, d: 0.90 }, pattern: 'circle' },
+  { name: 'glitch',      coord: { a: 0.75, v: 0.25, d: 0.55 }, pattern: 'grid' },
+  { name: 'rhythm',      coord: { a: 0.80, v: 0.60, d: 0.25 }, pattern: 'lines' },
+  { name: 'field',       coord: { a: 0.10, v: 0.50, d: 0.70 }, pattern: 'noise' },
 ]
 
 // Pre-computed random positions for noise pattern (fixes re-render randomness bug)
@@ -304,6 +304,7 @@ export default function Textures({ onNext, avd, inputMode }) {
   const [playing, setPlaying] = useState(null)
   const [hoveredCard, setHoveredCard] = useState(null)
   const [touchActive, setTouchActive] = useState(null)
+  const dwellTimes = useRef({})
   const hoverTimer = useRef(null)
   const playingTimeout = useRef(null)
   const touchActiveTimer = useRef(null)
@@ -316,22 +317,32 @@ export default function Textures({ onNext, avd, inputMode }) {
 
   const playPreview = useCallback((textureName) => {
     if (playing === textureName) return
-    audioEngine.playTexture(textureName, 5)
+    // Accumulate dwell for the previously playing texture
+    if (playing && dwellTimes.current[playing]?.start) {
+      dwellTimes.current[playing].total += Date.now() - dwellTimes.current[playing].start
+      dwellTimes.current[playing].start = null
+    }
+    audioEngine.playTexture(textureName, 30)
     setPlaying(textureName)
+    dwellTimes.current[textureName] = { start: Date.now(), total: dwellTimes.current[textureName]?.total || 0 }
     setListened(prev => {
       const next = new Set(prev)
       next.add(textureName)
       return next
     })
     clearTimeout(playingTimeout.current)
-    playingTimeout.current = setTimeout(() => setPlaying(p => p === textureName ? null : p), 5000)
+    playingTimeout.current = setTimeout(() => setPlaying(p => p === textureName ? null : p), 30000)
   }, [playing])
 
   const stopPreview = useCallback(() => {
+    if (playing && dwellTimes.current[playing]?.start) {
+      dwellTimes.current[playing].total += Date.now() - dwellTimes.current[playing].start
+      dwellTimes.current[playing].start = null
+    }
     audioEngine.stopTexture()
     setPlaying(null)
     clearTimeout(playingTimeout.current)
-  }, [])
+  }, [playing])
 
   // Mouse: hover to preview (debounced), click to toggle select
   const handleMouseEnter = useCallback((textureName) => {
@@ -374,14 +385,32 @@ export default function Textures({ onNext, avd, inputMode }) {
   const handleContinue = useCallback(() => {
     audioEngine.stopAll()
 
+    // Finalize any in-progress dwell tracking
+    if (playing && dwellTimes.current[playing]?.start) {
+      dwellTimes.current[playing].total += Date.now() - dwellTimes.current[playing].start
+      dwellTimes.current[playing].start = null
+    }
+
     const preferred = []
     const neutral = []
 
     TEXTURE_DATA.forEach(t => {
       if (selected[t.name]) {
         preferred.push(t.name)
-        avd.updateValence(t.vDelta, 1.0)
-        avd.updateDepth(t.dDelta, 1.0)
+
+        // Dwell-based commitment weight: longer listening = stronger signal
+        // Normalize dwell: 2s = low confidence, 8s+ = full confidence
+        const dwell = (dwellTimes.current[t.name]?.total || 0) / 1000
+        const dwellWeight = Math.max(0.3, Math.min(1.0, dwell / 8))
+
+        // Coordinate-based delta: move toward the clip's position
+        const vDelta = (t.coord.v - 0.5) * dwellWeight
+        const dDelta = (t.coord.d - 0.5) * dwellWeight
+        const aDelta = (t.coord.a - 0.5) * dwellWeight * 0.5 // secondary contribution
+
+        avd.updateValence(vDelta, 1.0)
+        avd.updateDepth(dDelta, 1.0)
+        avd.updateArousal(aDelta, 1.0)
       } else {
         neutral.push(t.name)
       }
@@ -389,7 +418,7 @@ export default function Textures({ onNext, avd, inputMode }) {
 
     avd.setPhaseData('textures', { preferred, rejected: [], neutral })
     onNext({ textures: { preferred, rejected: [], neutral } })
-  }, [selected, avd, onNext])
+  }, [selected, avd, onNext, playing])
 
   return (
     <div className="h-full w-full flex flex-col select-none" style={{ touchAction: 'manipulation' }}>
