@@ -20,8 +20,8 @@ Each phase collects user interaction data and updates the **AVD Engine** (Arousa
 ### Key Modules
 
 - **`src/engine/avd.js`** — Singleton `AVDEngine` class. Manages A/V/D state, per-phase data, composition plan generation, and subscriber pattern for reactive updates. Central state for the entire app.
-- **`src/engine/audio.js`** — Singleton `AudioEngine` class. Web Audio synthesis for all interactive phases: stereo pairs, layered builds, texture previews, build-and-drop sequences, and full procedural track generation.
-- **`src/engine/elevenlabs.js`** — ElevenLabs Music API wrapper. Supports prompt-based and composition-plan-based generation with auto-retry on bad prompt/plan errors.
+- **`src/engine/audio.js`** — Singleton `AudioEngine` class. Web Audio synthesis for all interactive phases: stereo pairs, layered builds, texture previews, build-and-drop sequences, and full procedural track generation. Also handles MP3 playback with crossfade looping (`playMp3Pair`) and MP3-based texture previews (`playTextureMp3`).
+- **`src/engine/elevenlabs.js`** — ElevenLabs Music API wrapper. Supports prompt-based (`generateMusic`) and composition-plan-based (`generateMusicWithPlan`) generation with auto-retry on bad prompt/plan errors. Also supports sound effect generation (`generateSoundEffect`).
 - **`src/hooks/useInputMode.js`** — Detects mouse vs touch input, used throughout phases for adaptive interaction (click vs hold, scroll vs drag, keyboard shortcuts).
 - **`src/components/TraceCanvas.jsx`** — Persistent background canvas that visualizes accumulated phase data (spectrum lines, depth verticals, texture dots, moment waveform).
 
@@ -30,9 +30,9 @@ Each phase collects user interaction data and updates the **AVD Engine** (Arousa
 | # | Phase | File | What it measures |
 |---|-------|------|-----------------|
 | 0 | Entry | `Entry.jsx` | Initializes audio context on tap |
-| 1 | Spectrum | `Spectrum.jsx` | Valence via 8 word-pair choices (shadow/warmth, etc.) with stereo audio |
+| 1 | Spectrum | `Spectrum.jsx` | Valence via 8 word-pair choices (shadow/warmth, etc.) with pre-recorded MP3 stereo pairs and AVD coordinate mapping |
 | 2 | Depth Dial | `DepthDial.jsx` | Depth via layered audio build (1-8 layers) |
-| 3 | Textures | `Textures.jsx` | Valence + Depth via texture preferences (strings, synth, distortion, etc.) |
+| 3 | Textures | `Textures.jsx` | Valence + Depth via texture preferences (strings, synth, distortion, etc.) with MP3 previews |
 | 4 | Moment | `Moment.jsx` | Arousal via tap-to-beat interaction during a 30s build-and-drop |
 | 5 | Reveal | `Reveal.jsx` | Plays AI-generated music, reveals concept |
 | 6 | Result | `Result.jsx` | Displays final AVD profile, saves to localStorage |
@@ -41,6 +41,20 @@ Each phase collects user interaction data and updates the **AVD Engine** (Arousa
 All interactive phases support both **mouse** and **touch** with distinct UX:
 - Mouse: hover/click, scroll wheel, arrow keys, spacebar
 - Touch: hold, swipe, drag, double-tap, long-press
+
+### Audio Assets
+
+Pre-recorded MP3 files in `public/` replace the previous pure Web Audio synthesis for Spectrum and Textures:
+- **`public/spectrum/`** — 16 MP3 clips (one per word in the 8 pairs: shadow, warmth, pulse, shimmer, etc.) used as stereo crossfade pairs
+- **`public/Texture/`** — 8 MP3 clips (strings, synthesizer, distortion, keys, voice, glitch, rhythm, field) used as texture previews
+
+### Spectrum AVD Coordinates
+
+Each Spectrum word-pair now carries explicit `coordL` / `coordR` AVD coordinates (defined in `SPECTRUM-AUDIO-PROMPTS.md`) instead of inline oscillator configs. The balance slider interpolates between the two coordinate sets.
+
+### Reversal Tracking
+
+Spectrum tracks `reversalCount` — how many times the user switches sides during a pair — as an additional engagement signal fed into the AVD engine.
 
 ## Environment
 
