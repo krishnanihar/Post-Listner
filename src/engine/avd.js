@@ -95,6 +95,111 @@ class AVDEngine {
     return parts.join(', ')
   }
 
+  _getArousalStyles() {
+    const { a } = this.state
+    if (a < 0.3) return { positive: ['slow', 'meditative', 'calm', 'spacious'], negative: ['intense', 'driving', 'aggressive'] }
+    if (a < 0.7) return { positive: ['moderate groove', 'steady rhythm', 'flowing'], negative: ['frantic', 'static'] }
+    return { positive: ['high energy', 'driving', 'intense', 'powerful'], negative: ['calm', 'slow', 'ambient'] }
+  }
+
+  _getValenceStyles() {
+    const { v } = this.state
+    if (v < 0.3) return { positive: ['minor key', 'melancholic', 'dark', 'brooding'], negative: ['uplifting', 'bright', 'cheerful'] }
+    if (v < 0.7) return { positive: ['bittersweet', 'contemplative', 'modal', 'ambiguous'], negative: ['aggressive', 'saccharine'] }
+    return { positive: ['major key', 'uplifting', 'bright', 'warm'], negative: ['dark', 'melancholic', 'dissonant'] }
+  }
+
+  _getDepthStyles() {
+    const { d } = this.state
+    if (d < 0.3) return { positive: ['minimal', 'sparse', 'repetitive', 'hypnotic'], negative: ['complex', 'orchestral', 'layered'] }
+    if (d < 0.7) return { positive: ['structured arrangement', 'moderate layers'], negative: ['chaotic', 'monotone'] }
+    return { positive: ['layered', 'complex', 'progressive', 'rich orchestration'], negative: ['sparse', 'minimal', 'simple'] }
+  }
+
+  _getBpmAndKey() {
+    const { a, v } = this.state
+    const bpm = Math.round(60 + a * 100)
+    const keys = v < 0.5 ? ['Am', 'Dm', 'Em', 'Cm'] : ['C', 'G', 'D', 'F']
+    const key = keys[Math.floor(Math.random() * keys.length)]
+    return { bpm, key }
+  }
+
+  getCompositionPlan() {
+    const { d } = this.state
+    const arousal = this._getArousalStyles()
+    const valence = this._getValenceStyles()
+    const depth = this._getDepthStyles()
+    const { bpm, key } = this._getBpmAndKey()
+    const textures = this.phaseData.textures
+
+    // Build global styles from AVD + texture preferences
+    const positiveGlobalStyles = [
+      ...arousal.positive,
+      ...valence.positive,
+      `${bpm} BPM`,
+      `key of ${key}`,
+      ...textures.preferred,
+    ]
+    const negativeGlobalStyles = [
+      ...arousal.negative,
+      ...valence.negative,
+      ...textures.rejected,
+    ]
+
+    // Build sections based on depth
+    let sections
+
+    if (d < 0.3) {
+      // Minimal: single section
+      sections = [{
+        name: 'main',
+        localStyles: [...depth.positive],
+        duration_ms: 30000,
+        lines: [],
+      }]
+    } else if (d < 0.7) {
+      // Moderate: intro + main body
+      sections = [
+        {
+          name: 'intro',
+          localStyles: ['soft', 'building', 'sparse'],
+          duration_ms: 10000,
+          lines: [],
+        },
+        {
+          name: 'main',
+          localStyles: [...depth.positive, 'full'],
+          duration_ms: 20000,
+          lines: [],
+        },
+      ]
+    } else {
+      // Rich: intro + build + climax
+      sections = [
+        {
+          name: 'intro',
+          localStyles: ['soft', 'atmospheric', 'sparse'],
+          duration_ms: 8000,
+          lines: [],
+        },
+        {
+          name: 'build',
+          localStyles: ['building', 'evolving', 'moderate layers'],
+          duration_ms: 12000,
+          lines: [],
+        },
+        {
+          name: 'climax',
+          localStyles: [...depth.positive, 'full', 'expressive'],
+          duration_ms: 10000,
+          lines: [],
+        },
+      ]
+    }
+
+    return { positiveGlobalStyles, negativeGlobalStyles, sections }
+  }
+
   subscribe(fn) {
     this.listeners.add(fn)
     return () => this.listeners.delete(fn)

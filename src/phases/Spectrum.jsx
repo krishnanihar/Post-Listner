@@ -3,14 +3,38 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { audioEngine } from '../engine/audio'
 
 const PAIRS = [
-  { left: 'shadow',  right: 'warmth',   audioL: { freq: 110, oscType: 'sine' },        audioR: { freqs: [220, 277.18, 329.63], oscType: 'sine' } },
-  { left: 'pulse',   right: 'shimmer',  audioL: { freq: 82.41, oscType: 'square' },     audioR: { freqs: [880, 1108.73, 1318.51], oscType: 'sine' } },
-  { left: 'weight',  right: 'air',      audioL: { freq: 55, oscType: 'sine' },          audioR: { freqs: [880, 1174.66], oscType: 'sine' } },
-  { left: 'ache',    right: 'bloom',    audioL: { freq: 146.83, oscType: 'sine' },      audioR: { freqs: [261.63, 329.63, 392], oscType: 'triangle' } },
-  { left: 'machine', right: 'earth',    audioL: { type: 'noise', filterFreq: 800 },     audioR: { type: 'noise', filterFreq: 200 } },
-  { left: 'tension', right: 'resolve',  audioL: { freqs: [220, 233.08, 246.94], oscType: 'sine' },  audioR: { freqs: [261.63, 329.63, 392], oscType: 'sine' } },
-  { left: 'fog',     right: 'glass',    audioL: { freq: 130.81, oscType: 'sawtooth' },  audioR: { freq: 523.25, oscType: 'sine' } },
-  { left: 'gravity', right: 'drift',    audioL: { freq: 65.41, oscType: 'square' },     audioR: { freqs: [440, 554.37, 659.26], oscType: 'sine' } },
+  // shadow: subterranean rumble, barely audible | warmth: bright mid-range chord, full & rich
+  { left: 'shadow',  right: 'warmth',
+    audioL: { freq: 55, oscType: 'sine', filter: { type: 'lowpass', freq: 150, Q: 3 }, vibrato: { freq: 0.3, depth: 1 } },
+    audioR: { freqs: [220, 277.18, 329.63, 440], oscType: 'triangle', detune: 10 } },
+  // pulse: aggressive square stabs | shimmer: delicate high sparkle
+  { left: 'pulse',   right: 'shimmer',
+    audioL: { freq: 82.41, oscType: 'square', filter: { type: 'bandpass', freq: 400, Q: 3 }, tremolo: { freq: 8, depth: 0.12 } },
+    audioR: { freqs: [1318, 1568, 1760], oscType: 'sine', detune: 20, tremolo: { freq: 12, depth: 0.06 } } },
+  // weight: distorted bass growl | air: pure breathy noise, no pitch
+  { left: 'weight',  right: 'air',
+    audioL: { freq: 41.2, oscType: 'sawtooth', distortion: 30, filter: { type: 'lowpass', freq: 180, Q: 5 } },
+    audioR: { type: 'noise', filter: { type: 'highpass', freq: 4000, Q: 0.5 } } },
+  // ache: beating dissonance, semitone clash | bloom: open fifth, gentle triangle swell
+  { left: 'ache',    right: 'bloom',
+    audioL: { freqs: [146.83, 155.56, 293.66, 311.13], oscType: 'sawtooth', filter: { type: 'lowpass', freq: 800, Q: 2 }, vibrato: { freq: 4, depth: 6 } },
+    audioR: { freqs: [261.63, 392, 523.25], oscType: 'triangle', detune: 5 } },
+  // machine: rhythmic industrial noise | earth: deep organic drone with rumble
+  { left: 'machine', right: 'earth',
+    audioL: { type: 'noise', filter: { type: 'bandpass', freq: 1200, Q: 8, lfoFreq: 6, lfoDepth: 800 } },
+    audioR: { freq: 44, oscType: 'sine', noiseMix: { filterType: 'lowpass', filterFreq: 120, gain: 0.1 }, vibrato: { freq: 0.2, depth: 1 } } },
+  // tension: harsh buzzing cluster | resolve: pure clean octaves
+  { left: 'tension', right: 'resolve',
+    audioL: { freqs: [220, 233.08, 246.94], oscType: 'sawtooth', distortion: 10, filter: { type: 'lowpass', freq: 1500, Q: 6 } },
+    audioR: { freqs: [261.63, 523.25], oscType: 'sine' } },
+  // fog: muffled noise wash, no clear pitch | glass: piercing high sine, crystal clear
+  { left: 'fog',     right: 'glass',
+    audioL: { type: 'noise', filter: { type: 'lowpass', freq: 300, Q: 1, lfoFreq: 0.2, lfoDepth: 150 } },
+    audioR: { freq: 1046.5, oscType: 'sine', tremolo: { freq: 16, depth: 0.05 } } },
+  // gravity: sub-bass square drone | drift: airy high chord, slowly wandering
+  { left: 'gravity', right: 'drift',
+    audioL: { freq: 36.71, oscType: 'square', filter: { type: 'lowpass', freq: 120 }, distortion: 8 },
+    audioR: { freqs: [659.26, 783.99, 987.77], oscType: 'sine', detune: 25, vibrato: { freq: 0.3, depth: 8 } } },
 ]
 
 export default function Spectrum({ onNext, avd, inputMode }) {
@@ -134,9 +158,10 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     setHoveredSide(side)
     setActiveLabel(side)
 
-    // Audio balance proportional to position (-1 to 1)
-    const balance = Math.max(-1, Math.min(1, relX / (rect.width / 2)))
-    if (pairRef.current) pairRef.current.setBalance(balance * 0.7)
+    // Audio balance — power curve so isolation kicks in faster
+    const raw = Math.max(-1, Math.min(1, relX / (rect.width * 0.3)))
+    const balance = Math.sign(raw) * Math.pow(Math.abs(raw), 0.6)
+    if (pairRef.current) pairRef.current.setBalance(balance)
   }, [transitioning])
 
   const handleMouseLeaveArea = useCallback(() => {
@@ -158,7 +183,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     setActiveLabel(side)
 
     if (pairRef.current) {
-      pairRef.current.setBalance(side === 'left' ? -0.7 : 0.7)
+      pairRef.current.setBalance(side === 'left' ? -1 : 1)
     }
     setDividerOffset(side === 'left' ? -15 : 15)
 

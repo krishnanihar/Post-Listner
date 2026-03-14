@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { audioEngine } from '../engine/audio'
-import { generateMusic } from '../engine/elevenlabs'
+import { generateMusic, generateMusicWithPlan } from '../engine/elevenlabs'
 
 export default function Moment({ onNext, avd, inputMode }) {
   const [circleSize, setCircleSize] = useState(80)
@@ -79,7 +79,9 @@ export default function Moment({ onNext, avd, inputMode }) {
     })
 
     // Fire generation immediately after AVD is locked
-    const musicPromise = generateMusic(avd.getPrompt())
+    // Try composition plan first, fall back to simple prompt
+    const musicPromise = generateMusicWithPlan(avd.getCompositionPlan())
+      .catch(() => generateMusic(avd.getPrompt()))
 
     // Implode animation then advance
     setTimeout(() => {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { generateMusic } from '../engine/elevenlabs'
+import { generateMusic, generateMusicWithPlan } from '../engine/elevenlabs'
 
 const REVEAL_LINES = [
   'this music was composed by an algorithm',
@@ -16,6 +16,7 @@ const LOADING_MESSAGES = [
   { at: 8,  text: 'translating your choices...' },
   { at: 18, text: 'composing...' },
   { at: 32, text: 'almost there...' },
+  { at: 50, text: 'crafting the final notes...' },
 ]
 
 export default function Reveal({ onNext, avd, sessionData, goToPhase }) {
@@ -88,8 +89,8 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase }) {
       }
 
       audio.addEventListener('ended', beginReveal)
-      // Safety ceiling: if track doesn't fire 'ended' after 35s, advance anyway
-      setTimeout(beginReveal, 35000)
+      // Safety ceiling: if track doesn't fire 'ended' after 65s, advance anyway
+      setTimeout(beginReveal, 65000)
 
     } catch (err) {
       clearInterval(loadingTimerRef.current)
@@ -119,8 +120,8 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase }) {
     setLoadingMessage(LOADING_MESSAGES[0].text)
     computeStartRef.current = Date.now()
 
-    const prompt = avd.getPrompt()
-    const newPromise = generateMusic(prompt)
+    const newPromise = generateMusicWithPlan(avd.getCompositionPlan())
+      .catch(() => generateMusic(avd.getPrompt()))
     awaitAndPlay(newPromise)
   }, [avd, awaitAndPlay])
 

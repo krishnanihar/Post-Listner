@@ -75,87 +75,83 @@ const PATTERN_SVG = {
 }
 
 export default function Textures({ onNext, avd, inputMode }) {
-  const [states, setStates] = useState(() =>
-    TEXTURE_DATA.reduce((acc, t) => ({ ...acc, [t.name]: 'unvisited' }), {})
+  const [selected, setSelected] = useState(() =>
+    TEXTURE_DATA.reduce((acc, t) => ({ ...acc, [t.name]: false }), {})
   )
+  const [listened, setListened] = useState(() => new Set())
   const [playing, setPlaying] = useState(null)
-  const [hoveredCard, setHoveredCard] = useState(null)
-  const lastTapTime = useRef({})
-  const longPressTimer = useRef(null)
+  const hoverTimer = useRef(null)
+  const playingTimeout = useRef(null)
   const isMouse = inputMode === 'mouse'
 
-  const interactedCount = Object.values(states).filter(s => s !== 'unvisited').length
-  const allInteracted = interactedCount === 8
+  const selectedCount = Object.values(selected).filter(Boolean).length
+  const canContinue = listened.size >= 3
 
-  const handleTap = useCallback((texture) => {
-    const now = Date.now()
-    const lastTap = lastTapTime.current[texture.name] || 0
-
-    // Double tap detection (within 400ms)
-    if (now - lastTap < 400 && states[texture.name] !== 'unvisited') {
-      // Prefer
-      setStates(prev => ({ ...prev, [texture.name]: 'preferred' }))
-      lastTapTime.current[texture.name] = 0
-      return
-    }
-
-    lastTapTime.current[texture.name] = now
-
-    // Play texture
-    if (playing !== texture.name) {
-      audioEngine.stopAll().then(() => {
-        audioEngine.playTexture(texture.name, 4)
-        setPlaying(texture.name)
-        if (states[texture.name] === 'unvisited') {
-          setStates(prev => ({ ...prev, [texture.name]: 'neutral' }))
-        }
-        setTimeout(() => setPlaying(p => p === texture.name ? null : p), 4000)
+  const playPreview = useCallback((textureName) => {
+    if (playing === textureName) return
+    audioEngine.stopAll().then(() => {
+      audioEngine.playTexture(textureName, 5)
+      setPlaying(textureName)
+      setListened(prev => {
+        const next = new Set(prev)
+        next.add(textureName)
+        return next
       })
+      clearTimeout(playingTimeout.current)
+      playingTimeout.current = setTimeout(() => setPlaying(p => p === textureName ? null : p), 5000)
+    })
+  }, [playing])
+
+  const stopPreview = useCallback(() => {
+    audioEngine.stopAll()
+    setPlaying(null)
+    clearTimeout(playingTimeout.current)
+  }, [])
+
+  // Mouse: hover to preview (debounced), click to toggle select
+  const handleMouseEnter = useCallback((textureName) => {
+    clearTimeout(hoverTimer.current)
+    hoverTimer.current = setTimeout(() => playPreview(textureName), 200)
+  }, [playPreview])
+
+  const handleMouseLeave = useCallback(() => {
+    clearTimeout(hoverTimer.current)
+    stopPreview()
+  }, [stopPreview])
+
+  const handleClick = useCallback((textureName) => {
+    if (isMouse) {
+      // Mouse: click toggles selection
+      setSelected(prev => ({ ...prev, [textureName]: !prev[textureName] }))
+    } else {
+      // Touch: first tap plays preview, second tap toggles selection
+      if (!listened.has(textureName) || playing !== textureName) {
+        playPreview(textureName)
+      } else {
+        setSelected(prev => ({ ...prev, [textureName]: !prev[textureName] }))
+      }
     }
-  }, [playing, states])
-
-  const handleLongPressStart = useCallback((texture) => {
-    longPressTimer.current = setTimeout(() => {
-      setStates(prev => ({ ...prev, [texture.name]: 'rejected' }))
-      if (navigator.vibrate) navigator.vibrate(20)
-    }, 600)
-  }, [])
-
-  const handleLongPressEnd = useCallback(() => {
-    clearTimeout(longPressTimer.current)
-  }, [])
-
-  // Mouse: right-click to reject
-  const handleRightClick = useCallback((e, texture) => {
-    e.preventDefault()
-    setStates(prev => ({ ...prev, [texture.name]: 'rejected' }))
-  }, [])
+  }, [isMouse, listened, playing, playPreview])
 
   const handleContinue = useCallback(() => {
     audioEngine.stopAll()
 
     const preferred = []
-    const rejected = []
     const neutral = []
 
     TEXTURE_DATA.forEach(t => {
-      const state = states[t.name]
-      if (state === 'preferred') {
+      if (selected[t.name]) {
         preferred.push(t.name)
         avd.updateValence(t.vDelta, 1.0)
         avd.updateDepth(t.dDelta, 1.0)
-      } else if (state === 'rejected') {
-        rejected.push(t.name)
-        avd.updateValence(t.vDelta * -0.5, 1.0)
-        avd.updateDepth(t.dDelta * -0.5, 1.0)
       } else {
         neutral.push(t.name)
       }
     })
 
-    avd.setPhaseData('textures', { preferred, rejected, neutral })
-    onNext({ textures: { preferred, rejected, neutral } })
-  }, [states, avd, onNext])
+    avd.setPhaseData('textures', { preferred, rejected: [], neutral })
+    onNext({ textures: { preferred, rejected: [], neutral } })
+  }, [selected, avd, onNext])
 
   return (
     <div className="h-full w-full flex flex-col select-none" style={{ touchAction: 'manipulation' }}>
@@ -165,14 +161,14 @@ export default function Textures({ onNext, avd, inputMode }) {
           03 — THE TEXTURES
         </span>
         <span className="font-mono" style={{ fontSize: '11px', color: 'var(--text-dim)' }}>
-          {interactedCount}/8
+          {selectedCount} selected
         </span>
       </div>
 
       {/* Grid */}
       <div className="flex-1 grid grid-cols-2 grid-rows-4 sm:grid-cols-4 sm:grid-rows-2 gap-3 p-4 sm:p-6">
         {TEXTURE_DATA.map((texture) => {
-          const state = states[texture.name]
+          const isSelected = selected[texture.name]
           const isPlaying = playing === texture.name
 
           return (
@@ -182,47 +178,39 @@ export default function Textures({ onNext, avd, inputMode }) {
               style={{
                 background: 'var(--bg-subtle)',
                 border: `1px solid ${
-                  state === 'preferred' ? 'var(--accent)' :
+                  isSelected ? 'var(--accent)' :
                   isPlaying ? 'rgba(212, 160, 83, 0.4)' :
-                  hoveredCard === texture.name && isMouse ? 'rgba(212, 160, 83, 0.3)' :
                   'rgba(90, 90, 101, 0.2)'
                 }`,
-                opacity: state === 'rejected' ? 0.3 : 1,
                 minHeight: 0,
               }}
               animate={{
-                boxShadow: state === 'preferred'
+                boxShadow: isSelected
                   ? '0 0 20px rgba(212, 160, 83, 0.2)'
                   : 'none',
-                scale: hoveredCard === texture.name && isMouse ? 1.02 : 1,
+                scale: isPlaying && !isSelected ? 1.01 : 1,
               }}
               whileTap={{ scale: 0.97 }}
-              onClick={() => handleTap(texture)}
-              onContextMenu={isMouse ? (e) => handleRightClick(e, texture) : undefined}
+              onClick={() => handleClick(texture.name)}
               {...(isMouse ? {
-                onMouseEnter: () => setHoveredCard(texture.name),
-                onMouseLeave: () => setHoveredCard(null),
-              } : {
-                onPointerDown: () => handleLongPressStart(texture),
-                onPointerUp: handleLongPressEnd,
-                onPointerLeave: handleLongPressEnd,
-              })}
+                onMouseEnter: () => handleMouseEnter(texture.name),
+                onMouseLeave: handleMouseLeave,
+              } : {})}
             >
               {PATTERN_SVG[texture.pattern]}
               <span
                 className="font-serif relative z-10"
                 style={{
                   fontSize: 'clamp(14px, 3.5vw, 18px)',
-                  color: state === 'preferred' ? 'var(--accent)' : 'var(--text)',
+                  color: isSelected ? 'var(--accent)' : 'var(--text)',
                 }}
               >
                 {texture.name}
               </span>
-              {/* State label on hover for mouse */}
-              {isMouse && hoveredCard === texture.name && state !== 'unvisited' && (
+              {isSelected && (
                 <span className="font-mono relative z-10 mt-1"
-                      style={{ fontSize: '8px', color: state === 'preferred' ? 'var(--accent)' : 'var(--text-dim)' }}>
-                  {state}
+                      style={{ fontSize: '8px', color: 'var(--accent)' }}>
+                  selected
                 </span>
               )}
             </motion.div>
@@ -234,12 +222,12 @@ export default function Textures({ onNext, avd, inputMode }) {
       <p className="text-center font-mono pb-1"
          style={{ fontSize: '9px', color: 'var(--text-dim)' }}>
         {isMouse
-          ? 'click to play · double-click to prefer · right-click to dismiss'
-          : 'tap to play · double-tap to prefer · hold to dismiss'}
+          ? 'hover to preview \u00B7 click to select'
+          : 'tap to preview \u00B7 tap again to select'}
       </p>
 
       {/* Continue button */}
-      {allInteracted && (
+      {canContinue && (
         <motion.div
           className="px-6 pb-8 text-center"
           initial={{ opacity: 0 }}
