@@ -7,11 +7,12 @@ import Textures from './phases/Textures'
 import Moment from './phases/Moment'
 import Reveal from './phases/Reveal'
 import Result from './phases/Result'
+import Chamber from './phases/Chamber'
 import TraceCanvas from './components/TraceCanvas'
 import { avdEngine } from './engine/avd'
 import { useInputMode } from './hooks/useInputMode'
 
-const PHASES = ['entry', 'spectrum', 'depth', 'textures', 'moment', 'reveal', 'result']
+const PHASES = ['entry', 'spectrum', 'depth', 'textures', 'moment', 'reveal', 'result', 'chamber']
 
 function App() {
   const [phase, setPhase] = useState('entry')
@@ -39,7 +40,8 @@ function App() {
     textures: <Textures onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
     moment: <Moment onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
     reveal: <Reveal onNext={nextPhase} avd={avdEngine} sessionData={{ ...sessionData, musicPromise: musicPromiseRef.current }} goToPhase={goToPhase} />,
-    result: <Result avd={avdEngine} sessionData={sessionData} />,
+    result: <Result avd={avdEngine} sessionData={sessionData} onNext={nextPhase} />,
+    chamber: <Chamber avd={avdEngine} />,
   }
 
   return (

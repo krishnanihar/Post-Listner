@@ -34,7 +34,7 @@ function AVDBar({ label, value, delay }) {
   )
 }
 
-export default function Result({ avd, sessionData }) {
+export default function Result({ avd, sessionData, onNext }) {
   const currentAVD = avd.getAVD()
   const prompt = avd.getPrompt()
   const phaseData = avd.getPhaseData()
@@ -109,10 +109,7 @@ export default function Result({ avd, sessionData }) {
             cursor: 'pointer',
             padding: '12px 24px',
           }}
-          onClick={() => {
-            // Placeholder: navigate to dissolution chamber when URL is ready
-            alert('Dissolution Chamber coming soon. Session data saved.')
-          }}
+          onClick={() => onNext()}
         >
           &rarr; enter the dissolution chamber
         </button>

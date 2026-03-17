@@ -7,6 +7,7 @@
   --text-dim: #5A5A65;
   --accent: #D4A053;
   --accent-dim: rgba(212, 160, 83, 0.15);
+  --bg-dark: #000000;
 }
 
 * {
