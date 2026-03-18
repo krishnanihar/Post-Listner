@@ -82,3 +82,5 @@ export const AMBIENT_SOUNDS = [
 ];
 
 export const COLLECTIVE_TRACK = '/music/collectiveend.mp3';
+
+export const DEMO_TRACK = '/pldemo.mp3';

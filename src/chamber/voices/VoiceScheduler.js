@@ -1,5 +1,5 @@
 import { VOICE_SCHEDULE } from './scripts.js';
-import { VOICE_POSITIONS, VOICE_SPREAD } from '../utils/constants.js';
+import { VOICE_POSITIONS, VOICE_SPREAD, VOICE_CATEGORY_GAINS } from '../utils/constants.js';
 
 export default class VoiceScheduler {
   constructor(audioCtx, buffers, spatialEngine, voiceGainNode, voiceReverbNode) {
@@ -39,7 +39,8 @@ export default class VoiceScheduler {
 
         const entryGain = this.ctx.createGain();
         entryGain.gain.value = 0;
-        entryGain.gain.setTargetAtTime(1.0, now + entry.delay, 0.3);
+        const categoryGain = VOICE_CATEGORY_GAINS[voiceCategory] || 1.0;
+        entryGain.gain.setTargetAtTime(categoryGain, now + entry.delay, 0.3);
         const fadeOutTime = now + entry.delay + buffer.duration - 0.5;
         if (fadeOutTime > now + entry.delay) {
           entryGain.gain.setTargetAtTime(0, fadeOutTime, 0.3);
@@ -71,7 +72,7 @@ export default class VoiceScheduler {
         if (this.voiceReverb) {
           const reverbSend = this.ctx.createGain();
           // Scale reverb by normalized distance (more distant = more wet)
-          const reverbAmount = Math.min(basePos.distance / 6, 0.8);
+          const reverbAmount = Math.min(basePos.distance / 8, 0.5);
           reverbSend.gain.value = reverbAmount;
           entryGain.connect(reverbSend);
           reverbSend.connect(this.voiceReverb);

@@ -47,6 +47,10 @@ export default class AudioEngine {
 
     // Path 5: Texture gain
     this.textureGain = null;
+
+    // Demo track crossfade
+    this.demoSource = null;
+    this.demoGain = null;
   }
 
   /**
@@ -151,10 +155,64 @@ export default class AudioEngine {
       this.spatial.createPanner(key.toLowerCase(), pos);
     }
 
+    // --- Demo track gain (crossfade during INTRO) ---
+    this.demoGain = this.ctx.createGain();
+    this.demoGain.gain.value = 0.7;
+    this.demoGain.connect(this.compressor);
+
     // --- Path 5: Textures ---
     this.textureGain = this.ctx.createGain();
     this.textureGain.gain.value = 0;
     this.textureGain.connect(this.compressor);
+  }
+
+  /**
+   * Start playing the PostListener demo track (non-looping).
+   */
+  startDemoTrack(path) {
+    const buffer = this.buffers.get(path);
+    if (!buffer) {
+      console.warn('Demo buffer not found:', path);
+      return;
+    }
+    this.demoSource = this.ctx.createBufferSource();
+    this.demoSource.buffer = buffer;
+    this.demoSource.loop = false;
+    this.demoSource.connect(this.demoGain);
+    this.demoSource.start();
+  }
+
+  /**
+   * Crossfade from demo track to chamber music track.
+   * Demo fades out over `duration` seconds; chamber fades in after 2s delay.
+   */
+  crossfadeToChamber(duration = 10) {
+    const now = this.ctx.currentTime;
+    // Fade demo out: 0.7 → 0 over full duration
+    if (this.demoGain) {
+      this.demoGain.gain.setValueAtTime(0.7, now);
+      this.demoGain.gain.linearRampToValueAtTime(0, now + duration);
+    }
+    // Chamber music gain is driven by the rAF loop via PHASE_PARAMS.
+    // INTRO musicGain is [0.7, 0.7] so the loop holds it at 0.7.
+    // We override to 0 here and let setTargetAtTime from the loop
+    // gradually win (time constant 0.5s, called every frame).
+    // After ~2s of frames setting 0.7, musicGain converges to 0.7.
+    if (this.musicGain) {
+      this.musicGain.gain.setValueAtTime(0, now);
+    }
+    // Schedule the rAF-driven gain to take effect after 2s delay
+    this._crossfadeUntil = now + 2;
+  }
+
+  setMusicGain(value) {
+    if (!this.musicGain) return;
+    // During crossfade intro, suppress musicGain until delay period ends
+    if (this._crossfadeUntil && this.ctx.currentTime < this._crossfadeUntil) {
+      return;
+    }
+    this._crossfadeUntil = null;
+    this.musicGain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.5);
   }
 
   /**
@@ -222,11 +280,6 @@ export default class AudioEngine {
     }
   }
 
-  setMusicGain(value) {
-    if (!this.musicGain) return;
-    this.musicGain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.5);
-  }
-
   setTextureGain(value) {
     if (!this.textureGain) return;
     this.textureGain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.5);
@@ -250,6 +303,7 @@ export default class AudioEngine {
 
   stopAll() {
     try { this.musicSource?.stop(); } catch {}
+    try { this.demoSource?.stop(); } catch {}
     this.binaural?.stop();
     this.modulation?.stop();
     this.collective?.stop();

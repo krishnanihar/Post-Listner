@@ -5,7 +5,7 @@ import { selectTrack } from '../chamber/data/MusicSelector.js';
 import { requestPermissions } from '../chamber/components/PermissionPrompt.jsx';
 import { PHASE_PARAMS } from '../chamber/utils/constants.js';
 import { lerp } from '../chamber/utils/math.js';
-import { VOICE_SCHEDULE, AMBIENT_SOUNDS, COLLECTIVE_TRACK } from '../chamber/voices/scripts.js';
+import { VOICE_SCHEDULE, AMBIENT_SOUNDS, COLLECTIVE_TRACK, DEMO_TRACK } from '../chamber/voices/scripts.js';
 
 import AudioEngine from '../chamber/engine/AudioEngine.js';
 import CouplingEngine from '../chamber/engine/CouplingEngine.js';
@@ -34,6 +34,7 @@ function getAllAudioPaths(musicTrackPath) {
     paths.add(path);
   }
   paths.add(COLLECTIVE_TRACK);
+  paths.add(DEMO_TRACK);
   return Array.from(paths);
 }
 
@@ -132,7 +133,7 @@ export default function Chamber({ avd }) {
       if (newPhase === 'ascent') {
         audioEngine.startAmbient();
         audioEngine.startCollectiveTrack();
-        audioEngine.setTextureGain(0.15);
+        audioEngine.setTextureGain(0.25);
       }
 
       if (newPhase === 'exit') {
@@ -144,8 +145,10 @@ export default function Chamber({ avd }) {
       }
     });
 
-    // 8. Start music
+    // 8. Start demo track + chamber music with crossfade
+    audioEngine.startDemoTrack(DEMO_TRACK);
     audioEngine.startMusic(trackPath);
+    audioEngine.crossfadeToChamber(10);
 
     // 9. Go live
     setView('experience');

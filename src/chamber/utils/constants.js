@@ -61,6 +61,15 @@ export const VOICE_SPREAD = {
   fragments: 50,   // scattered wide
 };
 
+// Per-category voice gain multipliers — compensate for HRTF distance attenuation
+export const VOICE_CATEGORY_GAINS = {
+  admirer: 1.0,     // reference level (distance 1.5m)
+  guide: 1.8,       // ~85-90% perceived vs admirer after distance atten
+  witness: 2.8,     // ~70-75% perceived vs admirer
+  whispers: 2.0,    // ~50-60% perceived vs admirer
+  fragments: 1.7,   // ~40-50% perceived vs admirer
+};
+
 // Orbital motion for spatial sources
 export const ORBITAL = {
   DRONE_SPEED: 0.12,
@@ -77,7 +86,7 @@ export const PHASE_PARAMS = {
     binauralBeat: [10, 10],
     binauralGain: [0, BINAURAL.GAIN],
     modDepth: [0, 0],
-    musicGain: [0, 0.7],
+    musicGain: [0.7, 0.7],  // crossfade handles 0→0.7 ramp; hold at 0.7 after
     collectiveGain: [0, 0],
   },
   THRONE: {

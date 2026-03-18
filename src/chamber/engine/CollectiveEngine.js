@@ -66,7 +66,7 @@ export default class CollectiveEngine {
     source.loop = true;
 
     const gain = this.ctx.createGain();
-    gain.gain.value = 0.08; // Very subtle
+    gain.gain.value = 0.18; // Subtle but perceptible
 
     source.connect(gain);
     gain.connect(this.filter);
