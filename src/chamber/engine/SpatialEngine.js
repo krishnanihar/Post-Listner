@@ -7,15 +7,16 @@ export default class SpatialEngine {
     this.panners = new Map();
     this.orbitAngles = new Map();
     this.elevations = new Map();
+    this.baseDistances = new Map();
   }
 
-  createPanner(key, position) {
+  createPanner(key, position, panningModel = 'HRTF') {
     const panner = this.ctx.createPanner();
-    panner.panningModel = 'HRTF';
+    panner.panningModel = panningModel;
     panner.distanceModel = 'inverse';
     panner.refDistance = 1;
-    panner.maxDistance = 10;
-    panner.rolloffFactor = 0.4;
+    panner.maxDistance = 20;
+    panner.rolloffFactor = 1.2;
     panner.coneInnerAngle = 360;
     panner.coneOuterAngle = 360;
 
@@ -23,15 +24,16 @@ export default class SpatialEngine {
     this.panners.set(key, panner);
     this.orbitAngles.set(key, (position.azimuth * Math.PI) / 180);
     this.elevations.set(key, position.elevation);
+    this.baseDistances.set(key, position.distance);
     return panner;
   }
 
   setPosition(panner, { azimuth, elevation, distance }) {
     const { x, y, z } = sphericalToCartesian(azimuth, elevation, distance);
     const now = this.ctx.currentTime;
-    panner.positionX.setTargetAtTime(x, now, 0.1);
-    panner.positionY.setTargetAtTime(y, now, 0.1);
-    panner.positionZ.setTargetAtTime(z, now, 0.1);
+    panner.positionX.setTargetAtTime(x, now, 0.02);
+    panner.positionY.setTargetAtTime(y, now, 0.02);
+    panner.positionZ.setTargetAtTime(z, now, 0.02);
   }
 
   /**
@@ -47,20 +49,36 @@ export default class SpatialEngine {
 
       let elevation = this.elevations.get(key);
 
-      // During dissolution, elevations rise
+      // During dissolution, elevations rise (clamped)
       if (phase === 'dissolution') {
-        elevation += ORBITAL.ELEVATION_RISE_RATE * deltaTime;
+        elevation = Math.min(
+          elevation + ORBITAL.ELEVATION_RISE_RATE * deltaTime,
+          ORBITAL.MAX_ELEVATION
+        );
         this.elevations.set(key, elevation);
       }
 
       const azimuth = (angle * 180) / Math.PI;
-      const posInfo = VOICE_POSITIONS[key.toUpperCase()];
-      const distance = posInfo?.distance || 1;
+      const baseDistance = this.baseDistances.get(key) || 1;
+      // Sinusoidal distance oscillation — breathing approach/recede
+      const breathe = ORBITAL.DISTANCE_BREATHE || 0;
+      const distance = baseDistance + Math.sin(angle * 0.7) * breathe * baseDistance;
       this.setPosition(panner, { azimuth, elevation, distance });
     }
   }
 
   getPanner(key) {
     return this.panners.get(key);
+  }
+
+  removePanner(key) {
+    const panner = this.panners.get(key);
+    if (panner) {
+      try { panner.disconnect(); } catch {}
+      this.panners.delete(key);
+      this.orbitAngles.delete(key);
+      this.elevations.delete(key);
+      this.baseDistances.delete(key);
+    }
   }
 }

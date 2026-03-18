@@ -40,8 +40,10 @@ export default class AudioEngine {
     this.collectiveModGain = null;
     this.collectivePanner = null;
 
-    // Path 4: Voice gain
+    // Path 4: Voice gain + reverb
     this.voiceGain = null;
+    this.voiceReverb = null;
+    this.voiceReverbGain = null;
 
     // Path 5: Texture gain
     this.textureGain = null;
@@ -74,13 +76,13 @@ export default class AudioEngine {
    * Initialize all signal paths and sub-engines.
    */
   init(collectiveAVD) {
-    // Master compressor — relaxed to preserve motion-driven dynamics
+    // Safety limiter — transparent ceiling that preserves spatial level cues
     this.compressor = this.ctx.createDynamicsCompressor();
-    this.compressor.threshold.value = -12;
-    this.compressor.knee.value = 30;
-    this.compressor.ratio.value = 4;
-    this.compressor.attack.value = 0.01;
-    this.compressor.release.value = 0.25;
+    this.compressor.threshold.value = -3;
+    this.compressor.knee.value = 0;
+    this.compressor.ratio.value = 20;
+    this.compressor.attack.value = 0.003;
+    this.compressor.release.value = 0.1;
     this.compressor.connect(this.ctx.destination);
 
     // --- Path 1: Music ---
@@ -131,12 +133,20 @@ export default class AudioEngine {
     this.modulation = new ModulationEngine(this.ctx);
     this.modulation.connect(this.collectiveModGain);
 
-    // --- Path 4: Voices ---
+    // --- Path 4: Voices (dry + reverb send) ---
     this.voiceGain = this.ctx.createGain();
     this.voiceGain.gain.value = 1.3;
     this.voiceGain.connect(this.compressor);
 
-    // Create spatial panners for each voice category
+    // Voice reverb bus — externalization cue for HRTF
+    this.voiceReverb = this.ctx.createConvolver();
+    this.voiceReverb.buffer = this._generateVoiceIR(1.5, 0.4);
+    this.voiceReverbGain = this.ctx.createGain();
+    this.voiceReverbGain.gain.value = 0.35;
+    this.voiceReverb.connect(this.voiceReverbGain);
+    this.voiceReverbGain.connect(this.compressor);
+
+    // Create spatial panners for each voice category (used as base positions)
     for (const [key, pos] of Object.entries(VOICE_POSITIONS)) {
       this.spatial.createPanner(key.toLowerCase(), pos);
     }
@@ -220,6 +230,22 @@ export default class AudioEngine {
   setTextureGain(value) {
     if (!this.textureGain) return;
     this.textureGain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.5);
+  }
+
+  /**
+   * Generate a short impulse response for voice externalization.
+   */
+  _generateVoiceIR(duration, decay) {
+    const rate = this.ctx.sampleRate;
+    const length = rate * duration;
+    const impulse = this.ctx.createBuffer(2, length, rate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = impulse.getChannelData(ch);
+      for (let i = 0; i < length; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
+      }
+    }
+    return impulse;
   }
 
   stopAll() {

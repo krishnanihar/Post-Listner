@@ -47,17 +47,28 @@ export const COUPLING = {
 
 // Spatial audio positions (azimuth in degrees, elevation in degrees)
 export const VOICE_POSITIONS = {
-  ADMIRER: { azimuth: 0, elevation: 0, distance: 1 },
-  GUIDE: { azimuth: 90, elevation: 15, distance: 1.5 },
-  WITNESS: { azimuth: 180, elevation: 30, distance: 2 },
+  ADMIRER: { azimuth: 0, elevation: 0, distance: 1.5 },
+  GUIDE: { azimuth: 90, elevation: 15, distance: 3 },
+  WITNESS: { azimuth: 180, elevation: 30, distance: 5 },
+};
+
+// Azimuth spread per category (degrees offset between voices in same category)
+export const VOICE_SPREAD = {
+  admirer: 25,
+  guide: 30,
+  witness: 40,
+  whispers: 60,    // scattered wide
+  fragments: 50,   // scattered wide
 };
 
 // Orbital motion for spatial sources
 export const ORBITAL = {
-  DRONE_SPEED: 0.02,
-  GUIDE_SPEED: 0.05,
-  COLLECTIVE_SPEED: 0.03,
-  ELEVATION_RISE_RATE: 0.5,
+  DRONE_SPEED: 0.12,
+  GUIDE_SPEED: 0.25,
+  COLLECTIVE_SPEED: 0.15,
+  ELEVATION_RISE_RATE: 0.3,
+  MAX_ELEVATION: 75,
+  DISTANCE_BREATHE: 0.3,  // fraction of base distance for sinusoidal oscillation
 };
 
 // Phase-driven parameter targets: [startValue, endValue]

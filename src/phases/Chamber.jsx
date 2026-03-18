@@ -109,12 +109,13 @@ export default function Chamber({ avd }) {
     const collective = collectiveRef.current;
     audioEngine.init(collective.mean);
 
-    // 6. Create voice scheduler
+    // 6. Create voice scheduler (with reverb send for externalization)
     const voiceScheduler = new VoiceScheduler(
       audioContext,
       audioEngine.buffers,
       audioEngine.spatial,
-      audioEngine.voiceGain
+      audioEngine.voiceGain,
+      audioEngine.voiceReverb
     );
     voiceSchedulerRef.current = voiceScheduler;
 
@@ -184,6 +185,17 @@ export default function Chamber({ avd }) {
       audioEngine.setMusicGain(getPhaseParam(phaseKey, 'musicGain', progress));
       audioEngine.collective.setGain(getPhaseParam(phaseKey, 'collectiveGain', progress));
       audioEngine.spatial.updateOrbits(phaseManager.deltaTime, phaseManager.currentPhase);
+
+      // Pseudo-head-tracking: tie phone yaw to AudioListener orientation
+      if (motionHandler.hasMotion && motionData.alpha !== 0) {
+        const yaw = (motionData.alpha * Math.PI) / 180;
+        const now = audioContext.currentTime;
+        const listener = audioContext.listener;
+        if (listener.forwardX) {
+          listener.forwardX.setTargetAtTime(-Math.sin(yaw), now, 0.02);
+          listener.forwardZ.setTargetAtTime(-Math.cos(yaw), now, 0.02);
+        }
+      }
 
       rafRef.current = requestAnimationFrame(tick);
     };
