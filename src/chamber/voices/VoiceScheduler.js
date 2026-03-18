@@ -37,7 +37,7 @@ export default class VoiceScheduler {
         const entryGain = this.ctx.createGain();
         // Fade in/out for smooth voice appearance
         entryGain.gain.value = 0;
-        entryGain.gain.setTargetAtTime(0.7, now + entry.delay, 0.3);
+        entryGain.gain.setTargetAtTime(1.0, now + entry.delay, 0.3);
         // Schedule fade out near end of buffer
         const fadeOutTime = now + entry.delay + buffer.duration - 0.5;
         if (fadeOutTime > now + entry.delay) {

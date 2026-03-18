@@ -15,7 +15,7 @@ export default class SpatialEngine {
     panner.distanceModel = 'inverse';
     panner.refDistance = 1;
     panner.maxDistance = 10;
-    panner.rolloffFactor = 1;
+    panner.rolloffFactor = 0.4;
     panner.coneInnerAngle = 360;
     panner.coneOuterAngle = 360;
 

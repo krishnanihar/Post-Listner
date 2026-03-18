@@ -75,9 +75,9 @@ export default class AudioEngine {
   init(collectiveAVD) {
     // Master compressor
     this.compressor = this.ctx.createDynamicsCompressor();
-    this.compressor.threshold.value = -24;
+    this.compressor.threshold.value = -18;
     this.compressor.knee.value = 30;
-    this.compressor.ratio.value = 12;
+    this.compressor.ratio.value = 6;
     this.compressor.attack.value = 0.003;
     this.compressor.release.value = 0.25;
     this.compressor.connect(this.ctx.destination);
@@ -127,7 +127,7 @@ export default class AudioEngine {
 
     // --- Path 4: Voices ---
     this.voiceGain = this.ctx.createGain();
-    this.voiceGain.gain.value = 0.8;
+    this.voiceGain.gain.value = 1.3;
     this.voiceGain.connect(this.compressor);
 
     // Create spatial panners for each voice category
