@@ -57,9 +57,11 @@ class AudioEngine {
   }
 
   _cleanActive() {
-    this.activeNodes = this.activeNodes.filter(n => {
-      try { return n.context?.state !== 'closed' } catch { return false }
+    this.activeNodes.forEach(n => {
+      try { n.stop?.() } catch {}
+      try { n.disconnect() } catch {}
     })
+    this.activeNodes = []
   }
 
   // --- Building blocks ---
@@ -138,6 +140,22 @@ class AudioEngine {
     this._track(source)
 
     return new Promise(resolve => setTimeout(resolve, duration * 1000))
+  }
+
+  playTapSound() {
+    this.init()
+    const now = this.ctx.currentTime
+    const osc = this.ctx.createOscillator()
+    const g = this.ctx.createGain()
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(900, now)
+    osc.frequency.exponentialRampToValueAtTime(400, now + 0.06)
+    g.gain.setValueAtTime(0.12, now)
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.07)
+    osc.connect(g).connect(this.masterGain)
+    osc.start(now)
+    osc.stop(now + 0.08)
+    this._track(osc)
   }
 
   // --- Phase 1: Stereo pair ---
@@ -637,24 +655,26 @@ class AudioEngine {
     const root = 110 // A2 — warmer register
     const gains = []
 
-    // Convolution-style reverb via feedback delay network
-    const reverbGain = this.ctx.createGain()
-    reverbGain.gain.value = 0.3
-    const delays = [0.037, 0.053, 0.071, 0.097].map(t => {
-      const d = this.ctx.createDelay(0.1)
-      d.delayTime.value = t
-      const g = this.ctx.createGain()
-      g.gain.value = 0.4
-      const f = this.ctx.createBiquadFilter()
-      f.type = 'lowpass'
-      f.frequency.value = 3000
-      d.connect(f).connect(g).connect(d) // feedback loop
-      g.connect(reverbGain)
-      return d
-    })
-    reverbGain.connect(this.masterGain)
-    const sendToReverb = (node) => {
-      delays.forEach(d => node.connect(d))
+    // Simple stereo delay for spaciousness (no feedback loops)
+    const delayL = this.ctx.createDelay(0.5)
+    delayL.delayTime.value = 0.12
+    const delayR = this.ctx.createDelay(0.5)
+    delayR.delayTime.value = 0.18
+    const delayGain = this.ctx.createGain()
+    delayGain.gain.value = 0.12
+    const delayFilter = this.ctx.createBiquadFilter()
+    delayFilter.type = 'lowpass'
+    delayFilter.frequency.value = 1500
+    const delayPanL = this.ctx.createStereoPanner()
+    delayPanL.pan.value = -0.4
+    const delayPanR = this.ctx.createStereoPanner()
+    delayPanR.pan.value = 0.4
+    delayL.connect(delayFilter).connect(delayPanL).connect(delayGain)
+    delayR.connect(delayFilter).connect(delayPanR).connect(delayGain)
+    delayGain.connect(this.masterGain)
+    const sendToDelay = (node) => {
+      node.connect(delayL)
+      node.connect(delayR)
     }
 
     // --- Layer 1: Sub bass (sine, warm foundation) ---
@@ -696,7 +716,7 @@ class AudioEngine {
     padGain.gain.linearRampToValueAtTime(0.07, now + 23)
     padGain.gain.linearRampToValueAtTime(0, now + duration)
     padFilter.connect(padGain).connect(this.masterGain)
-    sendToReverb(padGain)
+    sendToDelay(padGain)
     gains.push(padGain)
 
     padNotes.forEach((freq, i) => {
@@ -739,50 +759,13 @@ class AudioEngine {
       g.gain.linearRampToValueAtTime(0.015, now + 24)
       g.gain.linearRampToValueAtTime(0, now + duration)
       osc.connect(g).connect(this.masterGain)
-      sendToReverb(g)
+      sendToDelay(g)
       osc.start(enter)
       osc.stop(now + duration)
       this._track(osc)
     })
 
-    // --- Layer 4: Soft melodic pulses (pitched, not noise) ---
-    const pulseNotes = [root, root * 5/4, root * 3/2, root * 2, root * 5/2]
-    const beats = []
-    let beatTime = 0.5
-    let interval = 1.2
-    while (beatTime < 17.5) {
-      beats.push(beatTime)
-      beatTime += interval
-      interval *= 0.94 // gentle acceleration
-    }
-    // Post-drop: steady, slower pulse
-    for (let t = 21; t < duration - 3; t += 0.8) {
-      beats.push(t)
-    }
-
-    beats.forEach((t, idx) => {
-      const noteFreq = pulseNotes[idx % pulseNotes.length]
-      const osc = this.ctx.createOscillator()
-      const g = this.ctx.createGain()
-      const f = this.ctx.createBiquadFilter()
-      osc.type = 'triangle'
-      osc.frequency.value = noteFreq * (t < 18 ? 1 : 0.5) // octave down post-drop
-      f.type = 'bandpass'
-      f.frequency.value = noteFreq * 2
-      f.Q.value = 2
-      const s = now + t
-      const vol = t < 18 ? 0.03 + (t / 18) * 0.05 : 0.04
-      g.gain.setValueAtTime(0, s)
-      g.gain.linearRampToValueAtTime(vol, s + 0.01)
-      g.gain.exponentialRampToValueAtTime(0.001, s + 0.4)
-      osc.connect(f).connect(g).connect(this.masterGain)
-      sendToReverb(g)
-      osc.start(s)
-      osc.stop(s + 0.5)
-      this._track(osc)
-    })
-
-    // --- Layer 5: Riser sweep (filtered noise, only in build) ---
+    // --- Layer 4: Riser sweep (filtered noise, only in build) ---
     const noiseLen = this.ctx.sampleRate * 19
     const noiseBuf = this.ctx.createBuffer(1, noiseLen, this.ctx.sampleRate)
     const noiseData = noiseBuf.getChannelData(0)
@@ -794,11 +777,11 @@ class AudioEngine {
     noiseFilter.frequency.setValueAtTime(200, now)
     noiseFilter.frequency.exponentialRampToValueAtTime(6000, now + 17)
     noiseFilter.frequency.exponentialRampToValueAtTime(200, now + 18.5)
-    noiseFilter.Q.value = 3
+    noiseFilter.Q.value = 1.5
     const noiseGain = this.ctx.createGain()
     noiseGain.gain.setValueAtTime(0, now)
-    noiseGain.gain.linearRampToValueAtTime(0.015, now + 8)
-    noiseGain.gain.linearRampToValueAtTime(0.04, now + 17)
+    noiseGain.gain.linearRampToValueAtTime(0.008, now + 8)
+    noiseGain.gain.linearRampToValueAtTime(0.02, now + 17)
     noiseGain.gain.linearRampToValueAtTime(0, now + 18.5)
     noiseSrc.connect(noiseFilter).connect(noiseGain).connect(this.masterGain)
     noiseSrc.start(now)
@@ -813,7 +796,7 @@ class AudioEngine {
     dropGain.gain.linearRampToValueAtTime(0.15, now + 20)
     dropGain.gain.exponentialRampToValueAtTime(0.001, now + 22)
     dropTone.connect(dropGain).connect(this.masterGain)
-    sendToReverb(dropGain)
+    sendToDelay(dropGain)
     dropTone.start(now + 19.8)
     dropTone.stop(now + 23)
     this._track(dropTone)

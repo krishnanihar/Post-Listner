@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { generateMusic, generateMusicWithPlan } from '../engine/elevenlabs'
+// ElevenLabs API disabled — using pre-generated track instead
+// import { generateMusic, generateMusicWithPlan } from '../engine/elevenlabs'
 import RevealVisualizer from '../components/RevealVisualizer'
 
 const REVEAL_LINES = [
@@ -121,8 +122,7 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase }) {
     setLoadingMessage(LOADING_MESSAGES[0].text)
     computeStartRef.current = Date.now()
 
-    const newPromise = generateMusicWithPlan(avd.getCompositionPlan())
-      .catch(() => generateMusic(avd.getPrompt()))
+    const newPromise = Promise.resolve('/pldemo.mp3')
     awaitAndPlay(newPromise)
   }, [avd, awaitAndPlay])
 

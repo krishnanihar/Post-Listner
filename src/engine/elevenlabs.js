@@ -4,6 +4,43 @@ const MUSIC_API_URL = 'https://api.elevenlabs.io/v1/music'
 const SFX_API_URL = 'https://api.elevenlabs.io/v1/text-to-sound-effects'
 const TIMEOUT_MS = 120000 // 120 second ceiling (music API is slower than SFX)
 
+// Mock mode: set VITE_MOCK_ELEVENLABS=true in .env to skip API calls during testing
+const MOCK_MODE = import.meta.env.VITE_MOCK_ELEVENLABS === 'true'
+
+function createSilentAudioUrl(durationSec = 30) {
+  const sampleRate = 8000
+  const numSamples = sampleRate * durationSec
+  const numChannels = 1
+  const bitsPerSample = 16
+  const byteRate = sampleRate * numChannels * (bitsPerSample / 8)
+  const blockAlign = numChannels * (bitsPerSample / 8)
+  const dataSize = numSamples * blockAlign
+  const buffer = new ArrayBuffer(44 + dataSize)
+  const view = new DataView(buffer)
+
+  const writeString = (offset, str) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i))
+  }
+
+  writeString(0, 'RIFF')
+  view.setUint32(4, 36 + dataSize, true)
+  writeString(8, 'WAVE')
+  writeString(12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, numChannels, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, byteRate, true)
+  view.setUint16(32, blockAlign, true)
+  view.setUint16(34, bitsPerSample, true)
+  writeString(36, 'data')
+  view.setUint32(40, dataSize, true)
+  // samples are already zeroed (silent)
+
+  const blob = new Blob([buffer], { type: 'audio/wav' })
+  return URL.createObjectURL(blob)
+}
+
 function getApiKey() {
   const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY
   if (!apiKey) throw new Error('VITE_ELEVENLABS_API_KEY is not set')
@@ -47,6 +84,11 @@ async function fetchAudioBlob(url, body, timeoutMs = TIMEOUT_MS) {
 }
 
 export async function generateMusic(prompt, isRetry = false) {
+  if (MOCK_MODE) {
+    console.log('[ElevenLabs mock] generateMusic skipped — returning silent audio')
+    await new Promise(r => setTimeout(r, 1500)) // simulate latency
+    return createSilentAudioUrl(30)
+  }
   try {
     return await fetchAudioBlob(MUSIC_API_URL, {
       prompt,
@@ -64,6 +106,11 @@ export async function generateMusic(prompt, isRetry = false) {
 }
 
 export async function generateMusicWithPlan(compositionPlan) {
+  if (MOCK_MODE) {
+    console.log('[ElevenLabs mock] generateMusicWithPlan skipped — returning silent audio')
+    await new Promise(r => setTimeout(r, 1500))
+    return createSilentAudioUrl(30)
+  }
   try {
     return await fetchAudioBlob(MUSIC_API_URL, {
       composition_plan: compositionPlan,
@@ -84,6 +131,11 @@ export async function generateMusicWithPlan(compositionPlan) {
 }
 
 export async function generateSoundEffect(text, durationSeconds = 2) {
+  if (MOCK_MODE) {
+    console.log('[ElevenLabs mock] generateSoundEffect skipped — returning silent audio')
+    await new Promise(r => setTimeout(r, 500))
+    return createSilentAudioUrl(durationSeconds)
+  }
   return fetchAudioBlob(SFX_API_URL, {
     text,
     duration_seconds: durationSeconds,

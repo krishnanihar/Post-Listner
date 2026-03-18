@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { audioEngine } from '../engine/audio'
-import { generateMusic, generateMusicWithPlan } from '../engine/elevenlabs'
+// ElevenLabs API disabled — using pre-generated track instead
+// import { generateMusic, generateMusicWithPlan } from '../engine/elevenlabs'
 
 export default function Moment({ onNext, avd, inputMode }) {
   const [circleSize, setCircleSize] = useState(80)
@@ -81,10 +82,8 @@ export default function Moment({ onNext, avd, inputMode }) {
       peakTapRate: Math.round(peakTapRate * 10) / 10,
     })
 
-    // Fire generation immediately after AVD is locked
-    // Try composition plan first, fall back to simple prompt
-    const musicPromise = generateMusicWithPlan(avd.getCompositionPlan())
-      .catch(() => generateMusic(avd.getPrompt()))
+    // Use pre-generated demo track instead of ElevenLabs API
+    const musicPromise = Promise.resolve('/pldemo.mp3')
 
     // Implode animation then advance
     setTimeout(() => {
