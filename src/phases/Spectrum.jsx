@@ -29,10 +29,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
   const [dividerOffset, setDividerOffset] = useState(0)
   const [activeLabel, setActiveLabel] = useState(null)
   const [hoveredSide, setHoveredSide] = useState(null)
-  const [holdProgress, setHoldProgress] = useState(0)
-  const holdTimer = useRef(null)
-  const holdAnimRef = useRef(null)
-  const holdStartRef = useRef(null)
+  const [touchActive, setTouchActive] = useState(false)
   const startTime = useRef(null)
   const pairStartTime = useRef(Date.now())
   const switched = useRef(false)
@@ -91,8 +88,6 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     if (transitioning) return
     setTransitioning(true)
     stopAudio()
-    cancelAnimationFrame(holdAnimRef.current)
-    setHoldProgress(0)
 
     let confidence
     if (confidenceOverride !== undefined) {
@@ -143,6 +138,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
         setDividerOffset(0)
         setActiveLabel(null)
         setHoveredSide(null)
+        setTouchActive(false)
         switched.current = false
         currentChoice.current = null
         startTime.current = null
@@ -163,27 +159,12 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     lastSide.current = side
   }, [])
 
-  // === MOUSE: Click anywhere to lock whichever side the divider is on ===
-  const handleMouseClick = useCallback(() => {
-    if (transitioning || !hoveredSide) return
-    if (firstHovered.current && firstHovered.current !== hoveredSide) {
-      switched.current = true
-    }
-    const dwellSec = (Date.now() - pairStartTime.current) / 1000
-    const confidence = Math.max(0.2, Math.min(1, (dwellSec - 0.5) / 4.0))
-    // Compute slider position as fraction of max offset
-    const rect = areaRef.current?.getBoundingClientRect()
-    const maxOffset = rect ? rect.width * 0.35 : 200
-    const sliderPos = Math.min(1, Math.abs(dividerOffset) / maxOffset)
-    lockChoice(hoveredSide, confidence, sliderPos)
-  }, [transitioning, hoveredSide, lockChoice, dividerOffset])
-
-  // === MOUSE: Track cursor position for divider ===
-  const handleMouseMove = useCallback((e) => {
+  // Shared: update divider, audio balance, and side state from an X coordinate
+  const updateFromX = useCallback((clientX) => {
     if (transitioning || !areaRef.current) return
     const rect = areaRef.current.getBoundingClientRect()
     const centerX = rect.left + rect.width / 2
-    const relX = e.clientX - centerX
+    const relX = clientX - centerX
     const maxOffset = rect.width * 0.35
     const clampedOffset = Math.max(-maxOffset, Math.min(maxOffset, relX))
 
@@ -201,6 +182,25 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     if (pairRef.current) pairRef.current.setBalance(balance)
   }, [transitioning, trackReversal])
 
+  // === MOUSE: Click anywhere to lock whichever side the divider is on ===
+  const handleMouseClick = useCallback(() => {
+    if (transitioning || !hoveredSide) return
+    if (firstHovered.current && firstHovered.current !== hoveredSide) {
+      switched.current = true
+    }
+    const dwellSec = (Date.now() - pairStartTime.current) / 1000
+    const confidence = Math.max(0.2, Math.min(1, (dwellSec - 0.5) / 4.0))
+    const rect = areaRef.current?.getBoundingClientRect()
+    const maxOffset = rect ? rect.width * 0.35 : 200
+    const sliderPos = Math.min(1, Math.abs(dividerOffset) / maxOffset)
+    lockChoice(hoveredSide, confidence, sliderPos)
+  }, [transitioning, hoveredSide, lockChoice, dividerOffset])
+
+  // === MOUSE: Track cursor position for divider ===
+  const handleMouseMove = useCallback((e) => {
+    updateFromX(e.clientX)
+  }, [updateFromX])
+
   const handleMouseLeaveArea = useCallback(() => {
     if (transitioning) return
     setHoveredSide(null)
@@ -209,45 +209,36 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     setDividerOffset(0)
   }, [transitioning])
 
-  // === TOUCH: Hold to select ===
-  const HOLD_DURATION = 800
-  const handleSideDown = useCallback((side) => {
+  // === TOUCH: Drag divider with finger, release to lock ===
+  const handleTouchStart = useCallback((e) => {
     if (transitioning) return
     if (!startTime.current) startTime.current = Date.now()
-    if (currentChoice.current && currentChoice.current !== side) {
+    setTouchActive(true)
+    const touch = e.touches[0]
+    updateFromX(touch.clientX)
+  }, [transitioning, updateFromX])
+
+  const handleTouchMove = useCallback((e) => {
+    if (transitioning || !touchActive) return
+    const touch = e.touches[0]
+    updateFromX(touch.clientX)
+  }, [transitioning, touchActive, updateFromX])
+
+  const handleTouchEnd = useCallback(() => {
+    if (transitioning || !touchActive) return
+    setTouchActive(false)
+    const side = hoveredSide
+    if (!side) return
+    if (firstHovered.current && firstHovered.current !== side) {
       switched.current = true
     }
-    currentChoice.current = side
-    trackReversal(side)
-    setActiveLabel(side)
-
-    if (pairRef.current) {
-      pairRef.current.setBalance(side === 'left' ? -0.7 : 0.7)
-    }
+    const dwellSec = (Date.now() - pairStartTime.current) / 1000
+    const confidence = Math.max(0.2, Math.min(1, (dwellSec - 0.5) / 4.0))
     const rect = areaRef.current?.getBoundingClientRect()
-    const touchOffset = rect ? rect.width * 0.12 : 40
-    setDividerOffset(side === 'left' ? -touchOffset : touchOffset)
-
-    clearTimeout(holdTimer.current)
-    cancelAnimationFrame(holdAnimRef.current)
-    holdStartRef.current = Date.now()
-    const animateProgress = () => {
-      const elapsed = Date.now() - holdStartRef.current
-      const progress = Math.min(1, elapsed / HOLD_DURATION)
-      setHoldProgress(progress)
-      if (progress < 1) holdAnimRef.current = requestAnimationFrame(animateProgress)
-    }
-    holdAnimRef.current = requestAnimationFrame(animateProgress)
-    holdTimer.current = setTimeout(() => lockChoice(side, undefined, 1.0), HOLD_DURATION)
-  }, [transitioning, lockChoice, trackReversal])
-
-  const handleSideUp = useCallback(() => {
-    clearTimeout(holdTimer.current)
-    cancelAnimationFrame(holdAnimRef.current)
-    setHoldProgress(0)
-    if (pairRef.current) pairRef.current.setBalance(0)
-    setDividerOffset(0)
-  }, [])
+    const maxOffset = rect ? rect.width * 0.35 : 200
+    const sliderPos = Math.min(1, Math.abs(dividerOffset) / maxOffset)
+    lockChoice(side, confidence, sliderPos)
+  }, [transitioning, touchActive, hoveredSide, lockChoice, dividerOffset])
 
   // === MOUSE: Keyboard arrow keys ===
   const handleKeySelect = useCallback((side) => {
@@ -270,7 +261,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     return () => window.removeEventListener('keydown', handleKey)
   }, [isMouse, handleKeySelect])
 
-  const hintText = isMouse ? 'move to lean, click to lock' : 'hold or swipe to choose'
+  const hintText = isMouse ? 'move to lean, click to lock' : 'drag to lean, release to lock'
 
   return (
     <div className="h-full w-full flex flex-col select-none" style={{ touchAction: 'none' }}>
@@ -293,7 +284,12 @@ export default function Spectrum({ onNext, avd, inputMode }) {
           onMouseMove: handleMouseMove,
           onMouseLeave: handleMouseLeaveArea,
           style: { cursor: 'pointer' },
-        } : {})}
+        } : {
+          onTouchStart: handleTouchStart,
+          onTouchMove: handleTouchMove,
+          onTouchEnd: handleTouchEnd,
+          onTouchCancel: handleTouchEnd,
+        })}
       >
         <AnimatePresence mode="wait">
           <motion.div
@@ -305,28 +301,10 @@ export default function Spectrum({ onNext, avd, inputMode }) {
             transition={{ duration: 0.3 }}
           >
             {/* Left zone */}
-            <div
-              className="flex-1 flex items-center justify-center relative"
-              style={{ cursor: 'pointer' }}
-              {...(isMouse ? {} : {
-                onPointerDown: () => handleSideDown('left'),
-                onPointerUp: handleSideUp,
-                onPointerCancel: handleSideUp,
-              })}
-            >
-              {!isMouse && holdProgress > 0 && activeLabel === 'left' && (
-                <svg className="absolute" width="64" height="64" style={{ pointerEvents: 'none' }}>
-                  <circle cx="32" cy="32" r="28" fill="none" stroke="var(--text-dim)" strokeWidth="1.5" opacity="0.2" />
-                  <motion.circle
-                    cx="32" cy="32" r="28" fill="none" stroke="var(--accent)" strokeWidth="2"
-                    strokeLinecap="round"
-                    style={{ pathLength: holdProgress, rotate: -90, transformOrigin: 'center' }}
-                  />
-                </svg>
-              )}
+            <div className="flex-1 flex items-center justify-center relative">
               <motion.span
                 className="font-serif"
-                style={{ fontSize: 'clamp(24px, 6vw, 36px)', color: 'var(--text)' }}
+                style={{ fontSize: 'clamp(24px, 6vw, 36px)', color: 'var(--text)', pointerEvents: 'none' }}
                 animate={{
                   scale: activeLabel === 'left' ? 1.05 : 1,
                   opacity: hoveredSide === 'right' ? 0.4 : 1,
@@ -344,6 +322,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
                 left: '50%',
                 width: 1,
                 background: 'var(--accent)',
+                pointerEvents: 'none',
               }}
               animate={{ x: dividerOffset }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
@@ -355,28 +334,10 @@ export default function Spectrum({ onNext, avd, inputMode }) {
             </motion.div>
 
             {/* Right zone */}
-            <div
-              className="flex-1 flex items-center justify-center relative"
-              style={{ cursor: 'pointer' }}
-              {...(isMouse ? {} : {
-                onPointerDown: () => handleSideDown('right'),
-                onPointerUp: handleSideUp,
-                onPointerCancel: handleSideUp,
-              })}
-            >
-              {!isMouse && holdProgress > 0 && activeLabel === 'right' && (
-                <svg className="absolute" width="64" height="64" style={{ pointerEvents: 'none' }}>
-                  <circle cx="32" cy="32" r="28" fill="none" stroke="var(--text-dim)" strokeWidth="1.5" opacity="0.2" />
-                  <motion.circle
-                    cx="32" cy="32" r="28" fill="none" stroke="var(--accent)" strokeWidth="2"
-                    strokeLinecap="round"
-                    style={{ pathLength: holdProgress, rotate: -90, transformOrigin: 'center' }}
-                  />
-                </svg>
-              )}
+            <div className="flex-1 flex items-center justify-center relative">
               <motion.span
                 className="font-serif"
-                style={{ fontSize: 'clamp(24px, 6vw, 36px)', color: 'var(--text)' }}
+                style={{ fontSize: 'clamp(24px, 6vw, 36px)', color: 'var(--text)', pointerEvents: 'none' }}
                 animate={{
                   scale: activeLabel === 'right' ? 1.05 : 1,
                   opacity: hoveredSide === 'left' ? 0.4 : 1,
