@@ -67,6 +67,22 @@ export default class SpatialEngine {
     }
   }
 
+  /**
+   * Trigger a one-shot spatial event on a named panner.
+   * Rapidly moves to target elevation; updateOrbits() reads from
+   * this.elevations each frame, so normal orbital motion gradually takes over.
+   */
+  setElevationEvent(key, targetElevation) {
+    const panner = this.panners.get(key);
+    if (!panner) return;
+
+    this.elevations.set(key, targetElevation);
+
+    const azimuth = (this.orbitAngles.get(key) * 180) / Math.PI;
+    const distance = this.baseDistances.get(key) || 1.5;
+    this.setPosition(panner, { azimuth, elevation: targetElevation, distance });
+  }
+
   getPanner(key) {
     return this.panners.get(key);
   }

@@ -1,8 +1,9 @@
 import { clamp } from '../utils/math.js';
 
 export default class GestureMapper {
-  constructor(couplingEngine) {
+  constructor(couplingEngine, motionHandler) {
     this.coupling = couplingEngine;
+    this.motionHandler = motionHandler;
     // Touch fallback state
     this.touchX = 0.5;
     this.touchY = 0.5;
@@ -10,37 +11,49 @@ export default class GestureMapper {
   }
 
   /**
-   * Returns normalized audio parameters (all 0-1), scaled by coupling.
+   * Returns normalized audio parameters, scaled by coupling.
+   * Output: { pan, filterNorm, gestureGain, articulation, downbeat: {fired, intensity} }
    */
   map(motionData, hasMotion) {
     const c = this.coupling.getValue();
 
-    // Use hasMotion flag from MotionHandler (avoids falsy-zero gamma bug)
     if (!motionData || !hasMotion) {
       return this.mapTouch(c);
     }
 
-    // Narrow gamma range: ±45° → 0-1 (natural wrist tilt gives full sweep)
-    const pan = clamp((motionData.gamma + 45) / 90, 0, 1) * c;
+    const baseline = this.motionHandler.getBaseline();
 
-    // Recenter beta around natural upright hold (~75°): 30°-120° → 0-1
-    const filterNorm = clamp((motionData.beta - 30) / 90, 0, 1) * c;
+    // Pan: gamma relative to baseline, ±45° range → 0-1
+    const gammaOffset = motionData.gamma - baseline.gamma;
+    const pan = clamp((gammaOffset + 45) / 90, 0, 1);
+    const pannedValue = 0.5 + (pan - 0.5) * c; // coupling pulls toward center
 
-    // RMS from gravity-removed acceleration: 0-5 m/s² range for hand motion
-    const intensity = clamp(motionData.rms / 5, 0, 1) * c;
+    // Filter: beta relative to baseline, ±45° range → 0-1
+    const betaOffset = motionData.beta - baseline.beta;
+    const filterNorm = clamp((betaOffset + 45) / 90, 0, 1) * c;
 
-    // Jerk → rhythmic articulation (lowered divisor for more sensitivity)
+    // Gesture size → dynamics gain (the primary conducting control)
+    const gestureGain = motionData.gestureSize * c;
+
+    // Articulation from jerk (already normalized)
     const articulation = clamp(motionData.jerk / 3, 0, 1) * c;
 
-    return { pan, filterNorm, intensity, articulation };
+    // Downbeat: pass through, scale intensity by coupling
+    const downbeat = {
+      fired: motionData.downbeat.fired && c > 0.05, // suppress when coupling near-zero
+      intensity: motionData.downbeat.intensity * c,
+    };
+
+    return { pan: pannedValue, filterNorm, gestureGain, articulation, downbeat };
   }
 
   mapTouch(c) {
     return {
-      pan: this.touchX * c,
+      pan: 0.5 + (this.touchX - 0.5) * c,
       filterNorm: this.touchY * c,
-      intensity: this.touchActive ? 0.5 * c : 0,
+      gestureGain: this.touchActive ? 0.6 * c : 0.2 * c,
       articulation: 0,
+      downbeat: { fired: false, intensity: 0 },
     };
   }
 

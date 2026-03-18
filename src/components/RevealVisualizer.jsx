@@ -592,8 +592,8 @@ export default function RevealVisualizer({ avd, stage, audioElement }) {
       ctx.clearRect(0, 0, w, h)
 
       const cx = w / 2
-      const cy = h / 2
-      const baseRadius = Math.min(w, h) * 0.22
+      const cy = h * 0.38
+      const baseRadius = Math.min(w, h) * 0.2
       const time = (Date.now() - drawStartRef.current) / 1000
       const color = getPrimaryColor(dna.v)
 

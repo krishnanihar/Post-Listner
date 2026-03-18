@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { getCollective, addEntry } from '../chamber/data/CollectiveStore.js';
 import { requestPermissions } from '../chamber/components/PermissionPrompt.jsx';
-import { PHASE_PARAMS } from '../chamber/utils/constants.js';
+import { PHASE_PARAMS, CONDUCTING } from '../chamber/utils/constants.js';
 import { lerp } from '../chamber/utils/math.js';
 import { VOICE_SCHEDULE, AMBIENT_SOUNDS, COLLECTIVE_TRACK, DEMO_TRACK } from '../chamber/voices/scripts.js';
 
@@ -71,6 +71,7 @@ export default function Chamber({ avd }) {
   const gestureMapperRef = useRef(null);
   const voiceSchedulerRef = useRef(null);
   const rafRef = useRef(null);
+  const spatialTimersRef = useRef([]);
   const startedRef = useRef(false);
 
   const startExperience = useCallback(async () => {
@@ -92,7 +93,10 @@ export default function Chamber({ avd }) {
     motionHandler.start();
     motionHandlerRef.current = motionHandler;
 
-    const gestureMapper = new GestureMapper(coupling);
+    // Calibrate orientation baseline — runs concurrently with audio preload
+    motionHandler.startCalibration(); // fire-and-forget; resolves in 2s
+
+    const gestureMapper = new GestureMapper(coupling, motionHandler);
     gestureMapperRef.current = gestureMapper;
 
     // 3. Preload all audio
@@ -127,6 +131,10 @@ export default function Chamber({ avd }) {
       setChamberPhase(newPhase);
       console.log(`Chamber phase: ${prevPhase} → ${newPhase}`);
 
+      // Clear any spatial event timers from previous phase
+      spatialTimersRef.current.forEach(t => clearTimeout(t));
+      spatialTimersRef.current = [];
+
       voiceScheduler.schedulePhase(newPhase);
 
       if (newPhase === 'throne') {
@@ -136,6 +144,29 @@ export default function Chamber({ avd }) {
       if (newPhase === 'ascent') {
         audioEngine.startCollectiveTrack();
         audioEngine.setTextureGain(0.25);
+
+        // Voice-synced spatial events
+        // guide-07-above.mp3 at delay 155s — move collective UP
+        spatialTimersRef.current.push(setTimeout(() => {
+          audioEngine.spatial?.setElevationEvent('collective', 70);
+        }, 155 * 1000));
+
+        // guide-08-below.mp3 at delay 170s — move collective DOWN
+        spatialTimersRef.current.push(setTimeout(() => {
+          audioEngine.spatial?.setElevationEvent('collective', -20);
+        }, 170 * 1000));
+      }
+
+      if (newPhase === 'dissolution') {
+        // guide-09-inside.mp3 at delay 15s — pulse collective gain (envelopment)
+        spatialTimersRef.current.push(setTimeout(() => {
+          audioEngine.pulseCollectiveGain(0.95, 1.5);
+        }, 15 * 1000));
+
+        // guide-11-good.mp3 at delay 100s — brief harmonic alignment
+        spatialTimersRef.current.push(setTimeout(() => {
+          audioEngine.pulseCollectiveHarmony(0.5);
+        }, 100 * 1000));
       }
 
       if (newPhase === 'exit') {
@@ -166,17 +197,22 @@ export default function Chamber({ avd }) {
       const motionData = motionHandler.getData();
       const mapped = gestureMapper.map(motionData, motionHandler.hasMotion);
 
+      // Haptic feedback on downbeat
+      if (mapped.downbeat?.fired && navigator.vibrate) {
+        navigator.vibrate(CONDUCTING.DOWNBEAT_HAPTIC_MS);
+      }
+
       // Debug: log motion→audio mapping every 60 frames (~1/sec)
       if (!tick._fc) tick._fc = 0;
       if (++tick._fc % 60 === 0) {
         console.log('[Chamber Motion]', {
           hasMotion: motionHandler.hasMotion,
-          rms: motionData.rms.toFixed(2),
-          beta: motionData.beta.toFixed(1),
-          gamma: motionData.gamma.toFixed(1),
+          gestureSize: motionData.gestureSize.toFixed(2),
+          downbeatIntensity: mapped.downbeat?.intensity.toFixed(2) || '0',
           pan: mapped.pan.toFixed(2),
           filter: mapped.filterNorm.toFixed(2),
-          intensity: mapped.intensity.toFixed(2),
+          gestureGain: mapped.gestureGain.toFixed(2),
+          articulation: mapped.articulation?.toFixed(2) || '0',
           coupling: coupling.getValue().toFixed(2),
         });
       }
@@ -212,6 +248,7 @@ export default function Chamber({ avd }) {
     startExperience();
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      spatialTimersRef.current.forEach(t => clearTimeout(t));
       audioEngineRef.current?.stopAll();
     };
   }, []);

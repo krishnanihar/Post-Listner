@@ -243,8 +243,8 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase }) {
         {stage === 'playing' && (
           <motion.div
             key="playing"
-            className="text-center"
-            style={{ position: 'relative', zIndex: 1 }}
+            className="absolute inset-x-0 text-center px-8"
+            style={{ zIndex: 1, bottom: '22%' }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -275,8 +275,8 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase }) {
         {(stage === 'reveal' || stage === 'choices') && (
           <motion.div
             key="reveal"
-            className="text-center max-w-sm"
-            style={{ position: 'relative', zIndex: 1 }}
+            className="absolute inset-x-0 text-center px-8 max-w-sm mx-auto"
+            style={{ zIndex: 1, bottom: '18%' }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >

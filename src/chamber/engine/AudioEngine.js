@@ -2,7 +2,7 @@ import BinauralEngine from './BinauralEngine.js';
 import ModulationEngine from './ModulationEngine.js';
 import SpatialEngine from './SpatialEngine.js';
 import CollectiveEngine from './CollectiveEngine.js';
-import { VOICE_POSITIONS } from '../utils/constants.js';
+import { VOICE_POSITIONS, CONDUCTING } from '../utils/constants.js';
 import { clamp } from '../utils/math.js';
 import { AMBIENT_SOUNDS, COLLECTIVE_TRACK } from '../voices/scripts.js';
 
@@ -244,25 +244,119 @@ export default class AudioEngine {
   /**
    * Apply gesture-mapped parameters to Path 1 (music/demo).
    */
-  setMusicParams({ pan, filterNorm, intensity, articulation }) {
+  setMusicParams({ pan, filterNorm, gestureGain, articulation, downbeat }) {
     const now = this.ctx.currentTime;
+
+    // --- PAN (divergent: pan + subtle pitch detune) ---
     if (this.musicPanner) {
-      this.musicPanner.pan.setTargetAtTime(
-        (pan - 0.5) * 2, // Convert 0-1 to -1 to 1
-        now,
-        0.05  // faster response for panning
+      const panValue = (pan - 0.5) * 2; // 0-1 → -1 to 1
+      this.musicPanner.pan.setTargetAtTime(panValue, now, CONDUCTING.PAN_TC);
+    }
+
+    // --- FILTER CUTOFF (from beta tilt) ---
+    if (this.musicFilter) {
+      const freq = 200 + filterNorm * 7800;
+      this.musicFilter.frequency.setTargetAtTime(freq, now, CONDUCTING.FILTER_FREQ_TC);
+    }
+
+    // --- DYNAMICS (from gesture size — the primary conducting control) ---
+    if (this.intensityGain) {
+      const gain = CONDUCTING.GESTURE_SIZE_GAIN_MIN +
+        gestureGain * (CONDUCTING.GESTURE_SIZE_GAIN_MAX - CONDUCTING.GESTURE_SIZE_GAIN_MIN);
+      this.intensityGain.gain.setTargetAtTime(gain, now, CONDUCTING.GESTURE_SIZE_SMOOTHING_TC);
+    }
+
+    // --- ARTICULATION (jerk → filter Q transient) ---
+    if (this.musicFilter && articulation > CONDUCTING.ARTICULATION_THRESHOLD) {
+      const targetQ = CONDUCTING.ARTICULATION_Q_BASE +
+        articulation * (CONDUCTING.ARTICULATION_Q_MAX - CONDUCTING.ARTICULATION_Q_BASE);
+      // Fast attack
+      this.musicFilter.Q.setTargetAtTime(targetQ, now, 0.01);
+      // Schedule decay back to base Q
+      this.musicFilter.Q.setTargetAtTime(
+        CONDUCTING.ARTICULATION_Q_BASE,
+        now + 0.02,
+        CONDUCTING.ARTICULATION_DECAY_TC
       );
     }
+
+    // --- DOWNBEAT ACCENT ---
+    if (downbeat && downbeat.fired) {
+      this._applyDownbeat(downbeat.intensity);
+    }
+  }
+
+  /**
+   * Apply a conducting downbeat accent: gain spike + Q spike + noise transient.
+   */
+  _applyDownbeat(intensity) {
+    const now = this.ctx.currentTime;
+
+    // --- Gain spike on intensity node ---
+    if (this.intensityGain) {
+      const currentGain = this.intensityGain.gain.value;
+      const spikeMultiplier = CONDUCTING.DOWNBEAT_GAIN_SPIKE_MIN +
+        intensity * (CONDUCTING.DOWNBEAT_GAIN_SPIKE_MAX - CONDUCTING.DOWNBEAT_GAIN_SPIKE_MIN);
+      const spikeGain = Math.min(1.2, currentGain * spikeMultiplier);
+
+      this.intensityGain.gain.cancelScheduledValues(now);
+      this.intensityGain.gain.setValueAtTime(spikeGain, now);
+      this.intensityGain.gain.setTargetAtTime(
+        currentGain,
+        now + 0.01,
+        CONDUCTING.DOWNBEAT_GAIN_DECAY_TC
+      );
+    }
+
+    // --- Q spike on music filter ---
     if (this.musicFilter) {
-      // Map filterNorm (0-1) to frequency range (200 - 8000 Hz)
-      const freq = 200 + filterNorm * 7800;
-      this.musicFilter.frequency.setTargetAtTime(freq, now, 0.05);
+      const targetQ = CONDUCTING.DOWNBEAT_Q_MIN +
+        intensity * (CONDUCTING.DOWNBEAT_Q_MAX - CONDUCTING.DOWNBEAT_Q_MIN);
+      this.musicFilter.Q.cancelScheduledValues(now);
+      this.musicFilter.Q.setValueAtTime(targetQ, now);
+      this.musicFilter.Q.setTargetAtTime(
+        CONDUCTING.ARTICULATION_Q_BASE,
+        now + 0.01,
+        CONDUCTING.DOWNBEAT_Q_DECAY_TC
+      );
     }
-    if (this.intensityGain && intensity !== undefined) {
-      // Intensity drives a separate gain node — no fighting with phase gain
-      const gain = 0.8 + intensity * 0.4; // 0.8x to 1.2x
-      this.intensityGain.gain.setTargetAtTime(gain, now, 0.05);
+
+    // --- Percussive noise transient ---
+    this._playDownbeatTransient(intensity);
+  }
+
+  /**
+   * Play a very short filtered noise burst as tactile audio feedback for the downbeat.
+   */
+  _playDownbeatTransient(intensity) {
+    const now = this.ctx.currentTime;
+    const duration = CONDUCTING.DOWNBEAT_TRANSIENT_DURATION;
+    const gain = CONDUCTING.DOWNBEAT_TRANSIENT_GAIN * intensity;
+
+    // Create noise buffer
+    const sampleCount = Math.ceil(this.ctx.sampleRate * duration);
+    const buffer = this.ctx.createBuffer(1, sampleCount, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < sampleCount; i++) {
+      data[i] = Math.random() * 2 - 1;
     }
+
+    const source = this.ctx.createBufferSource();
+    source.buffer = buffer;
+
+    // Bandpass filter centered on 2kHz — gives a woody "tick" character
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 1500 + intensity * 2000; // 1500-3500 Hz
+    filter.Q.value = 2;
+
+    const gainNode = this.ctx.createGain();
+    gainNode.gain.setValueAtTime(gain, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    source.connect(filter).connect(gainNode).connect(this.compressor);
+    source.start(now);
+    source.stop(now + duration + 0.01);
   }
 
   setMusicGain(value) {
@@ -273,6 +367,34 @@ export default class AudioEngine {
   setTextureGain(value) {
     if (!this.textureGain) return;
     this.textureGain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.5);
+  }
+
+  /**
+   * Briefly swell collective gain then return to current level.
+   * Creates a momentary "envelopment" sensation.
+   */
+  pulseCollectiveGain(peakGain = 0.95, duration = 1.5) {
+    if (!this.collectiveModGain) return;
+    const now = this.ctx.currentTime;
+    const currentGain = this.collectiveModGain.gain.value;
+
+    this.collectiveModGain.gain.setTargetAtTime(peakGain, now, 0.15);
+    this.collectiveModGain.gain.setTargetAtTime(currentGain, now + 0.5, 0.4);
+  }
+
+  /**
+   * Briefly align all collective oscillators in phase for a moment of
+   * harmonic clarity, then return to normal.
+   */
+  pulseCollectiveHarmony(duration = 0.5) {
+    if (!this.collective?.oscillators) return;
+    const now = this.ctx.currentTime;
+
+    this.collective.oscillators.forEach(({ osc }) => {
+      const currentDetune = osc.detune.value;
+      osc.detune.setTargetAtTime(0, now, 0.05);
+      osc.detune.setTargetAtTime(currentDetune, now + duration, 0.2);
+    });
   }
 
   /**

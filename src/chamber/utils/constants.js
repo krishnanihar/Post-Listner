@@ -80,6 +80,45 @@ export const ORBITAL = {
   DISTANCE_BREATHE: 0.3,  // fraction of base distance for sinusoidal oscillation
 };
 
+// Conducting gesture parameters
+export const CONDUCTING = {
+  // Downbeat detection
+  DOWNBEAT_ACCEL_THRESHOLD: 3.0,    // m/s² — minimum Y acceleration spike to qualify as downbeat
+  DOWNBEAT_MIN_INTERVAL_MS: 250,    // ms — minimum time between downbeats (~240 BPM max)
+  DOWNBEAT_WINDOW_MS: 150,          // ms — sliding window for zero-crossing detection
+  DOWNBEAT_GAIN_SPIKE_MIN: 1.3,     // multiplier on current gain for weakest qualifying downbeat
+  DOWNBEAT_GAIN_SPIKE_MAX: 2.0,     // multiplier for strongest downbeat
+  DOWNBEAT_GAIN_DECAY_TC: 0.15,     // seconds — exponential decay time constant after spike
+  DOWNBEAT_Q_MIN: 4,                // filter Q on weak downbeat
+  DOWNBEAT_Q_MAX: 12,               // filter Q on strong downbeat
+  DOWNBEAT_Q_DECAY_TC: 0.10,        // seconds — Q decay time constant
+  DOWNBEAT_TRANSIENT_GAIN: 0.04,    // gain of percussive noise transient on downbeat
+  DOWNBEAT_TRANSIENT_DURATION: 0.03, // seconds
+  DOWNBEAT_HAPTIC_MS: 15,           // vibration duration in ms
+
+  // Gesture size → dynamics
+  GESTURE_SIZE_WINDOW_MS: 2000,     // ms — rolling window for peak-to-peak amplitude
+  GESTURE_SIZE_GAIN_MIN: 0.15,      // minimum music gain (near-silence when still)
+  GESTURE_SIZE_GAIN_MAX: 1.0,       // maximum music gain (full volume on big gestures)
+  GESTURE_SIZE_SMOOTHING_TC: 0.5,   // seconds — smoothing time constant for dynamics
+  GESTURE_SIZE_RANGE: 8.0,          // m/s² — acceleration range that maps to full gain (0 to this value)
+
+  // Articulation (jerk → filter resonance)
+  ARTICULATION_Q_BASE: 1,           // resting Q
+  ARTICULATION_Q_MAX: 8,            // max Q from sharp gestures
+  ARTICULATION_THRESHOLD: 0.3,      // minimum articulation (0-1) to trigger Q boost
+  ARTICULATION_DECAY_TC: 0.10,      // seconds — Q decay after jerk spike
+
+  // Orientation baseline calibration
+  CALIBRATION_DURATION_MS: 2000,    // ms to sample for neutral orientation
+  CALIBRATION_SAMPLES_TARGET: 100,  // target number of samples during calibration
+
+  // Latency-optimized time constants (seconds)
+  PAN_TC: 0.02,                     // stereo pan response
+  FILTER_FREQ_TC: 0.02,             // filter cutoff response
+  INTENSITY_TC: 0.02,               // gain response for motion intensity
+};
+
 // Phase-driven parameter targets: [startValue, endValue]
 export const PHASE_PARAMS = {
   INTRO: {
