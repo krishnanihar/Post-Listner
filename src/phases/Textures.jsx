@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect, memo } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { audioEngine } from '../engine/audio'
+import PhaseGuide from '../components/PhaseGuide'
 
 const TEXTURE_DATA = [
   { name: 'strings',     coord: { a: 0.25, v: 0.70, d: 0.65 }, pattern: 'wavy' },
@@ -297,6 +298,7 @@ const getCardAnimation = (isActive, isSelected, isPlaying) => {
 const cardSpring = { type: 'spring', stiffness: 400, damping: 25 }
 
 export default function Textures({ onNext, avd, inputMode }) {
+  const [showGuide, setShowGuide] = useState(true)
   const [selected, setSelected] = useState(() =>
     TEXTURE_DATA.reduce((acc, t) => ({ ...acc, [t.name]: false }), {})
   )
@@ -419,7 +421,20 @@ export default function Textures({ onNext, avd, inputMode }) {
   }, [selected, avd, onNext, playing])
 
   return (
-    <div className="h-full w-full flex flex-col select-none" style={{ touchAction: 'none' }}>
+    <div className="h-full w-full flex flex-col select-none relative" style={{ touchAction: 'none' }}>
+      <AnimatePresence>
+        {showGuide && (
+          <PhaseGuide
+            phaseNumber="03"
+            title="The Textures"
+            body="Hover to preview sounds. Click to select. Choose at least 3."
+            touchBody="Tap to preview and select sounds. Choose at least 3."
+            onDismiss={() => setShowGuide(false)}
+            inputMode={inputMode}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <div className="flex justify-between items-center px-6 pt-6 sm:px-8 sm:pt-8">
         <span className="font-mono" style={{ fontSize: '11px', color: 'var(--text-dim)' }}>

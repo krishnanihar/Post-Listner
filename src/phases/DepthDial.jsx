@@ -1,10 +1,13 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { audioEngine } from '../engine/audio'
+import PhaseGuide from '../components/PhaseGuide'
 
 const LAYER_LABELS = ['root', 'harmony', 'octave', 'texture', 'sub', 'drift', 'overtone', 'everything']
 
 export default function DepthDial({ onNext, avd, inputMode }) {
+  const [showGuide, setShowGuide] = useState(true)
+  const guideComplete = useRef(false)
   const [lockedCount, setLockedCount] = useState(1)
   const [hoverCount, setHoverCount] = useState(null)
   const [justLocked, setJustLocked] = useState(null) // flash feedback on click
@@ -42,12 +45,13 @@ export default function DepthDial({ onNext, avd, inputMode }) {
     onNext({ depth: { finalLayer, maxLayer, reEngaged } })
   }, [avd, onNext])
 
-  useEffect(() => {
+  const initAudio = useCallback(() => {
     layerControl.current = audioEngine.playLayeredBuild(8)
     layerControl.current.setActiveCount(1)
-
     phaseTimer.current = setTimeout(finish, 45000)
+  }, [finish])
 
+  useEffect(() => {
     return () => {
       if (layerControl.current) layerControl.current.stop()
       clearTimeout(phaseTimer.current)
@@ -138,8 +142,27 @@ export default function DepthDial({ onNext, avd, inputMode }) {
 
   const hintText = isMouse ? 'hover to explore · click to set depth' : 'drag upward to add layers'
 
+  const handleGuideDismiss = useCallback(() => {
+    setShowGuide(false)
+    guideComplete.current = true
+    initAudio()
+  }, [initAudio])
+
   return (
-    <div className="h-full w-full flex flex-col select-none" style={{ touchAction: 'none' }}>
+    <div className="h-full w-full flex flex-col select-none relative" style={{ touchAction: 'none' }}>
+      <AnimatePresence>
+        {showGuide && (
+          <PhaseGuide
+            phaseNumber="02"
+            title="The Depth Dial"
+            body="Hover to explore layers. Click to set your depth. Scroll or arrow keys to fine-tune."
+            touchBody="Drag upward to add layers. More layers, more depth. Lock when ready."
+            onDismiss={handleGuideDismiss}
+            inputMode={inputMode}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <div className="px-6 pt-6 sm:px-8 sm:pt-8">
         <span className="font-mono" style={{ fontSize: '11px', color: 'var(--text-dim)' }}>

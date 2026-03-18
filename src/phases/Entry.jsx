@@ -24,12 +24,29 @@ export default function Entry({ onNext }) {
         {!expanding && (
           <motion.div
             className="absolute"
-            style={{ top: '35%' }}
+            style={{ top: '25%' }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.6 }}
           >
+            {/* Headphones prompt */}
+            <motion.div
+              className="flex items-center justify-center gap-2 mb-8"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              transition={{ delay: 0.8, duration: 0.6 }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
+                <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
+              </svg>
+              <span className="font-mono"
+                    style={{ fontSize: '11px', color: 'var(--text-dim)', letterSpacing: '0.05em' }}>
+                wear headphones
+              </span>
+            </motion.div>
+
             <h1 className="font-serif text-center leading-none"
                 style={{
                   fontSize: 'clamp(36px, 10vw, 56px)',
@@ -81,6 +98,22 @@ export default function Entry({ onNext }) {
           }}
         />
       </motion.div>
+
+      {/* Tap hint */}
+      <AnimatePresence>
+        {!expanding && (
+          <motion.p
+            className="absolute font-mono"
+            style={{ bottom: '15%', fontSize: '11px', color: 'var(--text-dim)' }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: [0, 0.4, 0.25, 0.4] }}
+            exit={{ opacity: 0 }}
+            transition={{ delay: 1.2, duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            tap to begin
+          </motion.p>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

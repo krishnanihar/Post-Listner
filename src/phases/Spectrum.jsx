@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { audioEngine } from '../engine/audio'
+import PhaseGuide from '../components/PhaseGuide'
 
 // Each pair has AVD coordinates from SPECTRUM-AUDIO-PROMPTS.md
 // Left = low valence pole, Right = high valence pole
@@ -24,6 +25,8 @@ const PAIRS = [
 ]
 
 export default function Spectrum({ onNext, avd, inputMode }) {
+  const [showGuide, setShowGuide] = useState(true)
+  const guideComplete = useRef(false)
   const [pairIdx, setPairIdx] = useState(0)
   const [transitioning, setTransitioning] = useState(false)
   const [dividerOffset, setDividerOffset] = useState(0)
@@ -64,6 +67,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
   }, [pair, stopAudio])
 
   useEffect(() => {
+    if (!guideComplete.current) return
     startPair()
     return stopAudio
   }, [pairIdx])
@@ -263,8 +267,27 @@ export default function Spectrum({ onNext, avd, inputMode }) {
 
   const hintText = isMouse ? 'move to lean, click to lock' : 'drag to lean, release to lock'
 
+  const handleGuideDismiss = useCallback(() => {
+    setShowGuide(false)
+    guideComplete.current = true
+    startPair()
+  }, [startPair])
+
   return (
-    <div className="h-full w-full flex flex-col select-none" style={{ touchAction: 'none' }}>
+    <div className="h-full w-full flex flex-col select-none relative" style={{ touchAction: 'none' }}>
+      <AnimatePresence>
+        {showGuide && (
+          <PhaseGuide
+            phaseNumber="01"
+            title="The Spectrum"
+            body="Move the divider between two words. Listen to each side. Click to lock your choice. 8 pairs."
+            touchBody="Drag the divider between two words. Listen to each side. Release to lock. 8 pairs."
+            onDismiss={handleGuideDismiss}
+            inputMode={inputMode}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <div className="flex justify-between items-center px-6 pt-6 sm:px-8 sm:pt-8">
         <span className="font-mono" style={{ fontSize: '11px', color: 'var(--text-dim)' }}>

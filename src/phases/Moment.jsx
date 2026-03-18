@@ -1,10 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { audioEngine } from '../engine/audio'
+import PhaseGuide from '../components/PhaseGuide'
 // ElevenLabs API disabled — using pre-generated track instead
 // import { generateMusic, generateMusicWithPlan } from '../engine/elevenlabs'
 
 export default function Moment({ onNext, avd, inputMode }) {
+  const [showGuide, setShowGuide] = useState(true)
   const [circleSize, setCircleSize] = useState(80)
   const [ripples, setRipples] = useState([])
   const [phase, setPhase] = useState('waiting') // waiting, playing, done
@@ -26,13 +28,13 @@ export default function Moment({ onNext, avd, inputMode }) {
     }, DURATION * 1000)
   }, [])
 
+  const startTimerRef = useRef(null)
+
   useEffect(() => {
     // Clean up any lingering audio from previous phases
     audioEngine.stopAll()
-    // Auto-start after a brief pause
-    const timer = setTimeout(startTrack, 1500)
     return () => {
-      clearTimeout(timer)
+      clearTimeout(startTimerRef.current)
       if (trackRef.current) trackRef.current.stop()
     }
   }, [])
@@ -126,15 +128,32 @@ export default function Moment({ onNext, avd, inputMode }) {
     return () => window.removeEventListener('keydown', handleKey)
   }, [inputMode, handleTap])
 
+  const handleGuideDismiss = useCallback(() => {
+    setShowGuide(false)
+    startTimerRef.current = setTimeout(startTrack, 1500)
+  }, [startTrack])
+
   return (
     <div
-      className="h-full w-full flex flex-col items-center justify-center select-none"
+      className="h-full w-full flex flex-col items-center justify-center select-none relative"
       style={{ touchAction: 'none' }}
-      onClick={handleTap}
-      onPointerDown={() => setPressing(true)}
-      onPointerUp={() => setPressing(false)}
-      onPointerCancel={() => setPressing(false)}
+      onClick={showGuide ? undefined : handleTap}
+      onPointerDown={showGuide ? undefined : () => setPressing(true)}
+      onPointerUp={showGuide ? undefined : () => setPressing(false)}
+      onPointerCancel={showGuide ? undefined : () => setPressing(false)}
     >
+      <AnimatePresence>
+        {showGuide && (
+          <PhaseGuide
+            phaseNumber="04"
+            title="The Moment"
+            body="A track will play. Press spacebar to the beat."
+            touchBody="A track will play. Tap the screen to the beat."
+            onDismiss={handleGuideDismiss}
+            inputMode={inputMode}
+          />
+        )}
+      </AnimatePresence>
       {/* Header */}
       <div className="absolute top-0 left-0 px-6 pt-6 sm:px-8 sm:pt-8">
         <span className="font-mono" style={{ fontSize: '11px', color: 'var(--text-dim)' }}>
