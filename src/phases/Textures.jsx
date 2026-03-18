@@ -312,7 +312,13 @@ export default function Textures({ onNext, avd, inputMode }) {
   const touchActiveTimer = useRef(null)
   const isMouse = inputMode === 'mouse'
 
-  useEffect(() => { audioEngine.preloadTextures() }, [])
+  useEffect(() => {
+    audioEngine.preloadTextures()
+    return () => {
+      audioEngine.stopTexture()
+      clearTimeout(playingTimeout.current)
+    }
+  }, [])
 
   const selectedCount = Object.values(selected).filter(Boolean).length
   const canContinue = listened.size >= 3

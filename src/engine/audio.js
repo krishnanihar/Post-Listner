@@ -951,6 +951,7 @@ class AudioEngine {
   // --- Stop everything ---
 
   stopAll() {
+    this.stopTexture()
     if (!this.ctx) return Promise.resolve()
     const t = this.ctx.currentTime
     this.masterGain.gain.cancelScheduledValues(t)
