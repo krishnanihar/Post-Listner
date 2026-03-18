@@ -230,7 +230,7 @@ export default function Moment({ onNext, avd, inputMode }) {
             fontSize: '11px',
             color: 'var(--text-dim)',
           }}
-          animate={{ opacity: [0.3, 0.6, 0.3] }}
+          animate={{ opacity: [0.4, 0.7, 0.4] }}
           transition={{ duration: 2, repeat: Infinity }}
         >
           listen...

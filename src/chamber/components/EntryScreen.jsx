@@ -81,9 +81,9 @@ export default function EntryScreen({ avd, onStart, loading, loadProgress }) {
 
       <motion.p
         className="font-serif text-center mb-2"
-        style={{ fontSize: '16px', color: 'var(--text)', opacity: 0.6 }}
+        style={{ fontSize: '16px', color: 'var(--text)', opacity: 0.75 }}
         initial={{ opacity: 0 }}
-        animate={{ opacity: 0.6 }}
+        animate={{ opacity: 0.75 }}
         transition={{ delay: 0.5, duration: 1 }}
       >
         Hold your phone. Find darkness. Close your eyes.

@@ -50,7 +50,7 @@ function RadarChart({ userAVD, collectiveAVD }) {
             />
             <text
               x={labelPos.x} y={labelPos.y}
-              fill="rgba(255,255,255,0.3)"
+              fill="rgba(255,255,255,0.5)"
               fontSize="10"
               fontFamily="JetBrains Mono"
               textAnchor="middle"
@@ -121,7 +121,7 @@ export default function ExitScreen({ userAVD, collectiveAVD, onRestart }) {
         <p style={{ color: 'var(--accent)' }}>
           You: A={userAVD.arousal.toFixed(2)} V={userAVD.valence.toFixed(2)} D={userAVD.depth.toFixed(2)}
         </p>
-        <p style={{ color: 'rgba(255,255,255,0.4)' }}>
+        <p style={{ color: 'rgba(255,255,255,0.55)' }}>
           Everyone: A={collectiveAVD.arousal.toFixed(2)} V={collectiveAVD.valence.toFixed(2)} D={collectiveAVD.depth.toFixed(2)}
         </p>
       </motion.div>

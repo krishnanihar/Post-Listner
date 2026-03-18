@@ -69,7 +69,7 @@ export default function DarkScreen({ phase, onTouchMove, onTouchStart, onTouchEn
         {showHint && phase === 'intro' && (
           <motion.p
             className="font-serif absolute inset-0 flex items-center justify-center text-center px-8"
-            style={{ fontSize: '16px', color: 'rgba(255,255,255,0.15)' }}
+            style={{ fontSize: '16px', color: 'rgba(255,255,255,0.35)' }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}

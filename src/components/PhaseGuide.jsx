@@ -19,7 +19,7 @@ export default function PhaseGuide({ title, body, touchBody, phaseNumber, onDism
         className="font-mono"
         style={{ fontSize: '11px', color: 'var(--text-dim)', letterSpacing: '0.1em' }}
         initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 0.6, y: 0 }}
+        animate={{ opacity: 0.8, y: 0 }}
         transition={{ delay: 0.1, duration: 0.4 }}
       >
         {phaseNumber}
@@ -51,7 +51,7 @@ export default function PhaseGuide({ title, body, touchBody, phaseNumber, onDism
           lineHeight: '1.8',
         }}
         initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 0.7, y: 0 }}
+        animate={{ opacity: 0.85, y: 0 }}
         transition={{ delay: 0.5, duration: 0.4 }}
       >
         {displayBody}

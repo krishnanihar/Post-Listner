@@ -34,7 +34,7 @@ export default function Entry({ onNext }) {
             <motion.div
               className="flex items-center justify-center gap-2 mb-8"
               initial={{ opacity: 0 }}
-              animate={{ opacity: 0.5 }}
+              animate={{ opacity: 0.7 }}
               transition={{ delay: 0.8, duration: 0.6 }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -106,7 +106,7 @@ export default function Entry({ onNext }) {
             className="absolute font-mono"
             style={{ bottom: '15%', fontSize: '11px', color: 'var(--text-dim)' }}
             initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 0.4, 0.25, 0.4] }}
+            animate={{ opacity: [0, 0.6, 0.4, 0.6] }}
             exit={{ opacity: 0 }}
             transition={{ delay: 1.2, duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
           >
