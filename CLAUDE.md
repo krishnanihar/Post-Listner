@@ -57,7 +57,7 @@ All chamber code lives under **`src/chamber/`** to avoid naming conflicts with P
 | 1 | Spectrum | `Spectrum.jsx` | Valence via 8 word-pair choices with pre-recorded MP3 stereo pairs |
 | 2 | Depth Dial | `DepthDial.jsx` | Depth via layered audio build (1–8 layers) |
 | 3 | Textures | `Textures.jsx` | Valence + Depth via texture preferences with MP3 previews |
-| 4 | Moment | `Moment.jsx` | Arousal via tap-to-beat during a 30s build-and-drop |
+| 4 | Moment | `Moment.jsx` | Arousal via tap-to-beat during a 10s build-and-drop |
 | 5 | Reveal | `Reveal.jsx` | Plays AI-generated music, reveals concept |
 | 6 | Result | `Result.jsx` | Displays final AVD profile, saves to localStorage, button → Chamber |
 | 7 | Chamber | `Chamber.jsx` | 10-minute Dissolution Chamber experience |

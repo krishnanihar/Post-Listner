@@ -649,11 +649,15 @@ class AudioEngine {
 
   // --- Phase 4: Build and Drop ---
 
-  playBuildAndDrop(duration = 15) {
+  playBuildAndDrop(duration = 10) {
     this.init()
     const now = this.ctx.currentTime
     const root = 110 // A2 — warmer register
     const gains = []
+
+    // Proportional timing anchors (scale with duration)
+    const s = duration / 15 // scale factor vs original 15s
+    const t = (sec) => now + sec * s // scaled absolute time
 
     // Simple stereo delay for spaciousness (no feedback loops)
     const delayL = this.ctx.createDelay(0.5)
@@ -683,11 +687,11 @@ class AudioEngine {
     sub.type = 'sine'
     sub.frequency.value = root / 2 // A1
     subGain.gain.setValueAtTime(0, now)
-    subGain.gain.linearRampToValueAtTime(0.12, now + 1.5)
-    subGain.gain.setValueAtTime(0.12, now + 8.5)
-    subGain.gain.linearRampToValueAtTime(0, now + 9.25) // fade before drop
-    subGain.gain.setValueAtTime(0, now + 10)
-    subGain.gain.linearRampToValueAtTime(0.08, now + 11)
+    subGain.gain.linearRampToValueAtTime(0.12, t(1.5))
+    subGain.gain.setValueAtTime(0.12, t(8.5))
+    subGain.gain.linearRampToValueAtTime(0, t(9.25)) // fade before drop
+    subGain.gain.setValueAtTime(0, t(10))
+    subGain.gain.linearRampToValueAtTime(0.08, t(11))
     subGain.gain.linearRampToValueAtTime(0, now + duration)
     sub.connect(subGain).connect(this.masterGain)
     sub.start(now)
@@ -701,19 +705,19 @@ class AudioEngine {
     const padFilter = this.ctx.createBiquadFilter()
     padFilter.type = 'lowpass'
     padFilter.frequency.setValueAtTime(200, now)
-    padFilter.frequency.exponentialRampToValueAtTime(2500, now + 8)
-    padFilter.frequency.exponentialRampToValueAtTime(400, now + 9.25)
-    padFilter.frequency.setValueAtTime(400, now + 10)
-    padFilter.frequency.exponentialRampToValueAtTime(1800, now + 13)
+    padFilter.frequency.exponentialRampToValueAtTime(2500, t(8))
+    padFilter.frequency.exponentialRampToValueAtTime(400, t(9.25))
+    padFilter.frequency.setValueAtTime(400, t(10))
+    padFilter.frequency.exponentialRampToValueAtTime(1800, t(13))
     padFilter.frequency.linearRampToValueAtTime(600, now + duration)
     padFilter.Q.value = 0.7
     const padGain = this.ctx.createGain()
     padGain.gain.setValueAtTime(0, now)
-    padGain.gain.linearRampToValueAtTime(0.06, now + 2)
-    padGain.gain.linearRampToValueAtTime(0.09, now + 8)
-    padGain.gain.linearRampToValueAtTime(0, now + 9.25)
-    padGain.gain.setValueAtTime(0, now + 10)
-    padGain.gain.linearRampToValueAtTime(0.07, now + 11.5)
+    padGain.gain.linearRampToValueAtTime(0.06, t(2))
+    padGain.gain.linearRampToValueAtTime(0.09, t(8))
+    padGain.gain.linearRampToValueAtTime(0, t(9.25))
+    padGain.gain.setValueAtTime(0, t(10))
+    padGain.gain.linearRampToValueAtTime(0.07, t(11.5))
     padGain.gain.linearRampToValueAtTime(0, now + duration)
     padFilter.connect(padGain).connect(this.masterGain)
     sendToDelay(padGain)
@@ -727,7 +731,7 @@ class AudioEngine {
         osc.frequency.value = freq
         osc.detune.value = detune + (i * 0.5) // subtle spread
         osc.connect(padFilter)
-        osc.start(now + i * 0.3) // staggered entry
+        osc.start(now + i * 0.3 * s) // staggered entry
         osc.stop(now + duration)
         this._track(osc)
       }
@@ -750,13 +754,13 @@ class AudioEngine {
       lfo.stop(now + duration)
       this._track(lfo)
 
-      const enter = now + 2 + i * 1.25
+      const enter = t(2 + i * 1.25)
       g.gain.setValueAtTime(0, enter)
-      g.gain.linearRampToValueAtTime(0.025, enter + 1.5)
-      g.gain.linearRampToValueAtTime(0.04, now + 8)
-      g.gain.linearRampToValueAtTime(0, now + 9) // vanish at drop
-      g.gain.setValueAtTime(0, now + 10.5)
-      g.gain.linearRampToValueAtTime(0.015, now + 12)
+      g.gain.linearRampToValueAtTime(0.025, enter + 1.5 * s)
+      g.gain.linearRampToValueAtTime(0.04, t(8))
+      g.gain.linearRampToValueAtTime(0, t(9)) // vanish at drop
+      g.gain.setValueAtTime(0, t(10.5))
+      g.gain.linearRampToValueAtTime(0.015, t(12))
       g.gain.linearRampToValueAtTime(0, now + duration)
       osc.connect(g).connect(this.masterGain)
       sendToDelay(g)
@@ -766,7 +770,7 @@ class AudioEngine {
     })
 
     // --- Layer 4: Riser sweep (filtered noise, only in build) ---
-    const noiseLen = this.ctx.sampleRate * 9.5
+    const noiseLen = this.ctx.sampleRate * 9.5 * s
     const noiseBuf = this.ctx.createBuffer(1, noiseLen, this.ctx.sampleRate)
     const noiseData = noiseBuf.getChannelData(0)
     for (let i = 0; i < noiseLen; i++) noiseData[i] = Math.random() * 2 - 1
@@ -775,30 +779,30 @@ class AudioEngine {
     const noiseFilter = this.ctx.createBiquadFilter()
     noiseFilter.type = 'bandpass'
     noiseFilter.frequency.setValueAtTime(200, now)
-    noiseFilter.frequency.exponentialRampToValueAtTime(6000, now + 8.5)
-    noiseFilter.frequency.exponentialRampToValueAtTime(200, now + 9.25)
+    noiseFilter.frequency.exponentialRampToValueAtTime(6000, t(8.5))
+    noiseFilter.frequency.exponentialRampToValueAtTime(200, t(9.25))
     noiseFilter.Q.value = 1.5
     const noiseGain = this.ctx.createGain()
     noiseGain.gain.setValueAtTime(0, now)
-    noiseGain.gain.linearRampToValueAtTime(0.008, now + 4)
-    noiseGain.gain.linearRampToValueAtTime(0.02, now + 8.5)
-    noiseGain.gain.linearRampToValueAtTime(0, now + 9.25)
+    noiseGain.gain.linearRampToValueAtTime(0.008, t(4))
+    noiseGain.gain.linearRampToValueAtTime(0.02, t(8.5))
+    noiseGain.gain.linearRampToValueAtTime(0, t(9.25))
     noiseSrc.connect(noiseFilter).connect(noiseGain).connect(this.masterGain)
     noiseSrc.start(now)
     this._track(noiseSrc)
 
-    // --- Drop silence marker: a single deep tone at 20s ---
+    // --- Drop silence marker: a single deep tone ---
     const dropTone = this.ctx.createOscillator()
     const dropGain = this.ctx.createGain()
     dropTone.type = 'sine'
     dropTone.frequency.value = root / 2
-    dropGain.gain.setValueAtTime(0, now + 9.9)
-    dropGain.gain.linearRampToValueAtTime(0.15, now + 10)
-    dropGain.gain.exponentialRampToValueAtTime(0.001, now + 11)
+    dropGain.gain.setValueAtTime(0, t(9.9))
+    dropGain.gain.linearRampToValueAtTime(0.15, t(10))
+    dropGain.gain.exponentialRampToValueAtTime(0.001, t(11))
     dropTone.connect(dropGain).connect(this.masterGain)
     sendToDelay(dropGain)
-    dropTone.start(now + 9.9)
-    dropTone.stop(now + 11.5)
+    dropTone.start(t(9.9))
+    dropTone.stop(t(11.5))
     this._track(dropTone)
 
     return {

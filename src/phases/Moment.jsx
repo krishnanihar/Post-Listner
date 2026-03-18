@@ -15,7 +15,7 @@ export default function Moment({ onNext, avd, inputMode }) {
   const trackRef = useRef(null)
   const startTimeRef = useRef(null)
   const rippleId = useRef(0)
-  const DURATION = 15
+  const DURATION = 10
 
   const startTrack = useCallback(() => {
     setPhase('playing')
@@ -41,16 +41,20 @@ export default function Moment({ onNext, avd, inputMode }) {
 
   const calculateArousal = useCallback(() => {
     const elapsed = taps.current.map(t => (t - startTimeRef.current) / 1000)
-    const tapsDuringBuild = elapsed.filter(t => t < 9).length
-    const tapsDuringRelease = elapsed.filter(t => t >= 10 && t < DURATION).length
+    const buildEnd = DURATION * 0.6
+    const dropStart = DURATION * 0.667
+    const tapsDuringBuild = elapsed.filter(t => t < buildEnd).length
+    const tapsDuringRelease = elapsed.filter(t => t >= dropStart && t < DURATION).length
     const totalTaps = elapsed.length
 
-    // Check for pre-drop silence (gap > 2s around 9-10s)
-    const tapsNearDrop = elapsed.filter(t => t >= 8 && t <= 11)
+    // Check for pre-drop silence (gap around the drop point)
+    const dropZoneStart = DURATION * 0.53
+    const dropZoneEnd = DURATION * 0.73
+    const tapsNearDrop = elapsed.filter(t => t >= dropZoneStart && t <= dropZoneEnd)
     let preDropSilence = false
     if (tapsNearDrop.length >= 2) {
       for (let i = 1; i < tapsNearDrop.length; i++) {
-        if (tapsNearDrop[i] - tapsNearDrop[i-1] > 2) {
+        if (tapsNearDrop[i] - tapsNearDrop[i-1] > 1.3) {
           preDropSilence = true
           break
         }
