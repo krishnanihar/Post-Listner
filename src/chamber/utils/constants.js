@@ -94,14 +94,14 @@ export const PHASE_PARAMS = {
     binauralGain: [BINAURAL.GAIN, BINAURAL.GAIN],
     modDepth: [0, 0],
     musicGain: [0, 0],        // still demo only
-    collectiveGain: [0, 0],
+    collectiveGain: [0, 0.15], // crowd fades in gently during THRONE
   },
   ASCENT: {
     binauralBeat: [10, 6],
     binauralGain: [BINAURAL.GAIN, BINAURAL.GAIN],
     modDepth: [0, 0.2],
     musicGain: [0, 0.2],      // chamber track fades in as demo fades out
-    collectiveGain: [0, 0.5],
+    collectiveGain: [0.15, 0.5], // continues from THRONE end
   },
   DISSOLUTION: {
     binauralBeat: [6, 4],
