@@ -108,15 +108,17 @@ export default class AudioEngine {
     this.musicPanner = this.ctx.createStereoPanner();
     this.musicPanner.pan.value = 0;
 
-    // Demo gain — feeds into shared filter chain
+    // Demo gain — parallel input to shared filter chain
     this.demoGain = this.ctx.createGain();
     this.demoGain.gain.value = 0.35;
 
-    // Chain: demo → demoGain ─╮
-    //        music → musicFilter ←╯ → musicGain → intensityGain → musicDuck → panner → compressor
+    // Demo and chamber are parallel inputs to the shared filter
+    // demo → demoGain ──╮
+    //                    ├→ musicFilter → intensityGain → musicDuck → panner → compressor
+    // chamber → musicGain ─╯
     this.demoGain.connect(this.musicFilter);
-    this.musicFilter.connect(this.musicGain);
-    this.musicGain.connect(this.intensityGain);
+    this.musicGain.connect(this.musicFilter);
+    this.musicFilter.connect(this.intensityGain);
     this.intensityGain.connect(this.musicDuck);
     this.musicDuck.connect(this.musicPanner);
     this.musicPanner.connect(this.compressor);
@@ -213,7 +215,7 @@ export default class AudioEngine {
     this.musicSource = this.ctx.createBufferSource();
     this.musicSource.buffer = buffer;
     this.musicSource.loop = true;
-    this.musicSource.connect(this.musicFilter);
+    this.musicSource.connect(this.musicGain);
     this.musicSource.start();
   }
 
