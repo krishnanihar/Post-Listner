@@ -12,25 +12,25 @@ export default class GestureMapper {
   /**
    * Returns normalized audio parameters (all 0-1), scaled by coupling.
    */
-  map(motionData) {
+  map(motionData, hasMotion) {
     const c = this.coupling.getValue();
 
-    // If no motion data available, use touch fallback
-    if (!motionData || (motionData.rms === 0 && !motionData.gamma)) {
+    // Use hasMotion flag from MotionHandler (avoids falsy-zero gamma bug)
+    if (!motionData || !hasMotion) {
       return this.mapTouch(c);
     }
 
-    // Normalize gamma: -90 to 90 → 0 to 1
-    const pan = clamp((motionData.gamma + 90) / 180, 0, 1) * c;
+    // Narrow gamma range: ±45° → 0-1 (natural wrist tilt gives full sweep)
+    const pan = clamp((motionData.gamma + 45) / 90, 0, 1) * c;
 
-    // Normalize beta: map center region to filter
-    const filterNorm = clamp((motionData.beta + 60) / 120, 0, 1) * c;
+    // Recenter beta around natural upright hold (~75°): 30°-120° → 0-1
+    const filterNorm = clamp((motionData.beta - 30) / 90, 0, 1) * c;
 
-    // RMS magnitude → intensity (gravity ~9.8)
-    const intensity = clamp((motionData.rms - 5) / 15, 0, 1) * c;
+    // RMS from gravity-removed acceleration: 0-5 m/s² range for hand motion
+    const intensity = clamp(motionData.rms / 5, 0, 1) * c;
 
-    // Jerk → rhythmic articulation
-    const articulation = clamp(motionData.jerk / 5, 0, 1) * c;
+    // Jerk → rhythmic articulation (lowered divisor for more sensitivity)
+    const articulation = clamp(motionData.jerk / 3, 0, 1) * c;
 
     return { pan, filterNorm, intensity, articulation };
   }

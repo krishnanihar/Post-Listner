@@ -32,7 +32,8 @@ export default class AudioEngine {
     // Path 1: Music
     this.musicSource = null;
     this.musicFilter = null;
-    this.musicGain = null;
+    this.musicGain = null;       // phase-driven gain only
+    this.intensityGain = null;   // motion-driven gain (separate node)
     this.musicPanner = null;
 
     // Path 3: Collective modulation gain
@@ -73,12 +74,12 @@ export default class AudioEngine {
    * Initialize all signal paths and sub-engines.
    */
   init(collectiveAVD) {
-    // Master compressor
+    // Master compressor — relaxed to preserve motion-driven dynamics
     this.compressor = this.ctx.createDynamicsCompressor();
-    this.compressor.threshold.value = -18;
+    this.compressor.threshold.value = -12;
     this.compressor.knee.value = 30;
-    this.compressor.ratio.value = 6;
-    this.compressor.attack.value = 0.003;
+    this.compressor.ratio.value = 4;
+    this.compressor.attack.value = 0.01;
     this.compressor.release.value = 0.25;
     this.compressor.connect(this.ctx.destination);
 
@@ -91,11 +92,16 @@ export default class AudioEngine {
     this.musicGain = this.ctx.createGain();
     this.musicGain.gain.value = 0;
 
+    this.intensityGain = this.ctx.createGain();
+    this.intensityGain.gain.value = 1.0;
+
     this.musicPanner = this.ctx.createStereoPanner();
     this.musicPanner.pan.value = 0;
 
+    // Chain: filter → musicGain (phase) → intensityGain (motion) → panner → compressor
     this.musicFilter.connect(this.musicGain);
-    this.musicGain.connect(this.musicPanner);
+    this.musicGain.connect(this.intensityGain);
+    this.intensityGain.connect(this.musicPanner);
     this.musicPanner.connect(this.compressor);
 
     // --- Path 2: Binaural ---
@@ -174,23 +180,23 @@ export default class AudioEngine {
    * Apply gesture-mapped parameters to Path 1 (music).
    */
   setMusicParams({ pan, filterNorm, intensity, articulation }) {
+    const now = this.ctx.currentTime;
     if (this.musicPanner) {
       this.musicPanner.pan.setTargetAtTime(
         (pan - 0.5) * 2, // Convert 0-1 to -1 to 1
-        this.ctx.currentTime,
-        0.1
+        now,
+        0.05  // faster response for panning
       );
     }
     if (this.musicFilter) {
       // Map filterNorm (0-1) to frequency range (200 - 8000 Hz)
       const freq = 200 + filterNorm * 7800;
-      this.musicFilter.frequency.setTargetAtTime(freq, this.ctx.currentTime, 0.1);
+      this.musicFilter.frequency.setTargetAtTime(freq, now, 0.05);
     }
-    if (this.musicGain && intensity !== undefined) {
-      // Intensity modulates the current target gain slightly
-      const currentGain = this.musicGain.gain.value;
-      const modulated = clamp(currentGain * (0.8 + intensity * 0.4), 0, 1);
-      this.musicGain.gain.setTargetAtTime(modulated, this.ctx.currentTime, 0.1);
+    if (this.intensityGain && intensity !== undefined) {
+      // Intensity drives a separate gain node — no fighting with phase gain
+      const gain = 0.8 + intensity * 0.4; // 0.8x to 1.2x
+      this.intensityGain.gain.setTargetAtTime(gain, now, 0.05);
     }
   }
 

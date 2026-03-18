@@ -31,7 +31,10 @@ export default class MotionHandler {
     if (!this.hasPermission) return;
 
     window.addEventListener('devicemotion', (e) => {
-      const a = e.accelerationIncludingGravity || {};
+      // Prefer acceleration (gravity-removed) so RMS reflects actual hand motion
+      const a = e.acceleration && (e.acceleration.x != null)
+        ? e.acceleration
+        : e.accelerationIncludingGravity || {};
       this.data.accelX = a.x || 0;
       this.data.accelY = a.y || 0;
       this.data.accelZ = a.z || 0;

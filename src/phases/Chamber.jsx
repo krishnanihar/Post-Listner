@@ -158,7 +158,22 @@ export default function Chamber({ avd }) {
       coupling.update(phaseManager.totalElapsed);
 
       const motionData = motionHandler.getData();
-      const mapped = gestureMapper.map(motionData);
+      const mapped = gestureMapper.map(motionData, motionHandler.hasMotion);
+
+      // Debug: log motion→audio mapping every 60 frames (~1/sec)
+      if (!tick._fc) tick._fc = 0;
+      if (++tick._fc % 60 === 0) {
+        console.log('[Chamber Motion]', {
+          hasMotion: motionHandler.hasMotion,
+          rms: motionData.rms.toFixed(2),
+          beta: motionData.beta.toFixed(1),
+          gamma: motionData.gamma.toFixed(1),
+          pan: mapped.pan.toFixed(2),
+          filter: mapped.filterNorm.toFixed(2),
+          intensity: mapped.intensity.toFixed(2),
+          coupling: coupling.getValue().toFixed(2),
+        });
+      }
 
       audioEngine.setMusicParams(mapped);
       audioEngine.binaural.setBeatFrequency(getPhaseParam(phaseKey, 'binauralBeat', progress));
