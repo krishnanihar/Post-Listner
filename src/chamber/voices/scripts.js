@@ -20,6 +20,9 @@ export const VOICE_SCHEDULE = {
       { file: '/voices/admirer/admirer-09-weight.mp3', delay: 95 },
       { file: '/voices/admirer/admirer-10-room.mp3', delay: 108 },
     ],
+    fragments: [
+      { file: '/crowd/crowd-applause.mp3', delay: 111 },
+    ],
   },
   ascent: {
     admirer: [
@@ -82,7 +85,6 @@ export const AMBIENT_SOUNDS = [
   '/crowd/crowd-murmur-04.mp3',
   '/crowd/crowd-breath-01.mp3',
   '/crowd/crowd-breath-02.mp3',
-  '/crowd/crowd-applause.mp3',
 ];
 
 export const COLLECTIVE_TRACK = '/music/collectiveend.mp3';

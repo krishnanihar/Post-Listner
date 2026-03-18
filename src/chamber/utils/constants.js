@@ -26,7 +26,7 @@ export const BINAURAL = {
   PHASE_3_END_BEAT: 6,       // Hz — upper theta
   PHASE_4_BEAT: 4,           // Hz — theta (OBE-conducive)
   PHASE_5_END_BEAT: 2,       // Hz — delta
-  GAIN: 0.12,                // Subliminal — below conscious attention
+  GAIN: 0.05,                // Subliminal — below conscious attention
 };
 
 // Alpha amplitude modulation
