@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { generateMusic, generateMusicWithPlan } from '../engine/elevenlabs'
+import RevealVisualizer from '../components/RevealVisualizer'
 
 const REVEAL_LINES = [
   'this music was composed by an algorithm',
@@ -141,14 +142,24 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase }) {
   return (
     <div
       className="h-full w-full flex flex-col items-center justify-center select-none px-8"
-      style={{ touchAction: 'manipulation' }}
+      style={{ touchAction: 'manipulation', position: 'relative' }}
     >
+      {/* Visualizer — renders behind text in all stages */}
+      <div className="absolute inset-0" style={{ zIndex: 0 }}>
+        <RevealVisualizer
+          avd={avd}
+          stage={stage}
+          audioElement={audioRef.current}
+        />
+      </div>
+
       {/* COMPUTING stage */}
       <AnimatePresence mode="wait">
         {stage === 'computing' && (
           <motion.div
             key="computing"
             className="absolute inset-0 flex flex-col items-center justify-center gap-8"
+            style={{ zIndex: 1 }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -156,7 +167,7 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase }) {
           >
             <motion.span
               className="font-serif text-center"
-              style={{ fontSize: 'clamp(20px, 5vw, 28px)', color: 'var(--text)' }}
+              style={{ fontSize: 'clamp(20px, 5vw, 28px)', color: 'var(--text)', opacity: 0.8 }}
               key={loadingMessage}
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
@@ -184,6 +195,7 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase }) {
           <motion.div
             key="error"
             className="absolute inset-0 flex flex-col items-center justify-center gap-8 px-8"
+            style={{ zIndex: 1 }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -232,6 +244,7 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase }) {
           <motion.div
             key="playing"
             className="text-center"
+            style={{ position: 'relative', zIndex: 1 }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -263,6 +276,7 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase }) {
           <motion.div
             key="reveal"
             className="text-center max-w-sm"
+            style={{ position: 'relative', zIndex: 1 }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
@@ -285,12 +299,13 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase }) {
       {/* CHOICES — bottom buttons */}
       {stage === 'choices' && (
         <motion.div
-          className="absolute bottom-16 left-0 right-0 flex justify-between px-10"
+          className="absolute left-0 right-0 flex justify-between px-10"
+          style={{ zIndex: 1, bottom: 'max(64px, calc(24px + env(safe-area-inset-bottom, 0px)))' }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.8 }}
         >
-          <button
+          <motion.button
             className="font-serif"
             style={{
               fontSize: '16px',
@@ -299,12 +314,14 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase }) {
               border: 'none',
               cursor: 'pointer',
               padding: '12px',
+              minHeight: '44px',
             }}
+            whileTap={{ scale: 0.95 }}
             onClick={handleReplay}
           >
             hear it again
-          </button>
-          <button
+          </motion.button>
+          <motion.button
             className="font-serif"
             style={{
               fontSize: '16px',
@@ -313,11 +330,13 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase }) {
               border: 'none',
               cursor: 'pointer',
               padding: '12px',
+              minHeight: '44px',
             }}
+            whileTap={{ scale: 0.95 }}
             onClick={handleShowMe}
           >
             show me who I am
-          </button>
+          </motion.button>
         </motion.div>
       )}
     </div>

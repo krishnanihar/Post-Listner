@@ -7,6 +7,7 @@ export default function Moment({ onNext, avd, inputMode }) {
   const [circleSize, setCircleSize] = useState(80)
   const [ripples, setRipples] = useState([])
   const [phase, setPhase] = useState('waiting') // waiting, playing, done
+  const [pressing, setPressing] = useState(false)
   const taps = useRef([])
   const trackRef = useRef(null)
   const startTimeRef = useRef(null)
@@ -25,6 +26,8 @@ export default function Moment({ onNext, avd, inputMode }) {
   }, [])
 
   useEffect(() => {
+    // Clean up any lingering audio from previous phases
+    audioEngine.stopAll()
     // Auto-start after a brief pause
     const timer = setTimeout(startTrack, 1500)
     return () => {
@@ -94,11 +97,12 @@ export default function Moment({ onNext, avd, inputMode }) {
 
   const handleTap = useCallback(() => {
     if (phase !== 'playing') return
+    audioEngine.playTapSound()
     const now = Date.now()
     taps.current.push(now)
 
     // Grow circle
-    setCircleSize(prev => Math.min(300, prev + 3))
+    setCircleSize(prev => Math.min(300, prev + 5))
 
     // Add ripple
     const id = rippleId.current++
@@ -126,9 +130,11 @@ export default function Moment({ onNext, avd, inputMode }) {
   return (
     <div
       className="h-full w-full flex flex-col items-center justify-center select-none"
-      style={{ touchAction: 'manipulation' }}
+      style={{ touchAction: 'none' }}
       onClick={handleTap}
-      onTouchEnd={(e) => { e.preventDefault(); handleTap() }}
+      onPointerDown={() => setPressing(true)}
+      onPointerUp={() => setPressing(false)}
+      onPointerCancel={() => setPressing(false)}
     >
       {/* Header */}
       <div className="absolute top-0 left-0 px-6 pt-6 sm:px-8 sm:pt-8">
@@ -161,7 +167,9 @@ export default function Moment({ onNext, avd, inputMode }) {
           style={{
             background: phase === 'done'
               ? 'var(--accent)'
-              : 'rgba(212, 160, 83, 0.15)',
+              : pressing
+                ? 'rgba(212, 160, 83, 0.35)'
+                : 'rgba(212, 160, 83, 0.15)',
             border: '1px solid var(--accent)',
           }}
           animate={phase === 'done' ? {

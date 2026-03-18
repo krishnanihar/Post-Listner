@@ -18,6 +18,8 @@ export default function DepthDial({ onNext, avd, inputMode }) {
   const reEngagedRef = useRef(false)
   const finishedRef = useRef(false)
   const pointerDownRef = useRef(false)
+  const pointerStartYRef = useRef(null)
+  const dragActiveRef = useRef(false)
   const isMouse = inputMode === 'mouse'
 
   // Before first selection: hover previews visuals+audio. After: locked only.
@@ -87,12 +89,18 @@ export default function DepthDial({ onNext, avd, inputMode }) {
     if (layerControl.current) layerControl.current.setActiveCount(lockedCountRef.current)
   }, [hasSelected])
 
-  // Touch: drag handler
+  // Touch: drag handler with threshold to prevent accidental drags when tapping
   const handleDrag = useCallback((e) => {
     if (!e.touches && !pointerDownRef.current) return
     if (!containerRef.current || finishedRef.current) return
-    const rect = containerRef.current.getBoundingClientRect()
     const clientY = e.touches ? e.touches[0].clientY : e.clientY
+    // Require 10px of movement before activating drag
+    if (!dragActiveRef.current) {
+      if (pointerStartYRef.current === null) return
+      if (Math.abs(clientY - pointerStartYRef.current) < 10) return
+      dragActiveRef.current = true
+    }
+    const rect = containerRef.current.getBoundingClientRect()
     const relY = 1 - (clientY - rect.top) / rect.height
     const count = Math.max(1, Math.min(8, Math.ceil(relY * 8)))
     commitCount(count)
@@ -145,15 +153,15 @@ export default function DepthDial({ onNext, avd, inputMode }) {
         className="flex-1 flex flex-col justify-center items-center px-8 relative"
         onMouseLeave={!hasSelected && isMouse ? clearPreview : undefined}
         {...(isMouse ? {} : {
-          onPointerDown: () => { pointerDownRef.current = true },
-          onPointerUp: () => { pointerDownRef.current = false },
-          onPointerLeave: () => { pointerDownRef.current = false },
+          onPointerDown: (e) => { pointerDownRef.current = true; pointerStartYRef.current = e.clientY; dragActiveRef.current = false },
+          onPointerUp: () => { pointerDownRef.current = false; pointerStartYRef.current = null; dragActiveRef.current = false },
+          onPointerCancel: () => { pointerDownRef.current = false; pointerStartYRef.current = null; dragActiveRef.current = false },
           onPointerMove: handleDrag,
           onTouchMove: handleDrag,
         })}
       >
         {/* Layer lines */}
-        <div className="w-full flex flex-col-reverse gap-5 sm:gap-6" style={{ maxWidth: '60vw' }}>
+        <div className="w-full flex flex-col-reverse gap-3 sm:gap-6" style={{ maxWidth: '60vw' }}>
           {LAYER_LABELS.map((label, i) => {
             const isActive = i < displayCount
             const isHovered = !hasSelected && hoverCount !== null && i < hoverCount && i >= lockedCount
@@ -164,7 +172,7 @@ export default function DepthDial({ onNext, avd, inputMode }) {
               <motion.div
                 key={label}
                 className="flex items-center gap-5"
-                style={{ cursor: isMouse ? 'pointer' : 'default' }}
+                style={{ cursor: isMouse ? 'pointer' : 'default', minHeight: '44px' }}
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.5, delay: i * 0.06 }}
@@ -270,10 +278,12 @@ export default function DepthDial({ onNext, avd, inputMode }) {
               border: 'none',
               cursor: 'pointer',
               letterSpacing: '0.1em',
+              minHeight: '44px',
             }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 0.6 }}
             whileHover={{ opacity: 1 }}
+            whileTap={{ scale: 0.95, opacity: 1 }}
             transition={{ duration: 0.4 }}
           >
             continue →

@@ -29,7 +29,10 @@ export default function Spectrum({ onNext, avd, inputMode }) {
   const [dividerOffset, setDividerOffset] = useState(0)
   const [activeLabel, setActiveLabel] = useState(null)
   const [hoveredSide, setHoveredSide] = useState(null)
+  const [holdProgress, setHoldProgress] = useState(0)
   const holdTimer = useRef(null)
+  const holdAnimRef = useRef(null)
+  const holdStartRef = useRef(null)
   const startTime = useRef(null)
   const pairStartTime = useRef(Date.now())
   const switched = useRef(false)
@@ -88,6 +91,8 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     if (transitioning) return
     setTransitioning(true)
     stopAudio()
+    cancelAnimationFrame(holdAnimRef.current)
+    setHoldProgress(0)
 
     let confidence
     if (confidenceOverride !== undefined) {
@@ -205,6 +210,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
   }, [transitioning])
 
   // === TOUCH: Hold to select ===
+  const HOLD_DURATION = 800
   const handleSideDown = useCallback((side) => {
     if (transitioning) return
     if (!startTime.current) startTime.current = Date.now()
@@ -216,23 +222,36 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     setActiveLabel(side)
 
     if (pairRef.current) {
-      pairRef.current.setBalance(side === 'left' ? -1 : 1)
+      pairRef.current.setBalance(side === 'left' ? -0.7 : 0.7)
     }
-    setDividerOffset(side === 'left' ? -15 : 15)
+    const rect = areaRef.current?.getBoundingClientRect()
+    const touchOffset = rect ? rect.width * 0.12 : 40
+    setDividerOffset(side === 'left' ? -touchOffset : touchOffset)
 
     clearTimeout(holdTimer.current)
-    holdTimer.current = setTimeout(() => lockChoice(side, undefined, 1.0), 3000)
+    cancelAnimationFrame(holdAnimRef.current)
+    holdStartRef.current = Date.now()
+    const animateProgress = () => {
+      const elapsed = Date.now() - holdStartRef.current
+      const progress = Math.min(1, elapsed / HOLD_DURATION)
+      setHoldProgress(progress)
+      if (progress < 1) holdAnimRef.current = requestAnimationFrame(animateProgress)
+    }
+    holdAnimRef.current = requestAnimationFrame(animateProgress)
+    holdTimer.current = setTimeout(() => lockChoice(side, undefined, 1.0), HOLD_DURATION)
   }, [transitioning, lockChoice, trackReversal])
 
   const handleSideUp = useCallback(() => {
     clearTimeout(holdTimer.current)
+    cancelAnimationFrame(holdAnimRef.current)
+    setHoldProgress(0)
     if (pairRef.current) pairRef.current.setBalance(0)
     setDividerOffset(0)
   }, [])
 
   const handleSwipe = useCallback((_e, info) => {
     if (transitioning) return
-    if (Math.abs(info.offset.x) > 30) {
+    if (Math.abs(info.offset.x) > 60) {
       const side = info.offset.x < 0 ? 'left' : 'right'
       if (!startTime.current) startTime.current = Date.now()
       const swipeStrength = Math.min(1, Math.abs(info.offset.x) / 150)
@@ -264,7 +283,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
   const hintText = isMouse ? 'move to lean, click to lock' : 'hold or swipe to choose'
 
   return (
-    <div className="h-full w-full flex flex-col select-none" style={{ touchAction: 'manipulation' }}>
+    <div className="h-full w-full flex flex-col select-none" style={{ touchAction: 'none' }}>
       {/* Header */}
       <div className="flex justify-between items-center px-6 pt-6 sm:px-8 sm:pt-8">
         <span className="font-mono" style={{ fontSize: '11px', color: 'var(--text-dim)' }}>
@@ -298,14 +317,24 @@ export default function Spectrum({ onNext, avd, inputMode }) {
           >
             {/* Left zone */}
             <div
-              className="flex-1 flex items-center justify-center"
-              style={{ cursor: isMouse ? 'pointer' : 'pointer' }}
+              className="flex-1 flex items-center justify-center relative"
+              style={{ cursor: 'pointer' }}
               {...(isMouse ? {} : {
                 onPointerDown: () => handleSideDown('left'),
                 onPointerUp: handleSideUp,
-                onPointerLeave: handleSideUp,
+                onPointerCancel: handleSideUp,
               })}
             >
+              {!isMouse && holdProgress > 0 && activeLabel === 'left' && (
+                <svg className="absolute" width="64" height="64" style={{ pointerEvents: 'none' }}>
+                  <circle cx="32" cy="32" r="28" fill="none" stroke="var(--text-dim)" strokeWidth="1.5" opacity="0.2" />
+                  <motion.circle
+                    cx="32" cy="32" r="28" fill="none" stroke="var(--accent)" strokeWidth="2"
+                    strokeLinecap="round"
+                    style={{ pathLength: holdProgress, rotate: -90, transformOrigin: 'center' }}
+                  />
+                </svg>
+              )}
               <motion.span
                 className="font-serif"
                 style={{ fontSize: 'clamp(24px, 6vw, 36px)', color: 'var(--text)' }}
@@ -331,21 +360,31 @@ export default function Spectrum({ onNext, avd, inputMode }) {
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
             >
               <span className="font-mono whitespace-nowrap absolute -bottom-8"
-                    style={{ fontSize: '9px', color: 'var(--text-dim)', transform: 'translateX(-50%)' }}>
+                    style={{ fontSize: '12px', color: 'var(--text-dim)', transform: 'translateX(-50%)' }}>
                 {hintText}
               </span>
             </motion.div>
 
             {/* Right zone */}
             <div
-              className="flex-1 flex items-center justify-center"
-              style={{ cursor: isMouse ? 'pointer' : 'pointer' }}
+              className="flex-1 flex items-center justify-center relative"
+              style={{ cursor: 'pointer' }}
               {...(isMouse ? {} : {
                 onPointerDown: () => handleSideDown('right'),
                 onPointerUp: handleSideUp,
-                onPointerLeave: handleSideUp,
+                onPointerCancel: handleSideUp,
               })}
             >
+              {!isMouse && holdProgress > 0 && activeLabel === 'right' && (
+                <svg className="absolute" width="64" height="64" style={{ pointerEvents: 'none' }}>
+                  <circle cx="32" cy="32" r="28" fill="none" stroke="var(--text-dim)" strokeWidth="1.5" opacity="0.2" />
+                  <motion.circle
+                    cx="32" cy="32" r="28" fill="none" stroke="var(--accent)" strokeWidth="2"
+                    strokeLinecap="round"
+                    style={{ pathLength: holdProgress, rotate: -90, transformOrigin: 'center' }}
+                  />
+                </svg>
+              )}
               <motion.span
                 className="font-serif"
                 style={{ fontSize: 'clamp(24px, 6vw, 36px)', color: 'var(--text)' }}

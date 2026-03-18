@@ -17,7 +17,7 @@ export default function Entry({ onNext }) {
 
   return (
     <div className="h-full w-full flex flex-col items-center justify-center relative select-none"
-         style={{ touchAction: 'manipulation' }}>
+         style={{ touchAction: 'none' }}>
 
       {/* Title */}
       <AnimatePresence>
@@ -55,7 +55,7 @@ export default function Entry({ onNext }) {
         className="absolute cursor-pointer"
         style={{ bottom: '25%' }}
         onClick={handleTap}
-        onTouchEnd={(e) => { e.preventDefault(); handleTap() }}
+        whileTap={{ scale: 0.95 }}
         animate={expanding ? {
           scale: 30,
           opacity: 0,

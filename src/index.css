@@ -44,6 +44,10 @@ body::after {
   background-size: 256px 256px;
 }
 
+/* Safe area utilities for notched phones */
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+
 .font-serif {
   font-family: 'Instrument Serif', serif;
 }

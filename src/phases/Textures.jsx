@@ -361,13 +361,11 @@ export default function Textures({ onNext, avd, inputMode }) {
     if (isMouse) {
       setSelected(prev => ({ ...prev, [textureName]: !prev[textureName] }))
     } else {
-      if (!listened.has(textureName) || playing !== textureName) {
-        playPreview(textureName)
-      } else {
-        setSelected(prev => ({ ...prev, [textureName]: !prev[textureName] }))
-      }
+      // Touch: single tap toggles selection + plays preview
+      playPreview(textureName)
+      setSelected(prev => ({ ...prev, [textureName]: !prev[textureName] }))
     }
-  }, [isMouse, listened, playing, playPreview])
+  }, [isMouse, playPreview])
 
   // Touch: pointer down activates visual, pointer up deactivates with linger
   const handlePointerDown = useCallback((textureName) => {
@@ -421,7 +419,7 @@ export default function Textures({ onNext, avd, inputMode }) {
   }, [selected, avd, onNext, playing])
 
   return (
-    <div className="h-full w-full flex flex-col select-none" style={{ touchAction: 'manipulation' }}>
+    <div className="h-full w-full flex flex-col select-none" style={{ touchAction: 'none' }}>
       {/* Header */}
       <div className="flex justify-between items-center px-6 pt-6 sm:px-8 sm:pt-8">
         <span className="font-mono" style={{ fontSize: '11px', color: 'var(--text-dim)' }}>
@@ -456,13 +454,8 @@ export default function Textures({ onNext, avd, inputMode }) {
               onClick={() => handleClick(texture.name)}
               onPointerDown={() => handlePointerDown(texture.name)}
               onPointerUp={handlePointerUp}
-              onPointerLeave={() => {
-                if (isMouse) {
-                  handleMouseLeave()
-                } else {
-                  handlePointerUp()
-                }
-              }}
+              onPointerCancel={isMouse ? undefined : handlePointerUp}
+              onPointerLeave={isMouse ? handleMouseLeave : undefined}
               {...(isMouse ? {
                 onMouseEnter: () => handleMouseEnter(texture.name),
               } : {})}
@@ -491,10 +484,10 @@ export default function Textures({ onNext, avd, inputMode }) {
 
       {/* Interaction hint */}
       <p className="text-center font-mono pb-1"
-         style={{ fontSize: '9px', color: 'var(--text-dim)' }}>
+         style={{ fontSize: '12px', color: 'var(--text-dim)' }}>
         {isMouse
           ? 'hover to preview \u00B7 click to select'
-          : 'tap to preview \u00B7 tap again to select'}
+          : 'tap to select'}
       </p>
 
       {/* Continue button */}
@@ -505,7 +498,7 @@ export default function Textures({ onNext, avd, inputMode }) {
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5 }}
         >
-          <button
+          <motion.button
             className="font-serif"
             style={{
               fontSize: '16px',
@@ -514,11 +507,13 @@ export default function Textures({ onNext, avd, inputMode }) {
               border: 'none',
               cursor: 'pointer',
               padding: '12px 24px',
+              minHeight: '44px',
             }}
+            whileTap={{ scale: 0.95 }}
             onClick={handleContinue}
           >
             continue
-          </button>
+          </motion.button>
         </motion.div>
       )}
     </div>

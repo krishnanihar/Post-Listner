@@ -59,7 +59,7 @@ export default function Result({ avd, sessionData, onNext }) {
   }, [session])
 
   return (
-    <div className="h-full w-full flex flex-col justify-center px-8 select-none"
+    <div className="h-full w-full flex flex-col justify-center px-8 pb-safe select-none"
          style={{ touchAction: 'manipulation' }}>
 
       {/* Title */}
@@ -99,7 +99,7 @@ export default function Result({ avd, sessionData, onNext }) {
         animate={{ opacity: 1 }}
         transition={{ delay: 2, duration: 0.8 }}
       >
-        <button
+        <motion.button
           className="font-serif mb-4 block mx-auto"
           style={{
             fontSize: '16px',
@@ -108,11 +108,13 @@ export default function Result({ avd, sessionData, onNext }) {
             border: 'none',
             cursor: 'pointer',
             padding: '12px 24px',
+            minHeight: '44px',
           }}
+          whileTap={{ scale: 0.95 }}
           onClick={() => onNext()}
         >
           &rarr; enter the dissolution chamber
-        </button>
+        </motion.button>
         <p className="font-mono" style={{ fontSize: '9px', color: 'var(--text-dim)' }}>
           your profile has been saved
         </p>
