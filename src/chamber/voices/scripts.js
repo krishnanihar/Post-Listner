@@ -23,12 +23,10 @@ export const VOICE_SCHEDULE = {
   },
   ascent: {
     admirer: [
-      { file: '/voices/admirer/admirer-09-weight.mp3', delay: 10 },
-      { file: '/voices/admirer/admirer-10-room.mp3', delay: 35 },
-      { file: '/voices/admirer/admirer-11-deep.mp3', delay: 60 },
-      { file: '/voices/admirer/admirer-12-moved.mp3', delay: 90 },
-      { file: '/voices/admirer/admirer-13-noneed.mp3', delay: 120 },
-      { file: '/voices/admirer/admirer-14-hand.mp3', delay: 150 },
+      { file: '/voices/admirer/admirer-11-deep.mp3', delay: 15 },
+      { file: '/voices/admirer/admirer-12-moved.mp3', delay: 50 },
+      { file: '/voices/admirer/admirer-13-noneed.mp3', delay: 90 },
+      { file: '/voices/admirer/admirer-14-hand.mp3', delay: 130 },
     ],
     guide: [
       { file: '/voices/guide/guide-01-larger.mp3', delay: 20 },

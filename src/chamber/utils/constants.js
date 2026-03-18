@@ -86,29 +86,33 @@ export const PHASE_PARAMS = {
     binauralBeat: [10, 10],
     binauralGain: [0, BINAURAL.GAIN],
     modDepth: [0, 0],
-    musicGain: [0, 0],        // no chamber music — demo plays via demoGain
+    musicGain: [0, 0],
     collectiveGain: [0, 0],
+    demoGain: [0, 0.45],      // song fades in from silence across INTRO
   },
   THRONE: {
     binauralBeat: [10, 10],
     binauralGain: [BINAURAL.GAIN, BINAURAL.GAIN],
     modDepth: [0, 0],
-    musicGain: [0, 0],        // still demo only
-    collectiveGain: [0, 0.15], // crowd fades in gently during THRONE
+    musicGain: [0, 0],
+    collectiveGain: [0, 0.10], // crowd fades in gently during THRONE
+    demoGain: [0.45, 0.45],   // full presence throughout THRONE
   },
   ASCENT: {
     binauralBeat: [10, 6],
     binauralGain: [BINAURAL.GAIN, BINAURAL.GAIN],
     modDepth: [0, 0.2],
-    musicGain: [0, 0.2],      // chamber track fades in as demo fades out
-    collectiveGain: [0.15, 0.5], // continues from THRONE end
+    musicGain: [0, 0.2],
+    collectiveGain: [0.10, 0.5],
+    demoGain: [0.45, 0],      // song dies across ASCENT
   },
   DISSOLUTION: {
     binauralBeat: [6, 4],
     binauralGain: [BINAURAL.GAIN, BINAURAL.GAIN],
     modDepth: [0.2, 0.35],
-    musicGain: [0.12, 0],     // quiet chamber fading to silence
+    musicGain: [0.12, 0],
     collectiveGain: [0.5, 0.8],
+    demoGain: [0, 0],         // song is gone
   },
   SILENCE: {
     binauralBeat: [4, 2],
@@ -116,5 +120,6 @@ export const PHASE_PARAMS = {
     modDepth: [0.35, 0],
     musicGain: [0, 0],
     collectiveGain: [0.8, 0],
+    demoGain: [0, 0],         // song is gone
   },
 };

@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { getCollective, addEntry } from '../chamber/data/CollectiveStore.js';
-import { selectTrack } from '../chamber/data/MusicSelector.js';
 import { requestPermissions } from '../chamber/components/PermissionPrompt.jsx';
 import { PHASE_PARAMS } from '../chamber/utils/constants.js';
 import { lerp } from '../chamber/utils/math.js';
@@ -20,9 +19,8 @@ import ExitScreen from '../chamber/components/ExitScreen.jsx';
 /**
  * Collect all unique audio file paths that need to be preloaded.
  */
-function getAllAudioPaths(musicTrackPath) {
+function getAllAudioPaths() {
   const paths = new Set();
-  paths.add(musicTrackPath);
   for (const phase of Object.values(VOICE_SCHEDULE)) {
     for (const entries of Object.values(phase)) {
       for (const entry of entries) {
@@ -97,11 +95,8 @@ export default function Chamber({ avd }) {
     const gestureMapper = new GestureMapper(coupling);
     gestureMapperRef.current = gestureMapper;
 
-    // 3. Select music track
-    const trackPath = selectTrack(userAVD.current);
-
-    // 4. Preload all audio
-    const allPaths = getAllAudioPaths(trackPath);
+    // 3. Preload all audio
+    const allPaths = getAllAudioPaths();
     await audioEngine.preloadAll(allPaths, (progress) => {
       setLoadProgress(progress);
     });
@@ -139,8 +134,6 @@ export default function Chamber({ avd }) {
       }
 
       if (newPhase === 'ascent') {
-        audioEngine.crossfadeDemoToCollective(60);
-        audioEngine.startMusic(trackPath);
         audioEngine.startCollectiveTrack();
         audioEngine.setTextureGain(0.25);
       }
@@ -193,6 +186,7 @@ export default function Chamber({ avd }) {
       audioEngine.binaural.setGain(getPhaseParam(phaseKey, 'binauralGain', progress));
       audioEngine.modulation.setDepth(getPhaseParam(phaseKey, 'modDepth', progress));
       audioEngine.setMusicGain(getPhaseParam(phaseKey, 'musicGain', progress));
+      audioEngine.setDemoGain(getPhaseParam(phaseKey, 'demoGain', progress));
       audioEngine.collective.setGain(getPhaseParam(phaseKey, 'collectiveGain', progress));
       audioEngine.spatial.updateOrbits(phaseManager.deltaTime, phaseManager.currentPhase);
 

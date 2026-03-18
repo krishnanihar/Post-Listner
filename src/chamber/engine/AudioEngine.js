@@ -110,7 +110,7 @@ export default class AudioEngine {
 
     // Demo gain — parallel input to shared filter chain
     this.demoGain = this.ctx.createGain();
-    this.demoGain.gain.value = 0.35;
+    this.demoGain.gain.value = 0;  // starts silent, phase-driven
 
     // Demo and chamber are parallel inputs to the shared filter
     // demo → demoGain ──╮
@@ -191,15 +191,13 @@ export default class AudioEngine {
   }
 
   /**
-   * Crossfade demo track out over `duration` seconds.
-   * Called at ASCENT start — demo fades, collective/chamber take over via PHASE_PARAMS.
+   * No longer needed — demo gain is phase-driven via setDemoGain().
    */
-  crossfadeDemoToCollective(duration = 60) {
-    const now = this.ctx.currentTime;
-    if (this.demoGain) {
-      this.demoGain.gain.setValueAtTime(0.35, now);
-      this.demoGain.gain.linearRampToValueAtTime(0, now + duration);
-    }
+  crossfadeDemoToCollective(duration = 60) {}
+
+  setDemoGain(value) {
+    if (!this.demoGain) return;
+    this.demoGain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.8);
   }
 
   /**
