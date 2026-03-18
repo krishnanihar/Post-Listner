@@ -39,7 +39,7 @@ export default class CollectiveEngine {
       osc.detune.value = (Math.random() - 0.5) * 10;
 
       const gain = this.ctx.createGain();
-      gain.gain.value = 0.15 / (i + 1);
+      gain.gain.value = 0.045 / (i + 1); // Reduced: MP3 bed is primary
 
       osc.connect(gain);
       gain.connect(this.filter);
@@ -74,6 +74,20 @@ export default class CollectiveEngine {
     this.ambientSources.push({ source, gain });
   }
 
+  playCollectiveTrack(buffer) {
+    this.collectiveSource = this.ctx.createBufferSource();
+    this.collectiveSource.buffer = buffer;
+    this.collectiveSource.loop = true;
+
+    const gain = this.ctx.createGain();
+    gain.gain.value = 0.7;
+    this.collectiveTrackGain = gain;
+
+    this.collectiveSource.connect(gain);
+    gain.connect(this.filter);
+    this.collectiveSource.start();
+  }
+
   _generateImpulseResponse(duration, decay) {
     const rate = this.ctx.sampleRate;
     const length = rate * duration;
@@ -103,5 +117,6 @@ export default class CollectiveEngine {
     this.ambientSources.forEach(({ source }) => {
       try { source.stop(); } catch {}
     });
+    try { this.collectiveSource?.stop(); } catch {}
   }
 }

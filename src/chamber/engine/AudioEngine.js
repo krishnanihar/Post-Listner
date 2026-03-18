@@ -4,7 +4,7 @@ import SpatialEngine from './SpatialEngine.js';
 import CollectiveEngine from './CollectiveEngine.js';
 import { VOICE_POSITIONS } from '../utils/constants.js';
 import { clamp } from '../utils/math.js';
-import { AMBIENT_SOUNDS } from '../voices/scripts.js';
+import { AMBIENT_SOUNDS, COLLECTIVE_TRACK } from '../voices/scripts.js';
 
 /**
  * Master audio engine managing all 5 signal paths.
@@ -174,6 +174,18 @@ export default class AudioEngine {
         this.collective.playAmbient(buffer);
       }
     }
+  }
+
+  /**
+   * Start the collective MP3 track through collective engine.
+   */
+  startCollectiveTrack() {
+    const buffer = this.buffers.get(COLLECTIVE_TRACK);
+    if (!buffer) {
+      console.warn('Collective track buffer not found:', COLLECTIVE_TRACK);
+      return;
+    }
+    this.collective.playCollectiveTrack(buffer);
   }
 
   /**

@@ -80,3 +80,5 @@ export const AMBIENT_SOUNDS = [
   '/crowd/crowd-breath-02.mp3',
   '/crowd/crowd-applause.mp3',
 ];
+
+export const COLLECTIVE_TRACK = '/music/collectiveend.mp3';
