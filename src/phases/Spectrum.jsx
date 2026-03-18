@@ -249,16 +249,6 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     setDividerOffset(0)
   }, [])
 
-  const handleSwipe = useCallback((_e, info) => {
-    if (transitioning) return
-    if (Math.abs(info.offset.x) > 60) {
-      const side = info.offset.x < 0 ? 'left' : 'right'
-      if (!startTime.current) startTime.current = Date.now()
-      const swipeStrength = Math.min(1, Math.abs(info.offset.x) / 150)
-      lockChoice(side, undefined, swipeStrength)
-    }
-  }, [transitioning, lockChoice])
-
   // === MOUSE: Keyboard arrow keys ===
   const handleKeySelect = useCallback((side) => {
     if (transitioning) return
@@ -298,7 +288,6 @@ export default function Spectrum({ onNext, avd, inputMode }) {
       <motion.div
         ref={areaRef}
         className="flex-1 flex relative"
-        onPanEnd={isMouse ? undefined : handleSwipe}
         {...(isMouse ? {
           onClick: handleMouseClick,
           onMouseMove: handleMouseMove,
