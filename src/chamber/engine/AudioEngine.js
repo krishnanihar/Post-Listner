@@ -7,13 +7,13 @@ import { clamp } from '../utils/math.js';
 import { AMBIENT_SOUNDS, COLLECTIVE_TRACK } from '../voices/scripts.js';
 
 /**
- * Master audio engine managing all 5 signal paths.
+ * Master audio engine managing all signal paths.
  *
- * Path 1 (Music):     AudioBufferSource → filter → gain → panner → compressor
- * Path 2 (Binaural):  BinauralEngine → compressor
- * Path 3 (Collective): CollectiveEngine → modGain → panner → compressor
- * Path 4 (Voices):    VoiceScheduler manages sources → panners → gain → compressor
- * Path 5 (Textures):  Whispers/Fragments/Crowd → gain → compressor
+ * Path 1 (Music/Demo): Sources → demoGain/musicFilter → musicGain → intensityGain → musicDuck → panner → compressor
+ * Path 2 (Binaural):   BinauralEngine → compressor
+ * Path 3 (Collective):  CollectiveEngine → modGain → panner → compressor
+ * Path 4 (Voices):     VoiceScheduler manages sources → panners → gain → compressor
+ * Path 5 (Textures):   Whispers/Fragments/Crowd → gain → compressor
  */
 export default class AudioEngine {
   constructor(audioCtx) {
@@ -29,12 +29,17 @@ export default class AudioEngine {
     this.spatial = null;
     this.collective = null;
 
-    // Path 1: Music
+    // Path 1: Music / Demo
     this.musicSource = null;
     this.musicFilter = null;
     this.musicGain = null;       // phase-driven gain only
     this.intensityGain = null;   // motion-driven gain (separate node)
+    this.musicDuck = null;       // sidechain duck node (voices duck music)
     this.musicPanner = null;
+
+    // Demo track
+    this.demoSource = null;
+    this.demoGain = null;
 
     // Path 3: Collective modulation gain
     this.collectiveModGain = null;
@@ -47,10 +52,6 @@ export default class AudioEngine {
 
     // Path 5: Texture gain
     this.textureGain = null;
-
-    // Demo track crossfade
-    this.demoSource = null;
-    this.demoGain = null;
   }
 
   /**
@@ -80,16 +81,16 @@ export default class AudioEngine {
    * Initialize all signal paths and sub-engines.
    */
   init(collectiveAVD) {
-    // Safety limiter — transparent ceiling that preserves spatial level cues
+    // Gentle compressor — preserves dynamics, catches peaks
     this.compressor = this.ctx.createDynamicsCompressor();
-    this.compressor.threshold.value = -3;
+    this.compressor.threshold.value = -12;
     this.compressor.knee.value = 0;
-    this.compressor.ratio.value = 20;
+    this.compressor.ratio.value = 4;
     this.compressor.attack.value = 0.003;
     this.compressor.release.value = 0.1;
     this.compressor.connect(this.ctx.destination);
 
-    // --- Path 1: Music ---
+    // --- Path 1: Music / Demo shared chain ---
     this.musicFilter = this.ctx.createBiquadFilter();
     this.musicFilter.type = 'lowpass';
     this.musicFilter.frequency.value = 8000;
@@ -101,13 +102,23 @@ export default class AudioEngine {
     this.intensityGain = this.ctx.createGain();
     this.intensityGain.gain.value = 1.0;
 
+    this.musicDuck = this.ctx.createGain();
+    this.musicDuck.gain.value = 1.0;
+
     this.musicPanner = this.ctx.createStereoPanner();
     this.musicPanner.pan.value = 0;
 
-    // Chain: filter → musicGain (phase) → intensityGain (motion) → panner → compressor
+    // Demo gain — feeds into shared filter chain
+    this.demoGain = this.ctx.createGain();
+    this.demoGain.gain.value = 0.35;
+
+    // Chain: demo → demoGain ─╮
+    //        music → musicFilter ←╯ → musicGain → intensityGain → musicDuck → panner → compressor
+    this.demoGain.connect(this.musicFilter);
     this.musicFilter.connect(this.musicGain);
     this.musicGain.connect(this.intensityGain);
-    this.intensityGain.connect(this.musicPanner);
+    this.intensityGain.connect(this.musicDuck);
+    this.musicDuck.connect(this.musicPanner);
     this.musicPanner.connect(this.compressor);
 
     // --- Path 2: Binaural ---
@@ -139,7 +150,7 @@ export default class AudioEngine {
 
     // --- Path 4: Voices (dry + reverb send) ---
     this.voiceGain = this.ctx.createGain();
-    this.voiceGain.gain.value = 1.3;
+    this.voiceGain.gain.value = 1.95;
     this.voiceGain.connect(this.compressor);
 
     // Voice reverb bus — externalization cue for HRTF
@@ -155,11 +166,6 @@ export default class AudioEngine {
       this.spatial.createPanner(key.toLowerCase(), pos);
     }
 
-    // --- Demo track gain (crossfade during INTRO) ---
-    this.demoGain = this.ctx.createGain();
-    this.demoGain.gain.value = 0.7;
-    this.demoGain.connect(this.compressor);
-
     // --- Path 5: Textures ---
     this.textureGain = this.ctx.createGain();
     this.textureGain.gain.value = 0;
@@ -167,7 +173,7 @@ export default class AudioEngine {
   }
 
   /**
-   * Start playing the PostListener demo track (non-looping).
+   * Start playing the PostListener demo track (looping through INTRO+THRONE).
    */
   startDemoTrack(path) {
     const buffer = this.buffers.get(path);
@@ -177,42 +183,21 @@ export default class AudioEngine {
     }
     this.demoSource = this.ctx.createBufferSource();
     this.demoSource.buffer = buffer;
-    this.demoSource.loop = false;
+    this.demoSource.loop = true;
     this.demoSource.connect(this.demoGain);
     this.demoSource.start();
   }
 
   /**
-   * Crossfade from demo track to chamber music track.
-   * Demo fades out over `duration` seconds; chamber fades in after 2s delay.
+   * Crossfade demo track out over `duration` seconds.
+   * Called at ASCENT start — demo fades, collective/chamber take over via PHASE_PARAMS.
    */
-  crossfadeToChamber(duration = 10) {
+  crossfadeDemoToCollective(duration = 60) {
     const now = this.ctx.currentTime;
-    // Fade demo out: 0.7 → 0 over full duration
     if (this.demoGain) {
-      this.demoGain.gain.setValueAtTime(0.7, now);
+      this.demoGain.gain.setValueAtTime(0.35, now);
       this.demoGain.gain.linearRampToValueAtTime(0, now + duration);
     }
-    // Chamber music gain is driven by the rAF loop via PHASE_PARAMS.
-    // INTRO musicGain is [0.7, 0.7] so the loop holds it at 0.7.
-    // We override to 0 here and let setTargetAtTime from the loop
-    // gradually win (time constant 0.5s, called every frame).
-    // After ~2s of frames setting 0.7, musicGain converges to 0.7.
-    if (this.musicGain) {
-      this.musicGain.gain.setValueAtTime(0, now);
-    }
-    // Schedule the rAF-driven gain to take effect after 2s delay
-    this._crossfadeUntil = now + 2;
-  }
-
-  setMusicGain(value) {
-    if (!this.musicGain) return;
-    // During crossfade intro, suppress musicGain until delay period ends
-    if (this._crossfadeUntil && this.ctx.currentTime < this._crossfadeUntil) {
-      return;
-    }
-    this._crossfadeUntil = null;
-    this.musicGain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.5);
   }
 
   /**
@@ -257,7 +242,7 @@ export default class AudioEngine {
   }
 
   /**
-   * Apply gesture-mapped parameters to Path 1 (music).
+   * Apply gesture-mapped parameters to Path 1 (music/demo).
    */
   setMusicParams({ pan, filterNorm, intensity, articulation }) {
     const now = this.ctx.currentTime;
@@ -278,6 +263,11 @@ export default class AudioEngine {
       const gain = 0.8 + intensity * 0.4; // 0.8x to 1.2x
       this.intensityGain.gain.setTargetAtTime(gain, now, 0.05);
     }
+  }
+
+  setMusicGain(value) {
+    if (!this.musicGain) return;
+    this.musicGain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.5);
   }
 
   setTextureGain(value) {

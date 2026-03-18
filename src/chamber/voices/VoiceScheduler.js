@@ -2,12 +2,13 @@ import { VOICE_SCHEDULE } from './scripts.js';
 import { VOICE_POSITIONS, VOICE_SPREAD, VOICE_CATEGORY_GAINS } from '../utils/constants.js';
 
 export default class VoiceScheduler {
-  constructor(audioCtx, buffers, spatialEngine, voiceGainNode, voiceReverbNode) {
+  constructor(audioCtx, buffers, spatialEngine, voiceGainNode, voiceReverbNode, musicDuckNode) {
     this.ctx = audioCtx;
     this.buffers = buffers; // Map: filePath → AudioBuffer
     this.spatial = spatialEngine;
     this.voiceGain = voiceGainNode;
     this.voiceReverb = voiceReverbNode; // shared ConvolverNode reverb send
+    this.musicDuck = musicDuckNode;     // sidechain duck gain node
     this.scheduledSources = [];
     this.activePanners = [];  // per-voice panners to disconnect on cleanup
   }
@@ -15,6 +16,7 @@ export default class VoiceScheduler {
   /**
    * Schedule all voices for a given phase.
    * Each voice gets its own PannerNode at a unique azimuth offset.
+   * Music is ducked during merged voice time ranges.
    */
   schedulePhase(phaseName) {
     this.stopAll();
@@ -23,6 +25,9 @@ export default class VoiceScheduler {
     if (!schedule) return;
 
     const now = this.ctx.currentTime;
+
+    // Collect voice time ranges for sidechain duck scheduling
+    const voiceRanges = [];
 
     for (const [voiceCategory, entries] of Object.entries(schedule)) {
       const basePos = this._getBasePosition(voiceCategory);
@@ -81,7 +86,46 @@ export default class VoiceScheduler {
         source.start(now + entry.delay);
         this.scheduledSources.push(source);
         this.activePanners.push(pannerKey);
+
+        // Track voice time range for duck scheduling
+        voiceRanges.push({
+          start: entry.delay,
+          end: entry.delay + buffer.duration,
+        });
       }
+    }
+
+    // Schedule sidechain ducking on merged voice ranges
+    this._scheduleDuck(now, voiceRanges);
+  }
+
+  /**
+   * Merge overlapping voice ranges and schedule duck/release on musicDuck node.
+   * Prevents pumping when voices overlap.
+   */
+  _scheduleDuck(now, ranges) {
+    if (!this.musicDuck || ranges.length === 0) return;
+
+    // Sort by start time
+    ranges.sort((a, b) => a.start - b.start);
+
+    // Merge overlapping ranges (with 0.3s grace period to avoid brief unducks)
+    const merged = [];
+    for (const r of ranges) {
+      const last = merged[merged.length - 1];
+      if (last && r.start <= last.end + 0.3) {
+        last.end = Math.max(last.end, r.end);
+      } else {
+        merged.push({ start: r.start, end: r.end });
+      }
+    }
+
+    // Schedule duck at merged range start, release at end
+    for (const range of merged) {
+      // Duck: gain → 0.35 (~-9 dB) with 100ms attack (time constant ~33ms)
+      this.musicDuck.gain.setTargetAtTime(0.35, now + range.start, 0.033);
+      // Release: gain → 1.0 with 300ms release (time constant ~100ms)
+      this.musicDuck.gain.setTargetAtTime(1.0, now + range.end, 0.1);
     }
   }
 
@@ -107,5 +151,11 @@ export default class VoiceScheduler {
       this.spatial.removePanner(key);
     }
     this.activePanners = [];
+
+    // Reset duck to neutral
+    if (this.musicDuck) {
+      this.musicDuck.gain.cancelScheduledValues(this.ctx.currentTime);
+      this.musicDuck.gain.setTargetAtTime(1.0, this.ctx.currentTime, 0.1);
+    }
   }
 }

@@ -63,11 +63,11 @@ export const VOICE_SPREAD = {
 
 // Per-category voice gain multipliers — compensate for HRTF distance attenuation
 export const VOICE_CATEGORY_GAINS = {
-  admirer: 1.0,     // reference level (distance 1.5m)
-  guide: 1.8,       // ~85-90% perceived vs admirer after distance atten
-  witness: 2.8,     // ~70-75% perceived vs admirer
-  whispers: 2.0,    // ~50-60% perceived vs admirer
-  fragments: 1.7,   // ~40-50% perceived vs admirer
+  admirer: 2.0,     // reference level (distance 1.5m)
+  guide: 3.5,       // ~85-90% perceived vs admirer after distance atten
+  witness: 5.0,     // ~70-75% perceived vs admirer
+  whispers: 3.5,    // ~50-60% perceived vs admirer
+  fragments: 3.0,   // ~40-50% perceived vs admirer
 };
 
 // Orbital motion for spatial sources
@@ -86,28 +86,28 @@ export const PHASE_PARAMS = {
     binauralBeat: [10, 10],
     binauralGain: [0, BINAURAL.GAIN],
     modDepth: [0, 0],
-    musicGain: [0.7, 0.7],  // crossfade handles 0→0.7 ramp; hold at 0.7 after
+    musicGain: [0, 0],        // no chamber music — demo plays via demoGain
     collectiveGain: [0, 0],
   },
   THRONE: {
     binauralBeat: [10, 10],
     binauralGain: [BINAURAL.GAIN, BINAURAL.GAIN],
     modDepth: [0, 0],
-    musicGain: [0.7, 0.7],
+    musicGain: [0, 0],        // still demo only
     collectiveGain: [0, 0],
   },
   ASCENT: {
     binauralBeat: [10, 6],
     binauralGain: [BINAURAL.GAIN, BINAURAL.GAIN],
     modDepth: [0, 0.2],
-    musicGain: [0.7, 0.2],
+    musicGain: [0, 0.2],      // chamber track fades in as demo fades out
     collectiveGain: [0, 0.5],
   },
   DISSOLUTION: {
     binauralBeat: [6, 4],
     binauralGain: [BINAURAL.GAIN, BINAURAL.GAIN],
     modDepth: [0.2, 0.35],
-    musicGain: [0.2, 0],
+    musicGain: [0.12, 0],     // quiet chamber fading to silence
     collectiveGain: [0.5, 0.8],
   },
   SILENCE: {

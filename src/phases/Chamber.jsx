@@ -110,13 +110,14 @@ export default function Chamber({ avd }) {
     const collective = collectiveRef.current;
     audioEngine.init(collective.mean);
 
-    // 6. Create voice scheduler (with reverb send for externalization)
+    // 6. Create voice scheduler (with reverb send + music duck for sidechain)
     const voiceScheduler = new VoiceScheduler(
       audioContext,
       audioEngine.buffers,
       audioEngine.spatial,
       audioEngine.voiceGain,
-      audioEngine.voiceReverb
+      audioEngine.voiceReverb,
+      audioEngine.musicDuck
     );
     voiceSchedulerRef.current = voiceScheduler;
 
@@ -131,6 +132,8 @@ export default function Chamber({ avd }) {
       voiceScheduler.schedulePhase(newPhase);
 
       if (newPhase === 'ascent') {
+        audioEngine.crossfadeDemoToCollective(60);
+        audioEngine.startMusic(trackPath);
         audioEngine.startAmbient();
         audioEngine.startCollectiveTrack();
         audioEngine.setTextureGain(0.25);
@@ -145,10 +148,8 @@ export default function Chamber({ avd }) {
       }
     });
 
-    // 8. Start demo track + chamber music with crossfade
+    // 8. Start demo track (plays through INTRO + THRONE, crossfades during ASCENT)
     audioEngine.startDemoTrack(DEMO_TRACK);
-    audioEngine.startMusic(trackPath);
-    audioEngine.crossfadeToChamber(10);
 
     // 9. Go live
     setView('experience');
