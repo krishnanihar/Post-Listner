@@ -121,6 +121,9 @@ export default function Chamber({ avd }) {
     );
     voiceSchedulerRef.current = voiceScheduler;
 
+    // Schedule INTRO voices immediately (onPhaseChange doesn't fire for initial phase)
+    voiceScheduler.schedulePhase('intro');
+
     // 7. Set up phase manager
     const phaseManager = new PhaseManager();
     phaseManagerRef.current = phaseManager;
@@ -131,10 +134,13 @@ export default function Chamber({ avd }) {
 
       voiceScheduler.schedulePhase(newPhase);
 
+      if (newPhase === 'throne') {
+        audioEngine.startAmbient();
+      }
+
       if (newPhase === 'ascent') {
         audioEngine.crossfadeDemoToCollective(60);
         audioEngine.startMusic(trackPath);
-        audioEngine.startAmbient();
         audioEngine.startCollectiveTrack();
         audioEngine.setTextureGain(0.25);
       }

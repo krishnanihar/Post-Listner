@@ -3,16 +3,22 @@
  * Delay is seconds from phase start.
  */
 export const VOICE_SCHEDULE = {
+  intro: {
+    admirer: [
+      { file: '/voices/admirer/admirer-01-dark.mp3', delay: 12 },
+      { file: '/voices/admirer/admirer-02-phone.mp3', delay: 25 },
+      { file: '/voices/admirer/admirer-03-begin.mp3', delay: 30 },
+    ],
+  },
   throne: {
     admirer: [
-      { file: '/voices/admirer/admirer-01-dark.mp3', delay: 5 },
-      { file: '/voices/admirer/admirer-02-phone.mp3', delay: 18 },
-      { file: '/voices/admirer/admirer-03-begin.mp3', delay: 32 },
-      { file: '/voices/admirer/admirer-04-listen.mp3', delay: 48 },
-      { file: '/voices/admirer/admirer-05-moved.mp3', delay: 62 },
-      { file: '/voices/admirer/admirer-06-texture.mp3', delay: 78 },
-      { file: '/voices/admirer/admirer-07-noteveryone.mp3', delay: 92 },
-      { file: '/voices/admirer/admirer-08-belongs.mp3', delay: 108 },
+      { file: '/voices/admirer/admirer-04-listen.mp3', delay: 5 },
+      { file: '/voices/admirer/admirer-05-moved.mp3', delay: 20 },
+      { file: '/voices/admirer/admirer-06-texture.mp3', delay: 38 },
+      { file: '/voices/admirer/admirer-07-noteveryone.mp3', delay: 58 },
+      { file: '/voices/admirer/admirer-08-belongs.mp3', delay: 78 },
+      { file: '/voices/admirer/admirer-09-weight.mp3', delay: 95 },
+      { file: '/voices/admirer/admirer-10-room.mp3', delay: 108 },
     ],
   },
   ascent: {
@@ -53,10 +59,10 @@ export const VOICE_SCHEDULE = {
       { file: '/voices/witness/witness-04-always.mp3', delay: 170 },
     ],
     whispers: [
-      { file: '/whispers/whisper-dissolving.mp3', delay: 40 },
-      { file: '/whispers/whisper-everyone.mp3', delay: 80 },
-      { file: '/whispers/whisper-where.mp3', delay: 110 },
-      { file: '/whispers/whisper-still.mp3', delay: 140 },
+      { file: '/whispers/whisper-where.mp3', delay: 40 },
+      { file: '/whispers/whisper-still.mp3', delay: 80 },
+      { file: '/whispers/whisper-dissolving.mp3', delay: 110 },
+      { file: '/whispers/whisper-everyone.mp3', delay: 140 },
       { file: '/whispers/whisper-always.mp3', delay: 180 },
     ],
     fragments: [
