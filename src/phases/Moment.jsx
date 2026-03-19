@@ -89,7 +89,7 @@ export default function Moment({ onNext, avd, inputMode }) {
     })
 
     // Use pre-generated demo track instead of ElevenLabs API
-    const musicPromise = Promise.resolve('/pldemo.mp3')
+    const musicPromise = Promise.resolve('/chamber/tracks/track-a.mp3')
 
     // Implode animation then advance
     setTimeout(() => {

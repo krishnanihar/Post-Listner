@@ -148,7 +148,7 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef }) {
     setStage('computing')
     setLoadingMessage(LOADING_MESSAGES[0].text)
     computeStartRef.current = Date.now()
-    const newPromise = Promise.resolve('/pldemo.mp3')
+    const newPromise = Promise.resolve('/chamber/tracks/track-a.mp3')
     awaitAndPlay(newPromise)
   }, [avd, awaitAndPlay])
 
