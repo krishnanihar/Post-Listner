@@ -540,23 +540,8 @@ export default function RevealVisualizer({ avd, stage, audioElement }) {
     }
   }, [avd])
 
-  // Connect audio analyser when audioElement becomes available
-  useEffect(() => {
-    if (!audioElement || connectedElementRef.current === audioElement) return
-
-    try {
-      // Clean up previous
-      if (audioCtxRef.current) {
-        audioCtxRef.current.close().catch(() => {})
-      }
-      const { analyser, audioCtx } = connectAnalyser(audioElement)
-      analyserRef.current = analyser
-      audioCtxRef.current = audioCtx
-      connectedElementRef.current = audioElement
-    } catch (e) {
-      console.warn('RevealVisualizer: could not connect audio analyser', e)
-    }
-  }, [audioElement])
+  // Audio analyser removed — Orchestra owns the MediaElementSource.
+  // Visualization renders from AVD data without audio reactivity.
 
   // Main render loop
   useEffect(() => {

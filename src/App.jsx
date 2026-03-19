@@ -7,12 +7,12 @@ import Textures from './phases/Textures'
 import Moment from './phases/Moment'
 import Reveal from './phases/Reveal'
 import Result from './phases/Result'
-import Chamber from './phases/Chamber'
+import Orchestra from './phases/Orchestra'
 import TraceCanvas from './components/TraceCanvas'
 import { avdEngine } from './engine/avd'
 import { useInputMode } from './hooks/useInputMode'
 
-const PHASES = ['entry', 'spectrum', 'depth', 'textures', 'moment', 'reveal', 'result', 'chamber']
+const PHASES = ['entry', 'spectrum', 'depth', 'textures', 'moment', 'reveal', 'result', 'orchestra']
 
 function App() {
   const [phase, setPhase] = useState('entry')
@@ -20,6 +20,7 @@ function App() {
   const inputMode = useInputMode()
 
   const musicPromiseRef = useRef(null)
+  const revealAudioRef = useRef(null)
 
   const nextPhase = useCallback((data = {}) => {
     const { musicPromise, ...rest } = data
@@ -39,9 +40,9 @@ function App() {
     depth: <DepthDial onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
     textures: <Textures onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
     moment: <Moment onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
-    reveal: <Reveal onNext={nextPhase} avd={avdEngine} sessionData={{ ...sessionData, musicPromise: musicPromiseRef.current }} goToPhase={goToPhase} />,
+    reveal: <Reveal onNext={nextPhase} avd={avdEngine} sessionData={{ ...sessionData, musicPromise: musicPromiseRef.current }} goToPhase={goToPhase} revealAudioRef={revealAudioRef} />,
     result: <Result avd={avdEngine} sessionData={sessionData} onNext={nextPhase} />,
-    chamber: <Chamber avd={avdEngine} />,
+    orchestra: <Orchestra avd={avdEngine} revealAudioRef={revealAudioRef} goToPhase={goToPhase} />,
   }
 
   return (

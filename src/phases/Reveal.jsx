@@ -21,7 +21,7 @@ const LOADING_MESSAGES = [
   { at: 50, text: 'crafting the final notes...' },
 ]
 
-export default function Reveal({ onNext, avd, sessionData, goToPhase }) {
+export default function Reveal({ onNext, avd, sessionData, goToPhase, revealAudioRef }) {
   const [stage, setStage] = useState('computing')
   // stages: computing | error | playing | reveal | choices
 
@@ -36,17 +36,12 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase }) {
   const loadingTimerRef = useRef(null)
   const computeStartRef = useRef(Date.now())
 
-  // Cleanup on unmount
+  // Cleanup on unmount — audio lifecycle owned by App.jsx via revealAudioRef
   useEffect(() => {
     return () => {
       clearInterval(loadingTimerRef.current)
-      if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current = null
-      }
-      if (audioUrlRef.current) {
-        URL.revokeObjectURL(audioUrlRef.current)
-      }
+      // Don't pause or null audio — it persists into Orchestra
+      // Don't revoke URL — audio element still needs it
     }
   }, [])
 
@@ -76,7 +71,9 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase }) {
       // Create audio element and play
       const audio = new Audio(audioUrl)
       audio.volume = 0.8
+      audio.loop = true
       audioRef.current = audio
+      if (revealAudioRef) revealAudioRef.current = audio
 
       await audio.play()
       setStage('playing')
@@ -135,7 +132,7 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase }) {
   }, [])
 
   const handleShowMe = useCallback(() => {
-    if (audioRef.current) audioRef.current.pause()
+    // Song keeps playing — Orchestra will take ownership
     onNext({ revealChoice: 'show_me' })
   }, [onNext])
 
