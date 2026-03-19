@@ -22,6 +22,7 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase }) {
   const lastRef = useRef(null)
   const returnTonePlayed = useRef(false)
   const wakeLockRef = useRef(null)
+  const songConnectedRef = useRef(false)
 
   // ─── Initialize on mount ──────────────────────────────────────────────────
 
@@ -39,9 +40,12 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase }) {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
       audioCtxRef.current = audioCtx
 
-      // Resume if suspended (iOS)
-      if (audioCtx.state === 'suspended') {
+      // Try to resume — may fail without user gesture on Android/iOS, that's OK
+      // We'll resume again on user interaction
+      try {
         await audioCtx.resume()
+      } catch (e) {
+        console.warn('Orchestra: AudioContext resume deferred to user gesture')
       }
 
       // Create and initialize ConductingEngine
@@ -60,6 +64,17 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase }) {
 
       // Initialize audio graph
       engine.init()
+
+      // Connect song EARLY — createMediaElementSource works even when suspended.
+      // This re-routes the audio element through the Web Audio graph immediately,
+      // so when the context resumes, audio flows through our processing chain.
+      // Until resumed, the audio element is silenced (routed through suspended ctx).
+      try {
+        engine.connectSong(revealAudioRef.current)
+        songConnectedRef.current = true
+      } catch (e) {
+        console.error('Orchestra: connectSong failed', e)
+      }
 
       // Create VoiceScheduler
       const scheduler = new VoiceScheduler(engine)
@@ -87,13 +102,35 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase }) {
       if (wakeLockRef.current) {
         wakeLockRef.current.release().catch(() => {})
       }
-      // Don't close AudioContext here — audio element may still be needed
+    }
+  }, [])
+
+  // ─── Resume AudioContext on any user interaction ──────────────────────────
+  // Android/iOS require a user gesture to resume AudioContext.
+  // We attach a one-time handler to resume on first tap anywhere in Orchestra.
+
+  useEffect(() => {
+    const resumeCtx = () => {
+      const ctx = audioCtxRef.current
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().then(() => {
+          console.log('Orchestra: AudioContext resumed via user gesture')
+        })
+      }
+    }
+
+    document.addEventListener('touchstart', resumeCtx, { once: true })
+    document.addEventListener('click', resumeCtx, { once: true })
+
+    return () => {
+      document.removeEventListener('touchstart', resumeCtx)
+      document.removeEventListener('click', resumeCtx)
     }
   }, [])
 
   // ─── Briefing complete → start experience ─────────────────────────────────
 
-  const handleBriefingComplete = useCallback(() => {
+  const handleBriefingComplete = useCallback(async () => {
     const engine = engineRef.current
     const conducting = conductingRef.current
     const scheduler = schedulerRef.current
@@ -101,13 +138,24 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase }) {
 
     if (!engine || !audioCtx) return
 
-    // Resume AudioContext if needed
+    // Ensure AudioContext is running
     if (audioCtx.state === 'suspended') {
-      audioCtx.resume()
+      try {
+        await audioCtx.resume()
+      } catch (e) {
+        console.warn('Orchestra: could not resume AudioContext in briefingComplete')
+      }
     }
 
-    // Connect the song (creates MediaElementSource)
-    engine.connectSong(revealAudioRef.current)
+    // Connect song if not already connected during init
+    if (!songConnectedRef.current) {
+      try {
+        engine.connectSong(revealAudioRef.current)
+        songConnectedRef.current = true
+      } catch (e) {
+        console.error('Orchestra: connectSong failed', e)
+      }
+    }
 
     // Start conducting (motion listeners + calibration)
     if (conducting) conducting.start()
@@ -157,13 +205,13 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase }) {
       }
 
       // Update experience phase for React state
-      if (t >= STARTS.SILENCE && experiencePhase !== 'silence') {
+      if (t >= STARTS.SILENCE) {
         setExperiencePhase('silence')
-      } else if (t >= STARTS.DISSOLUTION && experiencePhase !== 'dissolution') {
+      } else if (t >= STARTS.DISSOLUTION) {
         setExperiencePhase('dissolution')
-      } else if (t >= STARTS.ASCENT && experiencePhase !== 'ascent') {
+      } else if (t >= STARTS.ASCENT) {
         setExperiencePhase('ascent')
-      } else if (t >= STARTS.THRONE && experiencePhase !== 'throne') {
+      } else if (t >= STARTS.THRONE) {
         setExperiencePhase('throne')
       }
 
@@ -188,7 +236,7 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase }) {
     }
 
     rafRef.current = requestAnimationFrame(tick)
-  }, [avd, revealAudioRef, experiencePhase])
+  }, [avd, revealAudioRef])
 
   // ─── Return handler ───────────────────────────────────────────────────────
 
