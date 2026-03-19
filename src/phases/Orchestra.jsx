@@ -65,16 +65,8 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase }) {
       // Initialize audio graph
       engine.init()
 
-      // Connect song EARLY — createMediaElementSource works even when suspended.
-      // This re-routes the audio element through the Web Audio graph immediately,
-      // so when the context resumes, audio flows through our processing chain.
-      // Until resumed, the audio element is silenced (routed through suspended ctx).
-      try {
-        engine.connectSong(revealAudioRef.current)
-        songConnectedRef.current = true
-      } catch (e) {
-        console.error('Orchestra: connectSong failed', e)
-      }
+      // Don't connect song here — wait for user gesture in handleBriefingComplete
+      // so AudioContext can be resumed first (required on Android/iOS)
 
       // Create VoiceScheduler
       const scheduler = new VoiceScheduler(engine)
@@ -138,17 +130,15 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase }) {
 
     if (!engine || !audioCtx) return
 
-    // Ensure AudioContext is running
-    if (audioCtx.state === 'suspended') {
-      try {
-        await audioCtx.resume()
-      } catch (e) {
-        console.warn('Orchestra: could not resume AudioContext in briefingComplete')
-      }
+    // CRITICAL: Resume AudioContext — this is called from a user tap ("begin" button)
+    // which satisfies Android/iOS autoplay policy
+    if (audioCtx.state !== 'running') {
+      await audioCtx.resume()
     }
 
-    // Connect song if not already connected during init
-    if (!songConnectedRef.current) {
+    // Connect the song AFTER AudioContext is running
+    // createMediaElementSource redirects the audio element through our Web Audio graph
+    if (!songConnectedRef.current && revealAudioRef.current) {
       try {
         engine.connectSong(revealAudioRef.current)
         songConnectedRef.current = true

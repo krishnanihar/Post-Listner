@@ -8,8 +8,6 @@ const BRIEFING_LINES = [
 ]
 
 const LINE_DURATION = 3 // seconds per line
-const HOLD_AFTER_LAST = 3 // seconds to hold after last line
-const DIM_DURATION = 4 // seconds for screen to dim
 
 // Conductor silhouette SVG — minimal amber-stroke figure from behind, arm raised
 function ConductorSVG() {
@@ -75,32 +73,36 @@ function ConductorSVG() {
 
 export default function BriefingScreen({ onComplete }) {
   const [visibleLines, setVisibleLines] = useState(0)
+  const [showBegin, setShowBegin] = useState(false)
   const [dimming, setDimming] = useState(false)
   const completedRef = useRef(false)
 
+  // Show lines one at a time, then show "begin" button
   useEffect(() => {
     const timers = []
-
-    // Show lines one at a time
     for (let i = 0; i < BRIEFING_LINES.length; i++) {
       timers.push(setTimeout(() => setVisibleLines(i + 1), i * LINE_DURATION * 1000))
     }
+    // Show begin button after all lines
+    const showAt = BRIEFING_LINES.length * LINE_DURATION + 2
+    timers.push(setTimeout(() => setShowBegin(true), showAt * 1000))
+    return () => timers.forEach(clearTimeout)
+  }, [])
 
-    // Start dimming after last line + hold
-    const dimStart = BRIEFING_LINES.length * LINE_DURATION + HOLD_AFTER_LAST
-    timers.push(setTimeout(() => setDimming(true), dimStart * 1000))
+  // User taps "begin" — this is the critical user gesture for AudioContext
+  const handleBegin = () => {
+    if (completedRef.current) return
+    setShowBegin(false)
+    setDimming(true)
 
-    // Complete after dim finishes
-    const totalTime = dimStart + DIM_DURATION
-    timers.push(setTimeout(() => {
+    // Dim to black over 3s, then complete
+    setTimeout(() => {
       if (!completedRef.current) {
         completedRef.current = true
         onComplete()
       }
-    }, totalTime * 1000))
-
-    return () => timers.forEach(clearTimeout)
-  }, [onComplete])
+    }, 3000)
+  }
 
   return (
     <div
@@ -137,6 +139,31 @@ export default function BriefingScreen({ onComplete }) {
         ))}
       </div>
 
+      {/* Begin button — user tap activates AudioContext on Android */}
+      {showBegin && !dimming && (
+        <motion.button
+          className="font-serif"
+          style={{
+            position: 'absolute',
+            bottom: 'max(80px, calc(24px + env(safe-area-inset-bottom, 0px)))',
+            fontSize: '16px',
+            color: 'var(--accent)',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '16px 32px',
+            minHeight: '44px',
+          }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 1 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={handleBegin}
+        >
+          begin
+        </motion.button>
+      )}
+
       {/* Dim overlay */}
       <motion.div
         style={{
@@ -147,7 +174,7 @@ export default function BriefingScreen({ onComplete }) {
         }}
         initial={{ opacity: 0 }}
         animate={{ opacity: dimming ? 1 : 0 }}
-        transition={{ duration: DIM_DURATION, ease: 'easeIn' }}
+        transition={{ duration: 3, ease: 'easeIn' }}
       />
     </div>
   )
