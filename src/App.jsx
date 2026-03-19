@@ -6,13 +6,13 @@ import DepthDial from './phases/DepthDial'
 import Textures from './phases/Textures'
 import Moment from './phases/Moment'
 import Reveal from './phases/Reveal'
-import Result from './phases/Result'
 import Orchestra from './phases/Orchestra'
 import TraceCanvas from './components/TraceCanvas'
 import { avdEngine } from './engine/avd'
+import { audioEngine } from './engine/audio'
 import { useInputMode } from './hooks/useInputMode'
 
-const PHASES = ['entry', 'spectrum', 'depth', 'textures', 'moment', 'reveal', 'result', 'orchestra']
+const PHASES = ['entry', 'spectrum', 'depth', 'textures', 'moment', 'reveal', 'orchestra']
 
 function App() {
   const [phase, setPhase] = useState('entry')
@@ -34,15 +34,17 @@ function App() {
 
   const goToPhase = useCallback((p) => setPhase(p), [])
 
+  // audioEngine.ctx is created and resumed during Entry tap — reuse it for Orchestra
+  const getAudioCtx = useCallback(() => audioEngine.ctx, [])
+
   const phaseComponent = {
     entry: <Entry onNext={nextPhase} />,
     spectrum: <Spectrum onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
     depth: <DepthDial onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
     textures: <Textures onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
     moment: <Moment onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
-    reveal: <Reveal onNext={nextPhase} avd={avdEngine} sessionData={{ ...sessionData, musicPromise: musicPromiseRef.current }} goToPhase={goToPhase} revealAudioRef={revealAudioRef} />,
-    result: <Result avd={avdEngine} sessionData={sessionData} onNext={nextPhase} />,
-    orchestra: <Orchestra avd={avdEngine} revealAudioRef={revealAudioRef} goToPhase={goToPhase} />,
+    reveal: <Reveal onNext={nextPhase} avd={avdEngine} sessionData={{ ...sessionData, musicPromise: musicPromiseRef.current }} revealAudioRef={revealAudioRef} />,
+    orchestra: <Orchestra avd={avdEngine} revealAudioRef={revealAudioRef} goToPhase={goToPhase} getAudioCtx={getAudioCtx} />,
   }
 
   return (

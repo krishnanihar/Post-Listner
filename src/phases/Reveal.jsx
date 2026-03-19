@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-// ElevenLabs API disabled — using pre-generated track instead
-// import { generateMusic, generateMusicWithPlan } from '../engine/elevenlabs'
 import RevealVisualizer from '../components/RevealVisualizer'
 
 const REVEAL_LINES = [
@@ -12,7 +10,6 @@ const REVEAL_LINES = [
   'the only human in this composition was you',
 ]
 
-// Evolving loading messages during generation wait
 const LOADING_MESSAGES = [
   { at: 0,  text: 'finding you...' },
   { at: 8,  text: 'translating your choices...' },
@@ -21,9 +18,9 @@ const LOADING_MESSAGES = [
   { at: 50, text: 'crafting the final notes...' },
 ]
 
-export default function Reveal({ onNext, avd, sessionData, goToPhase, revealAudioRef }) {
+export default function Reveal({ onNext, avd, sessionData, revealAudioRef }) {
   const [stage, setStage] = useState('computing')
-  // stages: computing | error | playing | reveal | choices
+  // stages: computing | error | playing | reveal
 
   const [loadingMessage, setLoadingMessage] = useState(LOADING_MESSAGES[0].text)
   const [visibleLines, setVisibleLines] = useState(0)
@@ -31,44 +28,62 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase, revealAudi
   const [errorMessage, setErrorMessage] = useState('')
   const [isRetrying, setIsRetrying] = useState(false)
 
-  const audioRef = useRef(null)    // HTMLAudioElement for ElevenLabs track
-  const audioUrlRef = useRef(null) // object URL to revoke on unmount
+  const audioRef = useRef(null)
+  const audioUrlRef = useRef(null)
   const loadingTimerRef = useRef(null)
   const computeStartRef = useRef(Date.now())
+  const advancedRef = useRef(false)
 
-  // Cleanup on unmount — audio lifecycle owned by App.jsx via revealAudioRef
+  // Cleanup on unmount — audio persists into Orchestra via revealAudioRef
   useEffect(() => {
     return () => {
       clearInterval(loadingTimerRef.current)
-      // Don't pause or null audio — it persists into Orchestra
-      // Don't revoke URL — audio element still needs it
     }
   }, [])
 
-  // Evolving loading messages based on elapsed time
+  // Evolving loading messages
   useEffect(() => {
     if (stage !== 'computing') return
-
     loadingTimerRef.current = setInterval(() => {
       const elapsed = (Date.now() - computeStartRef.current) / 1000
-      // Find the most recent message whose `at` time has passed
-      const current = [...LOADING_MESSAGES]
-        .reverse()
-        .find(m => elapsed >= m.at)
+      const current = [...LOADING_MESSAGES].reverse().find(m => elapsed >= m.at)
       if (current) setLoadingMessage(current.text)
     }, 500)
-
     return () => clearInterval(loadingTimerRef.current)
   }, [stage])
 
-  // Await the music promise passed from Moment
+  // Auto-advance to Orchestra after reveal lines finish
+  const autoAdvance = useCallback(() => {
+    if (advancedRef.current) return
+    advancedRef.current = true
+
+    // Save session data to localStorage (moved from Result.jsx)
+    const currentAVD = avd.getAVD()
+    const session = {
+      sessionId: crypto.randomUUID?.() || Math.random().toString(36).slice(2),
+      timestamp: new Date().toISOString(),
+      avd: currentAVD,
+      phases: avd.getPhaseData(),
+      selectedTrack: 'procedural',
+      sunoPrompt: avd.getPrompt(),
+    }
+    try {
+      localStorage.setItem('postlistener_session', JSON.stringify(session))
+      const sessions = JSON.parse(localStorage.getItem('postlistener_sessions') || '[]')
+      sessions.push(session)
+      localStorage.setItem('postlistener_sessions', JSON.stringify(sessions))
+    } catch (e) { /* localStorage full or unavailable */ }
+
+    onNext()
+  }, [onNext, avd])
+
+  // Await music promise and play
   const awaitAndPlay = useCallback(async (promise) => {
     try {
       const audioUrl = await promise
       clearInterval(loadingTimerRef.current)
       audioUrlRef.current = audioUrl
 
-      // Create audio element and play
       const audio = new Audio(audioUrl)
       audio.volume = 0.8
       audio.loop = true
@@ -78,37 +93,35 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase, revealAudi
       await audio.play()
       setStage('playing')
 
-      // After track ends (or after 65s ceiling), begin reveal
+      // Begin reveal when track reaches its natural end (first play-through)
       const beginReveal = () => {
         setStage('reveal')
         REVEAL_LINES.forEach((_, i) => {
           setTimeout(() => setVisibleLines(i + 1), i * 1500)
         })
-        setTimeout(() => setStage('choices'), REVEAL_LINES.length * 1500 + 3000)
+        // After all lines shown + 3s hold → auto-advance to Orchestra
+        const totalRevealTime = REVEAL_LINES.length * 1500 + 3000
+        setTimeout(autoAdvance, totalRevealTime)
       }
 
-      // With loop=true, 'ended' never fires. Instead, detect first loop point
-      // by watching currentTime cross the duration boundary.
+      // Detect first play-through completion (loop=true means 'ended' never fires)
       let revealTriggered = false
       const checkLoop = () => {
         if (revealTriggered) return
-        if (audio.duration && audio.currentTime < 2 && audio.played.length > 0) {
-          // Track has looped (currentTime reset near 0 after playing)
+        if (audio.duration && audio.currentTime >= audio.duration - 0.5) {
           revealTriggered = true
           beginReveal()
           return
         }
-        // Also trigger when track reaches its natural end point (first play-through)
-        if (audio.duration && audio.currentTime >= audio.duration - 0.5) {
+        if (audio.duration && audio.currentTime < 2 && audio.played.length > 0) {
           revealTriggered = true
           beginReveal()
           return
         }
         requestAnimationFrame(checkLoop)
       }
-      // Start checking after a brief delay (need duration to be known)
       setTimeout(() => requestAnimationFrame(checkLoop), 1000)
-      // Safety ceiling: 65s max wait
+      // Safety ceiling
       setTimeout(() => { if (!revealTriggered) { revealTriggered = true; beginReveal() } }, 65000)
 
     } catch (err) {
@@ -118,60 +131,39 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase, revealAudi
       setStage('error')
       setIsRetrying(false)
     }
-  }, [])
+  }, [autoAdvance, revealAudioRef])
 
-  // Initial: await the promise from sessionData
   useEffect(() => {
     const promise = sessionData?.musicPromise
     if (!promise) {
-      // No promise (shouldn't happen) — show error
       setErrorMessage('No music generation was initiated.')
       setStage('error')
       return
     }
     awaitAndPlay(promise)
-  }, []) // run once on mount
+  }, [])
 
-  // Retry: re-call ElevenLabs
   const handleRetry = useCallback(async () => {
     setIsRetrying(true)
     setStage('computing')
     setLoadingMessage(LOADING_MESSAGES[0].text)
     computeStartRef.current = Date.now()
-
     const newPromise = Promise.resolve('/pldemo.mp3')
     awaitAndPlay(newPromise)
   }, [avd, awaitAndPlay])
-
-  const handleReplay = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0
-      audioRef.current.play()
-      setStage('playing')
-    }
-  }, [])
-
-  const handleShowMe = useCallback(() => {
-    // Song keeps playing — Orchestra will take ownership
-    onNext({ revealChoice: 'show_me' })
-  }, [onNext])
 
   return (
     <div
       className="h-full w-full flex flex-col items-center justify-center select-none px-8"
       style={{ touchAction: 'manipulation', position: 'relative' }}
     >
-      {/* Visualizer — renders behind text in all stages */}
+      {/* Visualizer */}
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
-        <RevealVisualizer
-          avd={avd}
-          stage={stage}
-          audioElement={audioRef.current}
-        />
+        <RevealVisualizer avd={avd} stage={stage} audioElement={audioRef.current} />
       </div>
 
-      {/* COMPUTING stage */}
       <AnimatePresence mode="wait">
+        {/* COMPUTING */}
         {stage === 'computing' && (
           <motion.div
             key="computing"
@@ -192,22 +184,16 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase, revealAudi
             >
               {loadingMessage}
             </motion.span>
-
-            {/* Subtle amber pulse dot */}
             <motion.div
               className="rounded-full"
-              style={{
-                width: 6,
-                height: 6,
-                background: 'var(--accent)',
-              }}
+              style={{ width: 6, height: 6, background: 'var(--accent)' }}
               animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.2, 0.8] }}
               transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
             />
           </motion.div>
         )}
 
-        {/* ERROR stage */}
+        {/* ERROR */}
         {stage === 'error' && (
           <motion.div
             key="error"
@@ -218,45 +204,21 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase, revealAudi
             exit={{ opacity: 0 }}
             transition={{ duration: 0.8 }}
           >
-            <p
-              className="font-serif text-center"
-              style={{
-                fontSize: 'clamp(16px, 4vw, 22px)',
-                color: 'var(--text-dim)',
-                maxWidth: '320px',
-                lineHeight: 1.6,
-              }}
-            >
+            <p className="font-serif text-center" style={{ fontSize: 'clamp(16px, 4vw, 22px)', color: 'var(--text-dim)', maxWidth: '320px', lineHeight: 1.6 }}>
               {errorMessage}
             </p>
-
             <motion.button
               className="font-serif"
-              style={{
-                fontSize: '16px',
-                color: 'var(--accent)',
-                background: 'none',
-                border: 'none',
-                cursor: isRetrying ? 'not-allowed' : 'pointer',
-                padding: '12px 24px',
-                opacity: isRetrying ? 0.5 : 1,
-              }}
+              style={{ fontSize: '16px', color: 'var(--accent)', background: 'none', border: 'none', cursor: isRetrying ? 'not-allowed' : 'pointer', padding: '12px 24px', opacity: isRetrying ? 0.5 : 1 }}
               whileTap={{ scale: 0.97 }}
               onClick={isRetrying ? undefined : handleRetry}
             >
               {isRetrying ? 'retrying...' : 'try again'}
             </motion.button>
-
-            <p
-              className="font-mono text-center"
-              style={{ fontSize: '9px', color: 'var(--text-dim)' }}
-            >
-              check your connection and api key
-            </p>
           </motion.div>
         )}
 
-        {/* PLAYING stage */}
+        {/* PLAYING */}
         {stage === 'playing' && (
           <motion.div
             key="playing"
@@ -267,13 +229,9 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase, revealAudi
             exit={{ opacity: 0 }}
             transition={{ duration: 1 }}
           >
-            <p
-              className="font-serif"
-              style={{ fontSize: 'clamp(20px, 5vw, 28px)', color: 'var(--text)' }}
-            >
+            <p className="font-serif" style={{ fontSize: 'clamp(20px, 5vw, 28px)', color: 'var(--text)' }}>
               this is yours
             </p>
-
             <motion.div
               className="flex gap-8 justify-center mt-12 font-mono"
               style={{ fontSize: '12px', color: 'var(--accent)' }}
@@ -288,8 +246,8 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase, revealAudi
           </motion.div>
         )}
 
-        {/* REVEAL + CHOICES stages */}
-        {(stage === 'reveal' || stage === 'choices') && (
+        {/* REVEAL — lines appear, then auto-advance */}
+        {stage === 'reveal' && (
           <motion.div
             key="reveal"
             className="absolute inset-x-0 text-center px-8 max-w-sm mx-auto"
@@ -312,50 +270,6 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase, revealAudi
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* CHOICES — bottom buttons */}
-      {stage === 'choices' && (
-        <motion.div
-          className="absolute left-0 right-0 flex justify-between px-10"
-          style={{ zIndex: 1, bottom: 'max(64px, calc(24px + env(safe-area-inset-bottom, 0px)))' }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.8 }}
-        >
-          <motion.button
-            className="font-serif"
-            style={{
-              fontSize: '16px',
-              color: 'var(--accent)',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '12px',
-              minHeight: '44px',
-            }}
-            whileTap={{ scale: 0.95 }}
-            onClick={handleReplay}
-          >
-            hear it again
-          </motion.button>
-          <motion.button
-            className="font-serif"
-            style={{
-              fontSize: '16px',
-              color: 'var(--text)',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '12px',
-              minHeight: '44px',
-            }}
-            whileTap={{ scale: 0.95 }}
-            onClick={handleShowMe}
-          >
-            show me who I am
-          </motion.button>
-        </motion.div>
-      )}
     </div>
   )
 }

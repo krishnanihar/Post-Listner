@@ -8,10 +8,9 @@ import ReturnScreen from '../orchestra/ReturnScreen.jsx'
 import { getAllPaths } from '../orchestra/scripts.js'
 import { STARTS } from '../orchestra/constants.js'
 
-export default function Orchestra({ avd, revealAudioRef, goToPhase }) {
+export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx }) {
   const [phase, setPhase] = useState('loading') // loading | briefing | experience | return
   const [loadProgress, setLoadProgress] = useState(0)
-  const [experiencePhase, setExperiencePhase] = useState('bloom')
 
   const engineRef = useRef(null)
   const conductingRef = useRef(null)
@@ -22,7 +21,6 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase }) {
   const lastRef = useRef(null)
   const returnTonePlayed = useRef(false)
   const wakeLockRef = useRef(null)
-  const songConnectedRef = useRef(false)
 
   // ─── Initialize on mount ──────────────────────────────────────────────────
 
@@ -30,59 +28,55 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase }) {
     let cancelled = false
 
     async function init() {
-      // Verify audio element exists
       if (!revealAudioRef?.current) {
         console.error('Orchestra: no audio element from Reveal')
         return
       }
 
-      // Create AudioContext
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+      // Reuse the AudioContext created during Entry phase tap — already resumed
+      const audioCtx = getAudioCtx()
+      if (!audioCtx) {
+        console.error('Orchestra: no AudioContext available')
+        return
+      }
       audioCtxRef.current = audioCtx
 
-      // Try to resume — may fail without user gesture on Android/iOS, that's OK
-      // We'll resume again on user interaction
-      try {
+      // Ensure it's running (it should be from the Entry tap)
+      if (audioCtx.state === 'suspended') {
         await audioCtx.resume()
-      } catch (e) {
-        console.warn('Orchestra: AudioContext resume deferred to user gesture')
       }
 
-      // Create and initialize ConductingEngine
+      // ConductingEngine
       const conducting = new ConductingEngine()
       conductingRef.current = conducting
       await conducting.requestPermission()
 
-      // Create OrchestraEngine and preload
+      // OrchestraEngine — preload and init
       const engine = new OrchestraEngine(audioCtx)
       engineRef.current = engine
 
-      const paths = getAllPaths()
-      await engine.preloadAll(paths, (progress) => {
+      await engine.preloadAll(getAllPaths(), (progress) => {
         if (!cancelled) setLoadProgress(progress)
       })
 
-      // Initialize audio graph
       engine.init()
 
-      // Don't connect song here — wait for user gesture in handleBriefingComplete
-      // so AudioContext can be resumed first (required on Android/iOS)
-
-      // Create VoiceScheduler
-      const scheduler = new VoiceScheduler(engine)
-      schedulerRef.current = scheduler
-
-      if (!cancelled) {
-        setPhase('briefing')
+      // Connect song immediately — AudioContext is already running from Entry tap
+      try {
+        engine.connectSong(revealAudioRef.current)
+      } catch (e) {
+        console.error('Orchestra: connectSong failed', e)
       }
+
+      // VoiceScheduler
+      schedulerRef.current = new VoiceScheduler(engine)
+
+      if (!cancelled) setPhase('briefing')
     }
 
     init()
-
-    return () => {
-      cancelled = true
-    }
-  }, [revealAudioRef])
+    return () => { cancelled = true }
+  }, [revealAudioRef, getAudioCtx])
 
   // ─── Cleanup on unmount ───────────────────────────────────────────────────
 
@@ -91,38 +85,13 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase }) {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       if (engineRef.current) engineRef.current.stopAll()
       if (conductingRef.current) conductingRef.current.stop()
-      if (wakeLockRef.current) {
-        wakeLockRef.current.release().catch(() => {})
-      }
+      if (wakeLockRef.current) wakeLockRef.current.release().catch(() => {})
     }
   }, [])
 
-  // ─── Resume AudioContext on any user interaction ──────────────────────────
-  // Android/iOS require a user gesture to resume AudioContext.
-  // We attach a one-time handler to resume on first tap anywhere in Orchestra.
+  // ─── Briefing complete → start experience (auto, no button) ───────────────
 
-  useEffect(() => {
-    const resumeCtx = () => {
-      const ctx = audioCtxRef.current
-      if (ctx && ctx.state === 'suspended') {
-        ctx.resume().then(() => {
-          console.log('Orchestra: AudioContext resumed via user gesture')
-        })
-      }
-    }
-
-    document.addEventListener('touchstart', resumeCtx, { once: true })
-    document.addEventListener('click', resumeCtx, { once: true })
-
-    return () => {
-      document.removeEventListener('touchstart', resumeCtx)
-      document.removeEventListener('click', resumeCtx)
-    }
-  }, [])
-
-  // ─── Briefing complete → start experience ─────────────────────────────────
-
-  const handleBriefingComplete = useCallback(async () => {
+  const handleBriefingComplete = useCallback(() => {
     const engine = engineRef.current
     const conducting = conductingRef.current
     const scheduler = schedulerRef.current
@@ -130,43 +99,25 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase }) {
 
     if (!engine || !audioCtx) return
 
-    // CRITICAL: Resume AudioContext — this is called from a user tap ("begin" button)
-    // which satisfies Android/iOS autoplay policy
-    if (audioCtx.state !== 'running') {
-      await audioCtx.resume()
-    }
-
-    // Connect the song AFTER AudioContext is running
-    // createMediaElementSource redirects the audio element through our Web Audio graph
-    if (!songConnectedRef.current && revealAudioRef.current) {
-      try {
-        engine.connectSong(revealAudioRef.current)
-        songConnectedRef.current = true
-      } catch (e) {
-        console.error('Orchestra: connectSong failed', e)
-      }
-    }
-
-    // Start conducting (motion listeners + calibration)
+    // Start conducting
     if (conducting) conducting.start()
 
     // Start audience ambient
     engine.startAudience()
 
-    // Schedule all voices and ovation
-    const experienceStart = audioCtx.currentTime
-    scheduler.scheduleAll(experienceStart)
+    // Schedule all voices
+    scheduler.scheduleAll(audioCtx.currentTime)
 
-    // Request wake lock
+    // Wake lock
     if (navigator.wakeLock) {
       navigator.wakeLock.request('screen')
         .then(lock => { wakeLockRef.current = lock })
         .catch(() => {})
     }
 
-    // Set phase and start rAF loop
     setPhase('experience')
 
+    // rAF loop
     const tick = (timestamp) => {
       if (!startRef.current) {
         startRef.current = timestamp
@@ -177,35 +128,19 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase }) {
       const dt = (timestamp - lastRef.current) / 1000
       lastRef.current = timestamp
 
-      // Absolute time from button press (30s briefing already happened)
-      const t = elapsed + 30
+      const t = elapsed + 30 // absolute time (30s briefing already happened)
 
-      // Update engine
       engine.tick(t, dt)
 
-      // Get conducting data and apply
       if (conducting) {
         const gesture = conducting.getData()
         engine.applyConducting(gesture)
-
-        // Haptic on downbeat
         if (gesture.downbeat.fired && navigator.vibrate) {
           navigator.vibrate(15)
         }
       }
 
-      // Update experience phase for React state
-      if (t >= STARTS.SILENCE) {
-        setExperiencePhase('silence')
-      } else if (t >= STARTS.DISSOLUTION) {
-        setExperiencePhase('dissolution')
-      } else if (t >= STARTS.ASCENT) {
-        setExperiencePhase('ascent')
-      } else if (t >= STARTS.THRONE) {
-        setExperiencePhase('throne')
-      }
-
-      // Return tone at ~9:55 (595s absolute)
+      // Return tone at ~9:55
       if (t >= 595 && !returnTonePlayed.current) {
         engine.playReturnTone(avd.getAVD().d)
         returnTonePlayed.current = true
@@ -214,10 +149,7 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase }) {
       // Transition to return at 600s
       if (t >= 600) {
         engine.stopAll()
-        // Stop the user's song
-        if (revealAudioRef.current) {
-          revealAudioRef.current.pause()
-        }
+        if (revealAudioRef.current) revealAudioRef.current.pause()
         setPhase('return')
         return
       }
@@ -228,20 +160,12 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase }) {
     rafRef.current = requestAnimationFrame(tick)
   }, [avd, revealAudioRef])
 
-  // ─── Return handler ───────────────────────────────────────────────────────
-
-  const handleReturn = useCallback(() => {
-    goToPhase('result')
-  }, [goToPhase])
-
   // ─── Touch handlers (fallback conducting) ─────────────────────────────────
 
   const handleTouchMove = useCallback((e) => {
     if (!conductingRef.current) return
     const touch = e.touches[0]
-    const nx = touch.clientX / window.innerWidth
-    const ny = 1 - (touch.clientY / window.innerHeight)
-    conductingRef.current.updateTouch(nx, ny, true)
+    conductingRef.current.updateTouch(touch.clientX / window.innerWidth, 1 - touch.clientY / window.innerHeight, true)
   }, [])
 
   const handleTouchStart = useCallback(() => {
@@ -257,36 +181,19 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase }) {
   return (
     <div className="h-full w-full" style={{ background: '#000000' }}>
       <AnimatePresence mode="wait">
-        {/* LOADING */}
         {phase === 'loading' && (
           <motion.div
             key="loading"
             className="h-full w-full flex flex-col items-center justify-center"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <p
-              className="font-serif"
-              style={{ fontSize: '16px', color: 'var(--text-dim)', marginBottom: 24 }}
-            >
+            <p className="font-serif" style={{ fontSize: '16px', color: 'var(--text-dim)', marginBottom: 24 }}>
               preparing...
             </p>
-            <div
-              style={{
-                width: 120,
-                height: 2,
-                background: 'rgba(255,255,255,0.1)',
-                borderRadius: 1,
-              }}
-            >
+            <div style={{ width: 120, height: 2, background: 'rgba(255,255,255,0.1)', borderRadius: 1 }}>
               <motion.div
-                style={{
-                  height: '100%',
-                  background: 'var(--accent)',
-                  borderRadius: 1,
-                }}
+                style={{ height: '100%', background: 'var(--accent)', borderRadius: 1 }}
                 animate={{ width: `${loadProgress * 100}%` }}
                 transition={{ duration: 0.3 }}
               />
@@ -294,32 +201,19 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase }) {
           </motion.div>
         )}
 
-        {/* BRIEFING */}
         {phase === 'briefing' && (
-          <motion.div
-            key="briefing"
-            className="h-full w-full"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+          <motion.div key="briefing" className="h-full w-full"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <BriefingScreen onComplete={handleBriefingComplete} avd={avd} />
+            <BriefingScreen onComplete={handleBriefingComplete} />
           </motion.div>
         )}
 
-        {/* EXPERIENCE — pure black screen */}
         {phase === 'experience' && (
-          <motion.div
-            key="experience"
-            className="h-full w-full"
-            style={{
-              background: '#000000',
-              touchAction: 'none',
-            }}
-            initial={{ opacity: 1 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+          <motion.div key="experience" className="h-full w-full"
+            style={{ background: '#000000', touchAction: 'none' }}
+            initial={{ opacity: 1 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             transition={{ duration: 1 }}
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
@@ -327,16 +221,12 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase }) {
           />
         )}
 
-        {/* RETURN */}
         {phase === 'return' && (
-          <motion.div
-            key="return"
-            className="h-full w-full"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+          <motion.div key="return" className="h-full w-full"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             transition={{ duration: 3 }}
           >
-            <ReturnScreen avd={avd} onReturn={handleReturn} />
+            <ReturnScreen avd={avd} onReturn={() => goToPhase('reveal')} />
           </motion.div>
         )}
       </AnimatePresence>
