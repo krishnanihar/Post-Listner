@@ -87,9 +87,29 @@ export default function Reveal({ onNext, avd, sessionData, goToPhase, revealAudi
         setTimeout(() => setStage('choices'), REVEAL_LINES.length * 1500 + 3000)
       }
 
-      audio.addEventListener('ended', beginReveal)
-      // Safety ceiling: if track doesn't fire 'ended' after 65s, advance anyway
-      setTimeout(beginReveal, 65000)
+      // With loop=true, 'ended' never fires. Instead, detect first loop point
+      // by watching currentTime cross the duration boundary.
+      let revealTriggered = false
+      const checkLoop = () => {
+        if (revealTriggered) return
+        if (audio.duration && audio.currentTime < 2 && audio.played.length > 0) {
+          // Track has looped (currentTime reset near 0 after playing)
+          revealTriggered = true
+          beginReveal()
+          return
+        }
+        // Also trigger when track reaches its natural end point (first play-through)
+        if (audio.duration && audio.currentTime >= audio.duration - 0.5) {
+          revealTriggered = true
+          beginReveal()
+          return
+        }
+        requestAnimationFrame(checkLoop)
+      }
+      // Start checking after a brief delay (need duration to be known)
+      setTimeout(() => requestAnimationFrame(checkLoop), 1000)
+      // Safety ceiling: 65s max wait
+      setTimeout(() => { if (!revealTriggered) { revealTriggered = true; beginReveal() } }, 65000)
 
     } catch (err) {
       clearInterval(loadingTimerRef.current)
