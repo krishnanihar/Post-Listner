@@ -83,7 +83,7 @@ export const ORBITAL = {
 // Conducting gesture parameters
 export const CONDUCTING = {
   // Downbeat detection
-  DOWNBEAT_ACCEL_THRESHOLD: 3.0,    // m/s² — minimum Y acceleration spike to qualify as downbeat
+  DOWNBEAT_ACCEL_THRESHOLD: 2.0,    // m/s² — minimum Y acceleration spike to qualify as downbeat
   DOWNBEAT_MIN_INTERVAL_MS: 250,    // ms — minimum time between downbeats (~240 BPM max)
   DOWNBEAT_WINDOW_MS: 150,          // ms — sliding window for zero-crossing detection
   DOWNBEAT_GAIN_SPIKE_MIN: 1.3,     // multiplier on current gain for weakest qualifying downbeat
@@ -101,7 +101,7 @@ export const CONDUCTING = {
   GESTURE_SIZE_GAIN_MIN: 0.15,      // minimum music gain (near-silence when still)
   GESTURE_SIZE_GAIN_MAX: 1.0,       // maximum music gain (full volume on big gestures)
   GESTURE_SIZE_SMOOTHING_TC: 0.5,   // seconds — smoothing time constant for dynamics
-  GESTURE_SIZE_RANGE: 8.0,          // m/s² — acceleration range that maps to full gain (0 to this value)
+  GESTURE_SIZE_RANGE: 5.0,          // m/s² — acceleration range that maps to full gain (0 to this value)
 
   // Articulation (jerk → filter resonance)
   ARTICULATION_Q_BASE: 1,           // resting Q

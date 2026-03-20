@@ -14,9 +14,9 @@ export const TOTAL_DURATION = 630 // 10:30
 
 // Track A (user's song) — 3-band frequency split
 export const SECTIONS = {
-  LOW: { cutoff: 250, type: 'lowpass', azimuth: -30, elevation: -5 },
-  MID: { cutoffLow: 250, cutoffHigh: 2500, azimuth: 0, elevation: 0 },
-  HIGH: { cutoff: 2500, type: 'highpass', azimuth: 30, elevation: 5 },
+  LOW:  { cutoff: 250, type: 'lowpass',  azimuth: -55, elevation: -10, distance: 2.5 },
+  MID:  { cutoffLow: 250, cutoffHigh: 2500, azimuth: 0, elevation: 5, distance: 2.0 },
+  HIGH: { cutoff: 2500, type: 'highpass', azimuth: 55, elevation: 15, distance: 2.0 },
 }
 
 // Per-section coupling decay during Ascent (absolute times)

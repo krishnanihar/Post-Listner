@@ -116,10 +116,13 @@ const SFX_ENTRIES = [
 // ─── Track B prompt (Music API) ──────────────────────────────────────────────
 
 const TRACK_B_PROMPT =
-  'Slow ambient orchestral texture, reverberant strings and distant choir ' +
-  'blended into a single sustained wash, no melody, no rhythm, harmonic ' +
-  'movement between wide open chords, cathedral reverb, ethereal, vast, ' +
-  'the sound of music remembered not heard'
+  'Massive low drone building into overwhelming orchestral crescendo, ' +
+  'hundreds of layered human voices merged into a single infinite chord, ' +
+  'not singing but resonating as one, deep sub-bass swells underneath ' +
+  'like the earth breathing, enormous reverb as if inside a space larger ' +
+  'than any room, slowly evolving harmonic overtones shifting between ' +
+  'awe and surrender, no melody, no rhythm, no percussion, the sound ' +
+  'of ego dissolving into something vast and collective'
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 

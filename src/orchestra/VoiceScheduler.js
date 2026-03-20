@@ -1,5 +1,6 @@
 import { VOICES, WHISPERS, OVATION_FILE } from './scripts.js'
 import { GAINS } from './constants.js'
+import { VOICE_CATEGORY_GAINS } from '../chamber/utils/constants.js'
 
 /**
  * Schedules all voice and whisper playback at absolute timestamps.
@@ -26,7 +27,14 @@ export default class VoiceScheduler {
         continue
       }
       const playAt = offset + voice.time
-      const source = this.engine.scheduleVoice(buffer, playAt, { duck: voice.duck })
+      const categoryGain = VOICE_CATEGORY_GAINS[voice.category] || 1.0
+      const source = this.engine.scheduleVoice(buffer, playAt, {
+        duck: voice.duck,
+        azimuth: voice.azimuth,
+        elevation: voice.elevation,
+        distance: voice.distance,
+        gain: categoryGain,
+      })
       if (source) this.scheduledSources.push(source)
     }
 

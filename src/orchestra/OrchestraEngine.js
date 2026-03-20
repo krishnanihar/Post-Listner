@@ -186,7 +186,7 @@ export default class OrchestraEngine {
       section.panner.coneOuterAngle = 360
 
       // Set initial position
-      const pos = sphericalToCartesian(cfg.azimuth || 0, cfg.elevation || 0, 2)
+      const pos = sphericalToCartesian(cfg.azimuth || 0, cfg.elevation || 0, cfg.distance || 2)
       section.panner.positionX.value = pos.x
       section.panner.positionY.value = pos.y
       section.panner.positionZ.value = pos.z
@@ -195,16 +195,18 @@ export default class OrchestraEngine {
       const lastFilter = name === 'MID' ? section.filterLP : section.filter
       lastFilter.connect(section.gain)
       section.gain.connect(section.panner)
-      section.panner.connect(this.duckGain)
+      section.panner.connect(this.conductingFilter)
 
       this.sections[name] = section
     }
 
     // Conducting filter (shared, for filter cutoff control)
+    // All section panners → conductingFilter → duckGain
     this.conductingFilter = ctx.createBiquadFilter()
     this.conductingFilter.type = 'lowpass'
     this.conductingFilter.frequency.value = 4000
     this.conductingFilter.Q.value = 1
+    this.conductingFilter.connect(this.duckGain)
 
     // Track B nodes (source created on demand)
     this.trackBFilter = ctx.createBiquadFilter()
@@ -323,15 +325,17 @@ export default class OrchestraEngine {
       this.sectionCoupling[name] = this._interpolateCurve(FRACTURE[name], t)
     }
 
-    // 4. Per-section azimuth drift
+    // 4. Per-section azimuth drift (store for applyConducting to combine)
+    this._currentDrift = this._currentDrift || {}
     for (const [name, section] of Object.entries(this.sections)) {
       const coupling = this.sectionCoupling[name]
       const driftAmount = 1.0 - coupling
       const cfg = SECTIONS[name]
       const maxDrift = FRACTURE[`${name}_DRIFT`] || 0
       const drift = Math.sin(t * 0.1 + this._driftSeeds[name]) * maxDrift * driftAmount
+      this._currentDrift[name] = drift
       const baseAzimuth = cfg.azimuth || 0
-      const pos = sphericalToCartesian(baseAzimuth + drift, cfg.elevation || 0, 2)
+      const pos = sphericalToCartesian(baseAzimuth + drift, cfg.elevation || 0, cfg.distance || 2)
       section.panner.positionX.setTargetAtTime(pos.x, now, 0.1)
       section.panner.positionY.setTargetAtTime(pos.y, now, 0.1)
       section.panner.positionZ.setTargetAtTime(pos.z, now, 0.1)
@@ -404,12 +408,16 @@ export default class OrchestraEngine {
     const now = this.ctx.currentTime
     const { pan, filterNorm, gestureGain, articulation, downbeat } = params
 
-    // Pan: tilt emphasizes different sections
+    // Pan: tilt emphasizes different sections (gain + spatial movement)
     // Left tilt (pan < 0.5) → LOW +, HIGH -
     // Right tilt (pan > 0.5) → HIGH +, LOW -
     const panOffset = (pan - 0.5) * 2 // -1 to 1
-    const lowBoost = 1.0 + (-panOffset * 0.3) // up to +3dB when tilted left
-    const highBoost = 1.0 + (panOffset * 0.3)  // up to +3dB when tilted right
+    const lowBoost = 1.0 + (-panOffset * 0.6) // up to ±4.5dB when tilted
+    const highBoost = 1.0 + (panOffset * 0.6)
+
+    // Spatial panner shift from tilt: ±20° azimuth, scaled by avg coupling
+    const avgCouplingForPan = (this.sectionCoupling.LOW + this.sectionCoupling.MID + this.sectionCoupling.HIGH) / 3
+    const panShift = panOffset * 20 * avgCouplingForPan
 
     for (const [name, section] of Object.entries(this.sections)) {
       const coupling = this.sectionCoupling[name]
@@ -431,6 +439,15 @@ export default class OrchestraEngine {
         now,
         CONDUCTING.INTENSITY_TC
       )
+
+      // Shift section panner azimuth based on tilt (combine with fracture drift)
+      const cfg = SECTIONS[name]
+      const drift = this._currentDrift?.[name] || 0
+      const finalAz = (cfg.azimuth || 0) + drift + panShift * coupling
+      const pos = sphericalToCartesian(finalAz, cfg.elevation || 0, cfg.distance || 2)
+      section.panner.positionX.setTargetAtTime(pos.x, now, CONDUCTING.PAN_TC)
+      section.panner.positionY.setTargetAtTime(pos.y, now, CONDUCTING.PAN_TC)
+      section.panner.positionZ.setTargetAtTime(pos.z, now, CONDUCTING.PAN_TC)
     }
 
     // Filter cutoff (shared)
@@ -556,17 +573,39 @@ export default class OrchestraEngine {
   // ─── Audience ────────────────────────────────────────────────────────────────
 
   startAudience() {
-    for (const path of AUDIENCE_FILES) {
+    // Place audience sources behind/around the listener for surround immersion
+    const positions = [
+      { azimuth: 210, elevation: 5, distance: 4 },  // left-rear
+      { azimuth: 150, elevation: 5, distance: 4 },  // right-rear
+    ]
+
+    AUDIENCE_FILES.forEach((path, i) => {
       const buffer = this.buffers.get(path)
-      if (!buffer) continue
+      if (!buffer) return
       const source = this.ctx.createBufferSource()
       source.buffer = buffer
       source.loop = true
-      source.connect(this.audienceGain)
+
+      const panner = this.ctx.createPanner()
+      panner.panningModel = 'HRTF'
+      panner.distanceModel = 'inverse'
+      panner.refDistance = 1
+      panner.maxDistance = 20
+      panner.rolloffFactor = 1
+      panner.coneInnerAngle = 360
+      panner.coneOuterAngle = 360
+      const p = positions[i % positions.length]
+      const pos = sphericalToCartesian(p.azimuth, p.elevation, p.distance)
+      panner.positionX.value = pos.x
+      panner.positionY.value = pos.y
+      panner.positionZ.value = pos.z
+
+      source.connect(panner)
+      panner.connect(this.audienceGain)
       source.start()
       this.audienceSources.push(source)
       this.activeSources.push(source)
-    }
+    })
   }
 
   // ─── Ovation ─────────────────────────────────────────────────────────────────
