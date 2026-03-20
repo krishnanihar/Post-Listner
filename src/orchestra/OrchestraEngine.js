@@ -148,6 +148,14 @@ export default class OrchestraEngine {
     this.splitGain = ctx.createGain()
     this.splitGain.gain.value = 0.0
 
+    // Conducting filter (shared, for filter cutoff control)
+    // All section panners → conductingFilter → duckGain
+    this.conductingFilter = ctx.createBiquadFilter()
+    this.conductingFilter.type = 'lowpass'
+    this.conductingFilter.frequency.value = 4000
+    this.conductingFilter.Q.value = 1
+    this.conductingFilter.connect(this.duckGain)
+
     // 3-band split sections
     for (const [name, cfg] of Object.entries(SECTIONS)) {
       const section = {}
@@ -199,14 +207,6 @@ export default class OrchestraEngine {
 
       this.sections[name] = section
     }
-
-    // Conducting filter (shared, for filter cutoff control)
-    // All section panners → conductingFilter → duckGain
-    this.conductingFilter = ctx.createBiquadFilter()
-    this.conductingFilter.type = 'lowpass'
-    this.conductingFilter.frequency.value = 4000
-    this.conductingFilter.Q.value = 1
-    this.conductingFilter.connect(this.duckGain)
 
     // Track B nodes (source created on demand)
     this.trackBFilter = ctx.createBiquadFilter()
