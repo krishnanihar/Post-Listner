@@ -203,10 +203,13 @@ export default class ConductingEngine {
     // Articulation from jerk
     const articulation = clamp(this._jerk / 3, 0, 1)
 
-    // Downbeat
+    // Downbeat — consume the flag so one physical downbeat produces one event
     const downbeat = {
       fired: this._downbeatFired,
       intensity: this._downbeatIntensity,
+    }
+    if (this._downbeatFired) {
+      this._downbeatFired = false
     }
 
     return { pan, filterNorm, gestureGain, articulation, downbeat }

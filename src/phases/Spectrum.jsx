@@ -246,7 +246,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
 
   // === MOUSE: Keyboard arrow keys ===
   const handleKeySelect = useCallback((side) => {
-    if (transitioning) return
+    if (transitioning || !guideComplete.current) return
     if (firstHovered.current && firstHovered.current !== side) {
       switched.current = true
     }

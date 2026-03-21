@@ -317,6 +317,8 @@ export default function Textures({ onNext, avd, inputMode }) {
     return () => {
       audioEngine.stopTexture()
       clearTimeout(playingTimeout.current)
+      clearTimeout(hoverTimer.current)
+      clearTimeout(touchActiveTimer.current)
     }
   }, [])
 

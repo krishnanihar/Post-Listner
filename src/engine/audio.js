@@ -442,18 +442,20 @@ class AudioEngine {
       masterB.gain.linearRampToValueAtTime(rightGain, now + 0.05)
     }
 
+    let pendingBalance = 0
     const ready = Promise.all([loadBuffer(urlA), loadBuffer(urlB)]).then(([bufA, bufB]) => {
       if (stopped) return
       // Start crossfade-looping both clips
       scheduleLoop(bufA, masterA)
       scheduleLoop(bufB, masterB)
-      // Fade in to center balance
-      applyBalance(0)
+      // Apply the latest balance (may have been set before load finished)
+      applyBalance(pendingBalance)
     })
 
     return {
       ready,
       setBalance: (balance) => {
+        pendingBalance = balance
         if (!stopped) applyBalance(balance)
       },
       stop: () => {
@@ -612,18 +614,25 @@ class AudioEngine {
     } catch { /* already stopped */ }
     this._textureSource = null
     this._textureGain = null
+    this._currentTexture = null
   }
 
   playTexture(textureName, duration = 5) {
     this.init()
     this.stopTexture()
+    this._currentTexture = textureName
     const ctx = this.ctx
     const FADE_IN = 0.15
     const FADE_OUT = 0.5
 
     const buffer = this._textureBuffers.get(textureName)
     if (!buffer) {
-      return this._loadTextureBuffer(textureName).then(() => this.playTexture(textureName, duration))
+      return this._loadTextureBuffer(textureName).then(() => {
+        // Guard: only play if this texture is still the one requested
+        if (this._currentTexture === textureName) {
+          this.playTexture(textureName, duration)
+        }
+      })
     }
 
     const source = ctx.createBufferSource()
@@ -805,11 +814,14 @@ class AudioEngine {
     dropTone.stop(t(11.5))
     this._track(dropTone)
 
+    // Collect all gain nodes for clean stop
+    const allGains = [...gains, noiseGain, dropGain]
+
     return {
       promise: new Promise(resolve => setTimeout(resolve, duration * 1000)),
       stop: () => {
         const t = this.ctx.currentTime
-        gains.forEach(g => {
+        allGains.forEach(g => {
           g.gain.cancelScheduledValues(t)
           g.gain.linearRampToValueAtTime(0, t + 0.5)
         })

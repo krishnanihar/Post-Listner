@@ -27,7 +27,7 @@ export default class VoiceScheduler {
         continue
       }
       const playAt = offset + voice.time
-      const categoryGain = VOICE_CATEGORY_GAINS[voice.category] || 1.0
+      const categoryGain = voice.gain != null ? voice.gain : (VOICE_CATEGORY_GAINS[voice.category] || 1.0)
       const source = this.engine.scheduleVoice(buffer, playAt, {
         duck: voice.duck,
         azimuth: voice.azimuth,

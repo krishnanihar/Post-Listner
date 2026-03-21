@@ -310,8 +310,14 @@ export default class OrchestraEngine {
         this.hallWetGain.gain.setTargetAtTime(lerp(GAINS.HALL_WET.BLOOM_START, GAINS.HALL_WET.BLOOM_END, p), now, 0.1)
       }
       this.audienceGain.gain.setTargetAtTime(lerp(0, GAINS.AUDIENCE.BLOOM, p), now, 0.1)
-    } else if (t >= STARTS.THRONE && t < STARTS.BLOOM) {
-      // Already past bloom — ensure values set
+    } else if (t >= STARTS.THRONE && this.dryGain.gain.value > 0.01) {
+      // Bloom window missed (e.g. tab was backgrounded) — snap to post-Bloom values
+      this.dryGain.gain.setTargetAtTime(0, now, 0.05)
+      this.splitGain.gain.setTargetAtTime(1, now, 0.05)
+      if (this.hallWetGain) {
+        this.hallWetGain.gain.setTargetAtTime(GAINS.HALL_WET.BLOOM_END, now, 0.05)
+      }
+      this.audienceGain.gain.setTargetAtTime(GAINS.AUDIENCE.BLOOM, now, 0.05)
     }
 
     // 2. Hall reverb wet (grows slightly during Ascent)
@@ -552,19 +558,22 @@ export default class OrchestraEngine {
     this.trackBSources.push(source)
     this.activeSources.push(source)
 
-    // Schedule next loop before this one ends
+    // Schedule next loop before this one ends, anchored to previous source's end
+    let lastStartAt = now
     const scheduleNext = () => {
       if (!this.trackBStarted) return
       const nextSource = this.ctx.createBufferSource()
       nextSource.buffer = buffer
       nextSource.connect(this.trackBFilter)
-      const startAt = this.ctx.currentTime + buffer.duration - overlap
+      const startAt = lastStartAt + buffer.duration - overlap
       nextSource.start(startAt)
+      lastStartAt = startAt
       this.trackBSources.push(nextSource)
       this.activeSources.push(nextSource)
 
       // Schedule the one after that
-      setTimeout(scheduleNext, (buffer.duration - overlap - 1) * 1000)
+      const delay = Math.max(0, (startAt - this.ctx.currentTime - 1) * 1000)
+      setTimeout(scheduleNext, delay)
     }
 
     setTimeout(scheduleNext, (buffer.duration - overlap - 1) * 1000)
@@ -589,7 +598,7 @@ export default class OrchestraEngine {
       const panner = this.ctx.createPanner()
       panner.panningModel = 'HRTF'
       panner.distanceModel = 'inverse'
-      panner.refDistance = 1
+      panner.refDistance = 4  // match placement distance — no distance attenuation
       panner.maxDistance = 20
       panner.rolloffFactor = 1
       panner.coneInnerAngle = 360
@@ -667,9 +676,10 @@ export default class OrchestraEngine {
       gainNode.connect(this.voiceGain)
     }
 
-    // Sidechain duck if requested
+    // Sidechain duck if requested — pre-roll 50ms so bed is attenuated before first syllable
     if (options.duck && this.duckGain) {
-      this.duckGain.gain.setTargetAtTime(DUCK.GAIN, startTime, DUCK.ATTACK_TC)
+      const duckStart = Math.max(this.ctx.currentTime, startTime - 0.05)
+      this.duckGain.gain.setTargetAtTime(DUCK.GAIN, duckStart, DUCK.ATTACK_TC)
       // Release after buffer duration
       const releaseTime = startTime + buffer.duration
       this.duckGain.gain.setTargetAtTime(1.0, releaseTime, DUCK.RELEASE_TC)

@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # PostListener + The Orchestra
 
 A two-part experience: PostListener profiles a user's musical identity as an AVD vector, then The Orchestra uses that identity to guide them through a 10-minute conducting experience that dissolves their individual taste into a collective consciousness. The user's AI-generated song never stops — it seamlessly continues from Reveal through a concert hall that materializes, fractures, and dissolves. Both are a single React app, one Vite project, one Vercel deploy.

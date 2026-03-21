@@ -106,14 +106,21 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef }) {
 
       // Detect first play-through completion (loop=true means 'ended' never fires)
       let revealTriggered = false
+      let maxTimeReached = 0
       const checkLoop = () => {
         if (revealTriggered) return
+        // Track the highest currentTime we've seen
+        if (audio.currentTime > maxTimeReached) {
+          maxTimeReached = audio.currentTime
+        }
+        // Trigger when approaching track end (first play-through complete)
         if (audio.duration && audio.currentTime >= audio.duration - 0.5) {
           revealTriggered = true
           beginReveal()
           return
         }
-        if (audio.duration && audio.currentTime < 2 && audio.played.length > 0) {
+        // Trigger if currentTime wraps back (looped), proving first pass finished
+        if (maxTimeReached > 5 && audio.currentTime < maxTimeReached - 2) {
           revealTriggered = true
           beginReveal()
           return
