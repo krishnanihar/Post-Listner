@@ -560,12 +560,17 @@ export default class OrchestraEngine {
 
     // Schedule next loop before this one ends, anchored to previous source's end
     let lastStartAt = now
+    const loopLen = buffer.duration - overlap
     const scheduleNext = () => {
       if (!this.trackBStarted) return
+      // Skip past any missed loops (e.g. after tab backgrounding / timer throttle)
+      let startAt = lastStartAt + loopLen
+      while (startAt < this.ctx.currentTime) {
+        startAt += loopLen
+      }
       const nextSource = this.ctx.createBufferSource()
       nextSource.buffer = buffer
       nextSource.connect(this.trackBFilter)
-      const startAt = lastStartAt + buffer.duration - overlap
       nextSource.start(startAt)
       lastStartAt = startAt
       this.trackBSources.push(nextSource)

@@ -604,6 +604,7 @@ class AudioEngine {
   }
 
   stopTexture() {
+    this._currentTexture = null
     if (!this._textureSource) return
     const now = this.ctx.currentTime
     try {
