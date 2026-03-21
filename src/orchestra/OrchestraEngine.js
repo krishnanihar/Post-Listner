@@ -563,16 +563,19 @@ export default class OrchestraEngine {
     const loopLen = buffer.duration - overlap
     const scheduleNext = () => {
       if (!this.trackBStarted) return
-      // Skip past any missed loops (e.g. after tab backgrounding / timer throttle)
       let startAt = lastStartAt + loopLen
-      while (startAt < this.ctx.currentTime) {
+      // If startAt is in the past (timer throttled / tab backgrounded),
+      // advance to the next future crossfade point to avoid stacking sources.
+      while (startAt < this.ctx.currentTime - overlap) {
         startAt += loopLen
       }
+      // Clamp to now — never pass a past time to start()
+      const actualStart = Math.max(startAt, this.ctx.currentTime)
       const nextSource = this.ctx.createBufferSource()
       nextSource.buffer = buffer
       nextSource.connect(this.trackBFilter)
-      nextSource.start(startAt)
-      lastStartAt = startAt
+      nextSource.start(actualStart)
+      lastStartAt = actualStart
       this.trackBSources.push(nextSource)
       this.activeSources.push(nextSource)
 
