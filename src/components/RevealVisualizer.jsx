@@ -418,14 +418,14 @@ function updateParticles(particles, formPoints, dna, cx, cy, formRadius, stage, 
 function drawParticles(ctx, particles, color) {
   // Draw connecting lines first (behind particles)
   ctx.save()
-  const maxDist = 60 * window.devicePixelRatio
+  const maxDist = 45 * window.devicePixelRatio
   for (let i = 0; i < particles.length; i++) {
     for (let j = i + 1; j < particles.length; j++) {
       const dx = particles[i].x - particles[j].x
       const dy = particles[i].y - particles[j].y
       const dist = Math.sqrt(dx * dx + dy * dy)
       if (dist < maxDist) {
-        const alpha = (1 - dist / maxDist) * 0.07
+        const alpha = (1 - dist / maxDist) * 0.05
         ctx.globalAlpha = alpha
         ctx.strokeStyle = rgba(color, 1)
         ctx.lineWidth = 0.5 * window.devicePixelRatio
@@ -670,6 +670,22 @@ export default function RevealVisualizer({ avd, stage, audioElement }) {
         const segProgress = ringProgress
 
         drawFormRing(ctx, formPoints, dna, r, ringCount, color, time, segProgress)
+      }
+
+      // Form outline — visible during playing and reveal stages
+      if ((stage === 'playing' || stage === 'reveal') && formPoints.length >= 3) {
+        ctx.save()
+        ctx.globalAlpha = 0.15
+        ctx.strokeStyle = rgba(color, 1)
+        ctx.lineWidth = 0.5 * window.devicePixelRatio
+        ctx.beginPath()
+        ctx.moveTo(formPoints[0].x, formPoints[0].y)
+        for (let i = 1; i < formPoints.length; i++) {
+          ctx.lineTo(formPoints[i].x, formPoints[i].y)
+        }
+        ctx.closePath()
+        ctx.stroke()
+        ctx.restore()
       }
 
       // Layer 3: Pulse (audio-reactive, playing only)

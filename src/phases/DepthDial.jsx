@@ -5,6 +5,52 @@ import PhaseGuide from '../components/PhaseGuide'
 
 const LAYER_LABELS = ['root', 'harmony', 'octave', 'texture', 'sub', 'drift', 'overtone', 'everything']
 
+function TypewriterLabel({ text, isActive, style, className }) {
+  const [displayed, setDisplayed] = useState(() => isActive ? '' : text)
+  const prevActive = useRef(isActive)
+  const typing = useRef(false)
+  const initialized = useRef(false)
+
+  useEffect(() => {
+    // On first mount when active, or when becoming active — type in
+    if (isActive && (!initialized.current || !prevActive.current)) {
+      initialized.current = true
+      typing.current = true
+      let i = 0
+      setDisplayed('')
+      const iv = setInterval(() => {
+        i++
+        if (i <= text.length) {
+          setDisplayed(text.slice(0, i))
+        } else {
+          clearInterval(iv)
+          typing.current = false
+        }
+      }, 35)
+      prevActive.current = true
+      return () => { clearInterval(iv); typing.current = false }
+    } else if (!isActive && prevActive.current) {
+      // Becoming inactive — show full text dimmed
+      setDisplayed(text)
+      prevActive.current = false
+    }
+  }, [isActive, text])
+
+  return (
+    <motion.span
+      className={className}
+      style={style}
+      animate={{
+        opacity: isActive ? 1 : 0.25,
+        scale: isActive ? 1.02 : 1,
+      }}
+      transition={{ duration: 0.2 }}
+    >
+      {displayed}
+    </motion.span>
+  )
+}
+
 export default function DepthDial({ onNext, avd, inputMode }) {
   const [showGuide, setShowGuide] = useState(true)
   const guideComplete = useRef(false)
@@ -183,6 +229,16 @@ export default function DepthDial({ onNext, avd, inputMode }) {
           onTouchMove: handleDrag,
         })}
       >
+        {/* Ambient radial glow — intensity scales with depth */}
+        <motion.div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: 'radial-gradient(circle at 50% 50%, rgba(212,160,83,0.12) 0%, transparent 60%)',
+          }}
+          animate={{ opacity: displayCount / 8 }}
+          transition={{ duration: 0.6 }}
+        />
+
         {/* Layer lines */}
         <div className="w-full flex flex-col-reverse gap-3 sm:gap-6" style={{ maxWidth: '60vw' }}>
           {LAYER_LABELS.map((label, i) => {
@@ -202,8 +258,10 @@ export default function DepthDial({ onNext, avd, inputMode }) {
                 onClick={() => handleLayerClick(i)}
                 onMouseEnter={() => !hasSelected && isMouse && previewCount(i + 1)}
               >
-                {/* Label — left side */}
-                <motion.span
+                {/* Label — left side (typewriter reveal) */}
+                <TypewriterLabel
+                  text={label}
+                  isActive={isActive}
                   className="font-mono text-right"
                   style={{
                     fontSize: '13px',
@@ -211,14 +269,7 @@ export default function DepthDial({ onNext, avd, inputMode }) {
                     letterSpacing: '0.05em',
                     color: isActive ? 'var(--accent)' : 'var(--text-dim)',
                   }}
-                  animate={{
-                    opacity: isActive ? 1 : 0.25,
-                    scale: isActive ? 1.02 : 1,
-                  }}
-                  transition={{ duration: 0.2 }}
-                >
-                  {label}
-                </motion.span>
+                />
 
                 {/* Line */}
                 <motion.div

@@ -1,9 +1,23 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { audioEngine } from '../engine/audio'
 
+function makeParticles(count) {
+  return Array.from({ length: count }, (_, i) => ({
+    id: i,
+    x: Math.random() * 100,
+    y: Math.random() * 100,
+    size: 2 + Math.random() * 2,
+    opacity: 0.15 + Math.random() * 0.2,
+    driftX: (Math.random() - 0.5) * 40,
+    driftY: (Math.random() - 0.5) * 30,
+    duration: 8 + Math.random() * 7,
+  }))
+}
+
 export default function Entry({ onNext }) {
   const [expanding, setExpanding] = useState(false)
+  const particles = useMemo(() => makeParticles(20), [])
 
   const handleTap = () => {
     if (expanding) return
@@ -18,6 +32,32 @@ export default function Entry({ onNext }) {
   return (
     <div className="h-full w-full flex flex-col items-center justify-center relative select-none"
          style={{ touchAction: 'none' }}>
+
+      {/* Floating particle field */}
+      <div className="absolute inset-0 pointer-events-none" style={{ opacity: 0.3 }}>
+        {particles.map(p => (
+          <motion.div
+            key={p.id}
+            className="absolute rounded-full"
+            style={{
+              left: `${p.x}%`,
+              top: `${p.y}%`,
+              width: p.size,
+              height: p.size,
+              background: 'var(--accent)',
+            }}
+            animate={{
+              x: [0, p.driftX, -p.driftX * 0.6, 0],
+              y: [0, p.driftY, -p.driftY * 0.4, 0],
+            }}
+            transition={{
+              duration: p.duration,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
+          />
+        ))}
+      </div>
 
       {/* Title */}
       <AnimatePresence>
@@ -67,7 +107,7 @@ export default function Entry({ onNext }) {
         )}
       </AnimatePresence>
 
-      {/* The Eye — pulsing amber circle */}
+      {/* The Eye — pulsing amber circle with radial glow */}
       <motion.div
         className="absolute cursor-pointer"
         style={{ bottom: '25%' }}
@@ -88,8 +128,22 @@ export default function Entry({ onNext }) {
           ease: 'easeInOut',
         }}
       >
+        {/* Radial glow behind eye */}
+        <motion.div
+          className="absolute rounded-full"
+          style={{
+            width: '200%',
+            height: '200%',
+            top: '-50%',
+            left: '-50%',
+            background: 'radial-gradient(circle, rgba(212,160,83,0.15) 0%, transparent 70%)',
+            pointerEvents: 'none',
+          }}
+          animate={{ opacity: [0.6, 1, 0.6] }}
+          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+        />
         <div
-          className="rounded-full"
+          className="rounded-full relative"
           style={{
             width: 'clamp(60px, 12vw, 80px)',
             height: 'clamp(60px, 12vw, 80px)',

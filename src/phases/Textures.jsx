@@ -255,6 +255,19 @@ const AnimatedPattern = memo(function AnimatedPattern({ pattern, isActive }) {
 })
 
 const getCardAnimation = (isActive, isSelected, isPlaying) => {
+  // Selected + playing: pulsing glow (highest priority — shows playing feedback)
+  if (isSelected && isPlaying) {
+    return {
+      scale: isActive ? 1.02 : 1,
+      y: isActive ? -3 : 0,
+      boxShadow: [
+        '0 0 16px rgba(212,160,83,0.25)',
+        '0 0 24px rgba(212,160,83,0.45)',
+        '0 0 16px rgba(212,160,83,0.25)',
+      ],
+      borderColor: 'rgba(212,160,83,1)',
+    }
+  }
   if (isActive && isSelected) {
     return {
       scale: 1.02,
@@ -293,6 +306,13 @@ const getCardAnimation = (isActive, isSelected, isPlaying) => {
     boxShadow: 'none',
     borderColor: 'rgba(90,90,101,0.2)',
   }
+}
+
+const getCardTransition = (isSelected, isPlaying) => {
+  if (isSelected && isPlaying) {
+    return { type: 'spring', stiffness: 400, damping: 25, boxShadow: { duration: 1.5, repeat: Infinity, ease: 'easeInOut' } }
+  }
+  return cardSpring
 }
 
 const cardSpring = { type: 'spring', stiffness: 400, damping: 25 }
@@ -472,7 +492,7 @@ export default function Textures({ onNext, avd, inputMode }) {
                 minHeight: 0,
               }}
               animate={getCardAnimation(isCardActive, isSelected, isPlaying)}
-              transition={cardSpring}
+              transition={getCardTransition(isSelected, isPlaying)}
               whileTap={{ scale: 0.97 }}
               onClick={() => handleClick(texture.name)}
               onPointerDown={() => handlePointerDown(texture.name)}
@@ -489,6 +509,7 @@ export default function Textures({ onNext, avd, inputMode }) {
                 style={{ fontSize: 'clamp(14px, 3.5vw, 18px)' }}
                 animate={{
                   color: isCardActive || isSelected ? '#D4A053' : '#E8E4DD',
+                  y: isSelected ? -6 : 0,
                 }}
                 transition={{ duration: 0.3 }}
               >

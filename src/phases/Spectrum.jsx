@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { audioEngine } from '../engine/audio'
 import PhaseGuide from '../components/PhaseGuide'
+import SpectrumWaveform from '../components/SpectrumWaveform'
 
 // Each pair has AVD coordinates from SPECTRUM-AUDIO-PROMPTS.md
 // Left = low valence pole, Right = high valence pole
@@ -33,12 +34,20 @@ export default function Spectrum({ onNext, avd, inputMode }) {
   const [activeLabel, setActiveLabel] = useState(null)
   const [hoveredSide, setHoveredSide] = useState(null)
   const [touchActive, setTouchActive] = useState(false)
+  const [trailPositions, setTrailPositions] = useState([])
+  const [burstParticles, setBurstParticles] = useState([])
+  const [burstOrigin, setBurstOrigin] = useState(0)
+  const [lockDirection, setLockDirection] = useState(null) // 'left' or 'right' — for slide transition
+  const trailIntervalRef = useRef(null)
+  const dividerOffsetRef = useRef(0)
+  const burstTimer = useRef(null)
   const startTime = useRef(null)
   const pairStartTime = useRef(Date.now())
   const switched = useRef(false)
   const currentChoice = useRef(null)
   const firstHovered = useRef(null)
   const pairRef = useRef(null)
+  const areaMaxOffset = useRef(200)
   const areaRef = useRef(null)
   const results = useRef([])
   const reversalCount = useRef(0)
@@ -71,6 +80,31 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     startPair()
     return stopAudio
   }, [pairIdx])
+
+  // Keep ref in sync for trail sampling
+  useEffect(() => {
+    dividerOffsetRef.current = dividerOffset
+  }, [dividerOffset])
+
+  // Trail sampling: capture divider position every 80ms (stable interval)
+  // Skips update when offset hasn't changed to avoid idle re-renders
+  const lastTrailSample = useRef(0)
+  useEffect(() => {
+    trailIntervalRef.current = setInterval(() => {
+      const current = dividerOffsetRef.current
+      if (current === lastTrailSample.current) return
+      lastTrailSample.current = current
+      setTrailPositions(prev => {
+        const next = [...prev, current]
+        if (next.length > 5) next.shift()
+        return next
+      })
+    }, 80)
+    return () => clearInterval(trailIntervalRef.current)
+  }, [])
+
+  // Clean up burst timer
+  useEffect(() => () => clearTimeout(burstTimer.current), [])
 
   // Compute slide commitment weight from slider position, reversals, and dwell time
   const getSlideCommitmentWeight = useCallback((sliderPosition) => {
@@ -132,6 +166,23 @@ export default function Spectrum({ onNext, avd, inputMode }) {
 
     if (navigator.vibrate) navigator.vibrate(10)
 
+    // Store lock direction for slide transition
+    setLockDirection(side)
+
+    // Capture offset before snap for burst origin (use ref for latest value)
+    const lockedOffset = dividerOffsetRef.current
+
+    // Particle burst at divider position
+    setBurstOrigin(lockedOffset)
+    const particles = Array.from({ length: 15 }, (_, i) => ({
+      id: Date.now() + i,
+      x: (Math.random() - 0.5) * 120,
+      y: (Math.random() - 0.5) * 120,
+    }))
+    setBurstParticles(particles)
+    clearTimeout(burstTimer.current)
+    burstTimer.current = setTimeout(() => setBurstParticles([]), 600)
+
     setDividerOffset(side === 'left' ? -40 : 40)
     setHoveredSide(null)
 
@@ -143,6 +194,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
         setActiveLabel(null)
         setHoveredSide(null)
         setTouchActive(false)
+        setTrailPositions([])
         switched.current = false
         currentChoice.current = null
         startTime.current = null
@@ -170,9 +222,11 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     const centerX = rect.left + rect.width / 2
     const relX = clientX - centerX
     const maxOffset = rect.width * 0.35
+    areaMaxOffset.current = maxOffset
     const clampedOffset = Math.max(-maxOffset, Math.min(maxOffset, relX))
 
     setDividerOffset(clampedOffset)
+    dividerOffsetRef.current = clampedOffset
 
     const side = relX < 0 ? 'left' : 'right'
     if (!firstHovered.current) firstHovered.current = side
@@ -211,6 +265,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     setActiveLabel(null)
     if (pairRef.current) pairRef.current.setBalance(0)
     setDividerOffset(0)
+    setTrailPositions([])
   }, [transitioning])
 
   // === TOUCH: Drag divider with finger, release to lock ===
@@ -318,25 +373,51 @@ export default function Spectrum({ onNext, avd, inputMode }) {
           <motion.div
             key={pairIdx}
             className="absolute inset-0 flex"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{
+              opacity: 0,
+              x: lockDirection === 'left' ? 60 : lockDirection === 'right' ? -60 : 0,
+              filter: 'blur(4px)',
+            }}
+            animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+            exit={{
+              opacity: 0,
+              x: lockDirection === 'left' ? -60 : 60,
+              filter: 'blur(4px)',
+            }}
             transition={{ duration: 0.3 }}
           >
             {/* Left zone */}
             <div className="flex-1 flex items-center justify-center relative">
               <motion.span
                 className="font-serif"
-                style={{ fontSize: 'clamp(24px, 6vw, 36px)', color: 'var(--text)', pointerEvents: 'none' }}
+                style={{ fontSize: 'clamp(24px, 6vw, 36px)', color: hoveredSide === 'left' ? '#D4A053' : 'var(--text)', pointerEvents: 'none' }}
                 animate={{
                   scale: activeLabel === 'left' ? 1.05 : 1,
                   opacity: hoveredSide === 'right' ? 0.4 : 1,
+                  filter: hoveredSide === 'right'
+                    ? `blur(${Math.min(3, Math.abs(dividerOffset) / 40)}px)`
+                    : 'blur(0px)',
                 }}
                 transition={{ duration: 0.2 }}
               >
                 {pair.left}
               </motion.span>
             </div>
+
+            {/* Motion trail ghosts */}
+            {trailPositions.map((pos, i) => (
+              <div
+                key={i}
+                className="absolute top-1/4 bottom-1/4 pointer-events-none"
+                style={{
+                  left: '50%',
+                  width: 1,
+                  background: 'var(--accent)',
+                  transform: `translateX(${pos}px)`,
+                  opacity: 0.02 + (i / trailPositions.length) * 0.13,
+                }}
+              />
+            ))}
 
             {/* Divider */}
             <motion.div
@@ -350,20 +431,69 @@ export default function Spectrum({ onNext, avd, inputMode }) {
               animate={{ x: dividerOffset }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
             >
+              {/* Top endpoint dot */}
+              <div
+                className="absolute rounded-full"
+                style={{
+                  top: -3,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  width: 3 + pairIdx * 0.3,
+                  height: 3 + pairIdx * 0.3,
+                  background: 'var(--accent)',
+                  opacity: 0.35 + Math.abs(dividerOffset) / 200,
+                }}
+              />
+              {/* Bottom endpoint dot */}
+              <div
+                className="absolute rounded-full"
+                style={{
+                  bottom: 28,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  width: 3 + pairIdx * 0.3,
+                  height: 3 + pairIdx * 0.3,
+                  background: 'var(--accent)',
+                  opacity: 0.35 + Math.abs(dividerOffset) / 200,
+                }}
+              />
               <span className="font-mono whitespace-nowrap absolute -bottom-8"
                     style={{ fontSize: '12px', color: 'var(--text-dim)', transform: 'translateX(-50%)' }}>
                 {hintText}
               </span>
             </motion.div>
 
+            {/* Particle burst on lock */}
+            <AnimatePresence>
+              {burstParticles.map(p => (
+                <motion.div
+                  key={p.id}
+                  className="absolute rounded-full pointer-events-none"
+                  style={{
+                    left: '50%',
+                    top: '45%',
+                    width: 3,
+                    height: 3,
+                    background: 'var(--accent)',
+                  }}
+                  initial={{ x: burstOrigin, y: 0, opacity: 0.8, scale: 1 }}
+                  animate={{ x: burstOrigin + p.x, y: p.y, opacity: 0, scale: 0 }}
+                  transition={{ duration: 0.5, ease: 'easeOut' }}
+                />
+              ))}
+            </AnimatePresence>
+
             {/* Right zone */}
             <div className="flex-1 flex items-center justify-center relative">
               <motion.span
                 className="font-serif"
-                style={{ fontSize: 'clamp(24px, 6vw, 36px)', color: 'var(--text)', pointerEvents: 'none' }}
+                style={{ fontSize: 'clamp(24px, 6vw, 36px)', color: hoveredSide === 'right' ? '#D4A053' : 'var(--text)', pointerEvents: 'none' }}
                 animate={{
                   scale: activeLabel === 'right' ? 1.05 : 1,
                   opacity: hoveredSide === 'left' ? 0.4 : 1,
+                  filter: hoveredSide === 'left'
+                    ? `blur(${Math.min(3, Math.abs(dividerOffset) / 40)}px)`
+                    : 'blur(0px)',
                 }}
                 transition={{ duration: 0.2 }}
               >
@@ -372,6 +502,12 @@ export default function Spectrum({ onNext, avd, inputMode }) {
             </div>
           </motion.div>
         </AnimatePresence>
+
+        {/* Waveform visualization */}
+        <SpectrumWaveform
+          position={Math.max(-1, Math.min(1, dividerOffset / (areaMaxOffset.current || 200)))}
+          active={!showGuide && !transitioning}
+        />
       </motion.div>
     </div>
   )
