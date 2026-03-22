@@ -1,5 +1,5 @@
-import { VOICES, WHISPERS, OVATION_FILE } from './scripts.js'
-import { GAINS } from './constants.js'
+import { VOICES, WHISPERS } from './scripts.js'
+import { STARTS } from './constants.js'
 import { VOICE_CATEGORY_GAINS } from '../chamber/utils/constants.js'
 
 /**
@@ -18,6 +18,9 @@ export default class VoiceScheduler {
    */
   scheduleAll(experienceStartCtxTime) {
     const offset = experienceStartCtxTime
+    // Voice timestamps are absolute from button press (include 30s briefing).
+    // scheduleAll is called at briefing end, so subtract briefing duration.
+    const briefingOffset = STARTS.BLOOM
 
     // Schedule main voices
     for (const voice of VOICES) {
@@ -26,7 +29,7 @@ export default class VoiceScheduler {
         console.warn(`VoiceScheduler: missing buffer for ${voice.file}`)
         continue
       }
-      const playAt = offset + voice.time
+      const playAt = offset + (voice.time - briefingOffset)
       const categoryGain = voice.gain != null ? voice.gain : (VOICE_CATEGORY_GAINS[voice.category] || 1.0)
       const source = this.engine.scheduleVoice(buffer, playAt, {
         duck: voice.duck,
@@ -45,7 +48,7 @@ export default class VoiceScheduler {
         console.warn(`VoiceScheduler: missing buffer for ${whisper.file}`)
         continue
       }
-      const playAt = offset + whisper.time
+      const playAt = offset + (whisper.time - briefingOffset)
 
       // Whispers with null azimuth get random placement
       const azimuth = whisper.azimuth != null ? whisper.azimuth : Math.random() * 360
@@ -57,13 +60,13 @@ export default class VoiceScheduler {
         elevation,
         distance: 5,
         lowpass: 2000,
-        gain: 0.04,
+        gain: 0.35,
       })
       if (source) this.scheduledSources.push(source)
     }
 
-    // Schedule ovation
-    this.engine.scheduleOvation(offset)
+    // Schedule ovation (subtract briefing offset since OVATION.TIME is absolute)
+    this.engine.scheduleOvation(offset - briefingOffset)
   }
 
   stopAll() {

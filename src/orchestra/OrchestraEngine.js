@@ -551,12 +551,22 @@ export default class OrchestraEngine {
     const overlap = 2 // seconds of crossfade overlap
     const now = this.ctx.currentTime
 
+    // First source with per-source gain for crossfade
+    const sourceGain = this.ctx.createGain()
+    sourceGain.gain.value = 1.0
+    sourceGain.connect(this.trackBFilter)
+
     const source = this.ctx.createBufferSource()
     source.buffer = buffer
-    source.connect(this.trackBFilter)
+    source.connect(sourceGain)
     source.start(now)
     this.trackBSources.push(source)
     this.activeSources.push(source)
+
+    // Schedule fade-out for first source at its end
+    const firstFadeStart = now + buffer.duration - overlap
+    sourceGain.gain.setValueAtTime(1.0, firstFadeStart)
+    sourceGain.gain.linearRampToValueAtTime(0, firstFadeStart + overlap)
 
     // Schedule next loop before this one ends, anchored to previous source's end
     let lastStartAt = now
@@ -571,13 +581,28 @@ export default class OrchestraEngine {
       }
       // Clamp to now — never pass a past time to start()
       const actualStart = Math.max(startAt, this.ctx.currentTime)
+
+      // Per-source gain for crossfade
+      const nextGain = this.ctx.createGain()
+      nextGain.gain.value = 0.0
+      nextGain.connect(this.trackBFilter)
+
       const nextSource = this.ctx.createBufferSource()
       nextSource.buffer = buffer
-      nextSource.connect(this.trackBFilter)
+      nextSource.connect(nextGain)
       nextSource.start(actualStart)
       lastStartAt = actualStart
       this.trackBSources.push(nextSource)
       this.activeSources.push(nextSource)
+
+      // Fade in new source over overlap period
+      nextGain.gain.setValueAtTime(0, actualStart)
+      nextGain.gain.linearRampToValueAtTime(1.0, actualStart + overlap)
+
+      // Pre-schedule fade-out for this source at its end
+      const fadeOutAt = actualStart + buffer.duration - overlap
+      nextGain.gain.setValueAtTime(1.0, fadeOutAt)
+      nextGain.gain.linearRampToValueAtTime(0, fadeOutAt + overlap)
 
       // Schedule the one after that
       const delay = Math.max(0, (startAt - this.ctx.currentTime - 1) * 1000)
@@ -722,11 +747,28 @@ export default class OrchestraEngine {
     osc.connect(gain)
     gain.connect(this.compressor)
 
+    const now = this.ctx.currentTime
     osc.start()
-    gain.gain.linearRampToValueAtTime(0.25, this.ctx.currentTime + 5)
+    gain.gain.setValueAtTime(0, now)
+    gain.gain.linearRampToValueAtTime(0.25, now + 5)
 
     this.activeSources.push(osc)
     this._returnToneGain = gain
+    this._returnToneStartTime = now
+  }
+
+  // ─── Fade Return Tone ───────────────────────────────────────────────────────
+
+  fadeReturnTone(duration = 2) {
+    if (!this._returnToneGain) return
+    const now = this.ctx.currentTime
+    // Compute expected ramp value mathematically (Safari may not reflect
+    // the instantaneous ramped value via AudioParam.value)
+    const elapsed = now - (this._returnToneStartTime || now)
+    const currentVal = Math.min(0.25, 0.25 * (elapsed / 5))
+    this._returnToneGain.gain.cancelScheduledValues(now)
+    this._returnToneGain.gain.setValueAtTime(currentVal, now)
+    this._returnToneGain.gain.setTargetAtTime(0, now, duration / 4)
   }
 
   // ─── Stop All ────────────────────────────────────────────────────────────────

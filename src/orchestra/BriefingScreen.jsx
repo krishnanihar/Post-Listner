@@ -8,7 +8,7 @@ const BRIEFING_LINES = [
 ]
 
 const LINE_DURATION = 3 // seconds per line
-const HOLD_AFTER_LAST = 3 // seconds to hold after last line
+const HOLD_AFTER_LAST = 17 // seconds to hold after last line (total: 3×3 + 17 + 4 = 30s)
 const DIM_DURATION = 4 // seconds for screen to dim
 
 function ConductorSVG() {

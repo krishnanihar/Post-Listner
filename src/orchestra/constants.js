@@ -55,7 +55,7 @@ export const GAINS = {
   },
   TRACK_B: {
     ENTER: 0.0,
-    CROSSOVER: 0.25,        // ~5:20 (320s) — equal to Track A
+    CROSSOVER: 0.25,        // ~5:20 (320s) — node gain matches Track A (heard level lower due to 4m panner atten)
     DISSOLUTION: 0.70,
     PEAK: 0.80,             // brief swell on "Good"
     SILENCE: 0.0,

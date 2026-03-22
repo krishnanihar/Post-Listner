@@ -20,6 +20,7 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
   const startRef = useRef(null)
   const lastRef = useRef(null)
   const returnTonePlayed = useRef(false)
+  const returnToneFaded = useRef(false)
   const wakeLockRef = useRef(null)
 
   // ─── Initialize on mount ──────────────────────────────────────────────────
@@ -128,7 +129,7 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
       const dt = (timestamp - lastRef.current) / 1000
       lastRef.current = timestamp
 
-      const t = elapsed + 30 // absolute time (30s briefing already happened)
+      const t = elapsed + STARTS.BLOOM // absolute time (briefing already happened)
 
       engine.tick(t, dt)
 
@@ -144,6 +145,12 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
       if (t >= 595 && !returnTonePlayed.current) {
         engine.playReturnTone(avd.getAVD().d)
         returnTonePlayed.current = true
+      }
+
+      // Fade return tone before stopAll
+      if (t >= 598 && !returnToneFaded.current) {
+        engine.fadeReturnTone(2)
+        returnToneFaded.current = true
       }
 
       // Transition to return at 600s
