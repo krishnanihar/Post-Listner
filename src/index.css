@@ -8,6 +8,18 @@
   --accent: #D4A053;
   --accent-dim: rgba(212, 160, 83, 0.15);
   --bg-dark: #000000;
+
+  /* THE SCORE — new tokens */
+  --paper-cream: #F2EBD8;
+  --ink-cream: #1C1814;
+  --ink-cream-secondary: #6B5840;
+  --paper-dark: #0B0908;
+  --ink-dark: #E8DFCB;
+  --ink-dark-secondary: #8A7556;
+  --paper-pure-black: #000000;
+  --score-amber: #D4A053;
+  --font-serif: 'Iowan Old Style', Palatino, 'EB Garamond', Georgia, serif;
+  --font-mono: ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
 }
 
 * {
