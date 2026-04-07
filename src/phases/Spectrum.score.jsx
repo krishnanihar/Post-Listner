@@ -53,6 +53,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
   const [commitSide, setCommitSide] = useState(null) // 'left' | 'right' | null
 
   const conductingRef = useRef(null)
+  const calibratingRef = useRef(false)
   const pairRef = useRef(null)
   const rafRef = useRef(null)
   const leanSideRef = useRef(null)
@@ -110,6 +111,15 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     leanStartRef.current = null
     setCommitProgress(0)
     setCommitSide(null)
+
+    // Recalibrate so the user's current resting orientation becomes center
+    const engine = conductingRef.current
+    if (engine && motionRef.current) {
+      calibratingRef.current = true
+      engine.startCalibration(500).then(() => {
+        calibratingRef.current = false
+      })
+    }
   }, [pair, stopAudio])
 
   useEffect(() => {
@@ -198,6 +208,14 @@ export default function Spectrum({ onNext, avd, inputMode }) {
       if (!running) return
       const engine = conductingRef.current
       if (engine && !transitioning) {
+        // While recalibrating, hold cursor at center
+        if (calibratingRef.current) {
+          setCursorX(0)
+          if (pairRef.current) pairRef.current.setBalance(0)
+          rafRef.current = requestAnimationFrame(loop)
+          return
+        }
+
         const data = !motionRef.current ? engine._getTouchData() : engine.getData()
         const position = (data.pan - 0.5) * 2
         setCursorX(position)
@@ -341,11 +359,10 @@ export default function Spectrum({ onNext, avd, inputMode }) {
               color: cursorX < -0.2 ? COLORS.inkCream : COLORS.inkCreamSecondary,
               transition: 'color 0.3s',
             }}>
-              {pair.left}
-              {/* Commit fill bar under the word */}
+              {/* Commit fill bar above the word */}
               {commitSide === 'left' && commitProgress > 0 && (
                 <div style={{
-                  marginTop: 6,
+                  marginBottom: 6,
                   height: 2,
                   borderRadius: 1,
                   background: COLORS.scoreAmber,
@@ -354,6 +371,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
                   transition: 'width 0.1s linear',
                 }} />
               )}
+              {pair.left}
             </div>
 
             {/* Right word */}
@@ -368,10 +386,9 @@ export default function Spectrum({ onNext, avd, inputMode }) {
               transition: 'color 0.3s',
               textAlign: 'right',
             }}>
-              {pair.right}
               {commitSide === 'right' && commitProgress > 0 && (
                 <div style={{
-                  marginTop: 6,
+                  marginBottom: 6,
                   height: 2,
                   borderRadius: 1,
                   background: COLORS.scoreAmber,
@@ -381,6 +398,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
                   transition: 'width 0.1s linear',
                 }} />
               )}
+              {pair.right}
             </div>
           </motion.div>
         )}

@@ -158,7 +158,8 @@ export default class ConductingEngine {
     this.startCalibration()
   }
 
-  startCalibration() {
+  startCalibration(durationMs) {
+    const duration = durationMs || CONDUCTING.CALIBRATION_DURATION_MS
     return new Promise((resolve) => {
       this._calibrating = true
       this._calibrationSamples = []
@@ -177,7 +178,7 @@ export default class ConductingEngine {
         }
         this._calibrationSamples = []
         resolve()
-      }, CONDUCTING.CALIBRATION_DURATION_MS)
+      }, duration)
     })
   }
 
