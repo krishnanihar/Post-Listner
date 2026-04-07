@@ -34,9 +34,10 @@ const STAVE_Y = 280
 const STAVE_WIDTH = 320
 const STAVE_X_OFFSET = 20
 const MARK_SPACING = STAVE_WIDTH / 8
-const LISTEN_DURATION = 5000  // 5s listen phase — just hear it
-const DECIDE_DURATION = 4000  // 4s decision window after listening
-const SHAKE_THRESHOLD = 12    // RMS jerk threshold for "shake to refuse"
+const LISTEN_DURATION = 5000   // 5s listen — just hear it
+const DECIDE_DURATION = 5000   // 5s to lean left or right
+const LEAN_THRESHOLD = 0.4     // how far to lean to trigger
+const LEAN_HOLD_MS = 1500      // hold the lean for 1.5s to commit
 
 export default function Textures({ onNext, avd, inputMode }) {
   const [textureIdx, setTextureIdx] = useState(-1)
@@ -45,7 +46,10 @@ export default function Textures({ onNext, avd, inputMode }) {
   const [showInstruction, setShowInstruction] = useState(true)
   const [phase, setPhase] = useState('intro') // intro, listening, deciding
   const [motionAvailable, setMotionAvailable] = useState(true)
-  const [decisionText, setDecisionText] = useState('') // "kept" or "refused" flash
+  const [decisionText, setDecisionText] = useState('')
+  const [leanX, setLeanX] = useState(0) // -1 to 1, for visual indicator
+  const [commitProgress, setCommitProgress] = useState(0) // 0-1
+  const [commitSide, setCommitSide] = useState(null) // 'keep' | 'trash'
 
   const conductingRef = useRef(null)
   const rafRef = useRef(null)
@@ -55,6 +59,8 @@ export default function Textures({ onNext, avd, inputMode }) {
   const preferred = useRef([])
   const neutral = useRef([])
   const dwellStart = useRef(null)
+  const leanSideRef = useRef(null)
+  const leanStartRef = useRef(null)
 
   useEffect(() => {
     preloadVoices(VOICE_PATHS)
@@ -69,13 +75,13 @@ export default function Textures({ onNext, avd, inputMode }) {
     })
 
     // Voice intro — spaced by actual durations
-    // textures-01: 0.7s, textures-02: 2.9s, textures-03: 2.9s
+    // textures-01: 0.7s, textures-02: 3.7s, textures-03: 3.2s
     const timers = []
     const t = (ms, fn) => timers.push(setTimeout(fn, ms))
     t(0, () => playVoice(VOICE_PATHS[0]))        // "Listen." (0.7s)
-    t(1200, () => playVoice(VOICE_PATHS[1]))      // "If you want to keep it..." (2.9s)
-    t(4600, () => playVoice(VOICE_PATHS[2]))      // "If it is not yours..." (2.9s)
-    t(8000, () => {
+    t(1200, () => playVoice(VOICE_PATHS[1]))      // "Lean right to keep it. Left to let it go." (3.7s)
+    t(5400, () => playVoice(VOICE_PATHS[2]))      // "Right to keep. Left to let go." (3.2s)
+    t(9000, () => {
       setShowInstruction(false)
       advanceToTexture(0)
     })
@@ -98,19 +104,24 @@ export default function Textures({ onNext, avd, inputMode }) {
     setCurrentName(texture.name)
     setPhase('listening')
     setDecisionText('')
+    setLeanX(0)
+    setCommitProgress(0)
+    setCommitSide(null)
     resolvedRef.current = false
+    leanSideRef.current = null
+    leanStartRef.current = null
     dwellStart.current = Date.now()
 
-    // Play texture audio
+    // Play texture audio for full duration
     audioEngine.playTexture(texture.name, (LISTEN_DURATION + DECIDE_DURATION) / 1000)
 
     // After listen phase, enter decide phase
     phaseTimer.current = setTimeout(() => {
       setPhase('deciding')
 
-      // Auto-keep after decide duration if not shaken
+      // Safety: auto-keep if no decision after decide duration
       phaseTimer.current = setTimeout(() => {
-        if (!resolvedRef.current) resolveTexture(idx, true) // true = kept
+        if (!resolvedRef.current) resolveTexture(idx, true)
       }, DECIDE_DURATION)
     }, LISTEN_DURATION)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -129,7 +140,6 @@ export default function Textures({ onNext, avd, inputMode }) {
       if (navigator.vibrate) navigator.vibrate(15)
       setDecisionText('kept')
 
-      // AVD update
       const dwell = (Date.now() - (dwellStart.current || Date.now())) / 1000
       const dwellWeight = Math.max(0.3, Math.min(1.0, dwell / 8))
       avd.updateValence((texture.coord.v - 0.5) * dwellWeight, 1.0)
@@ -138,10 +148,13 @@ export default function Textures({ onNext, avd, inputMode }) {
     } else {
       neutral.current.push(texture.name)
       if (navigator.vibrate) navigator.vibrate(30)
-      setDecisionText('refused')
+      setDecisionText('let go')
     }
 
-    setPhase('listening') // reset visual state
+    setPhase('listening')
+    setLeanX(0)
+    setCommitProgress(0)
+    setCommitSide(null)
     setTimeout(() => advanceToTexture(idx + 1), 800)
   }, [avd]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -162,16 +175,40 @@ export default function Textures({ onNext, avd, inputMode }) {
     }, 2000)
   }, [avd, onNext])
 
-  // rAF loop: detect shake gesture during deciding phase
+  // rAF loop: read lean during deciding phase
   useEffect(() => {
     let running = true
     const loop = () => {
       if (!running) return
       const engine = conductingRef.current
       if (engine && phase === 'deciding' && !resolvedRef.current) {
-        // Shake detection: high RMS jerk = user shook the phone
-        if (engine._jerk > SHAKE_THRESHOLD) {
-          resolveTexture(textureIdx, false) // refused
+        const data = engine.getData()
+        // pan 0-1 → position -1 to +1
+        const position = (data.pan - 0.5) * 2
+        setLeanX(position)
+
+        // Right = keep, Left = trash
+        if (Math.abs(position) > LEAN_THRESHOLD) {
+          const side = position > 0 ? 'keep' : 'trash'
+          if (leanSideRef.current !== side) {
+            leanSideRef.current = side
+            leanStartRef.current = Date.now()
+          }
+          const elapsed = Date.now() - leanStartRef.current
+          const progress = Math.min(1, elapsed / LEAN_HOLD_MS)
+          setCommitProgress(progress)
+          setCommitSide(side)
+
+          if (progress >= 1) {
+            resolveTexture(textureIdx, side === 'keep')
+            leanSideRef.current = null
+            leanStartRef.current = null
+          }
+        } else {
+          leanSideRef.current = null
+          leanStartRef.current = null
+          setCommitProgress(0)
+          setCommitSide(null)
         }
       }
       rafRef.current = requestAnimationFrame(loop)
@@ -183,24 +220,38 @@ export default function Textures({ onNext, avd, inputMode }) {
     }
   }, [phase, textureIdx]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Touch fallback: swipe down to refuse during deciding phase
-  const touchStartY = useRef(null)
+  // Touch fallback: drag right to keep, left to trash
+  const touchStartX = useRef(null)
   const handleTouchStart = useCallback((e) => {
-    touchStartY.current = e.touches[0].clientY
+    touchStartX.current = e.touches[0].clientX
   }, [])
-  const handleTouchEnd = useCallback((e) => {
-    if (phase !== 'deciding' || touchStartY.current === null || resolvedRef.current) return
-    const endY = e.changedTouches[0].clientY
-    if (endY - touchStartY.current > 80) {
-      resolveTexture(textureIdx, false)
+  const handleTouchMove = useCallback((e) => {
+    if (phase !== 'deciding' || touchStartX.current === null || resolvedRef.current) return
+    const dx = e.touches[0].clientX - touchStartX.current
+    const norm = Math.max(-1, Math.min(1, dx / 120))
+    setLeanX(norm)
+    const engine = conductingRef.current
+    if (engine) engine.updateTouch((norm + 1) / 2, 0.5, true)
+  }, [phase])
+  const handleTouchEnd = useCallback(() => {
+    if (phase !== 'deciding' || resolvedRef.current) return
+    if (Math.abs(leanX) > 0.6) {
+      resolveTexture(textureIdx, leanX > 0)
     }
-    touchStartY.current = null
-  }, [phase, textureIdx]) // eslint-disable-line react-hooks/exhaustive-deps
+    touchStartX.current = null
+    setLeanX(0)
+    const engine = conductingRef.current
+    if (engine) engine.updateTouch(0.5, 0.5, false)
+  }, [phase, textureIdx, leanX]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Commit fill opacity
+  const commitFillOpacity = commitProgress > 0 ? 0.15 + commitProgress * 0.4 : 0
 
   return (
     <div
       style={{ position: 'absolute', inset: 0, touchAction: 'none' }}
       onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
       <Score
@@ -252,36 +303,96 @@ export default function Textures({ onNext, avd, inputMode }) {
         )}
       </AnimatePresence>
 
-      {/* Phase indicator — listening vs deciding */}
-      {textureIdx >= 0 && !resolvedRef.current && (
-        <div style={{
-          position: 'absolute',
-          top: '36%',
-          left: 0,
-          right: 0,
-          textAlign: 'center',
-          fontFamily: FONTS.serif,
-          fontStyle: 'italic',
-          fontSize: 12,
-          color: COLORS.inkCreamSecondary,
-        }}>
-          {phase === 'listening' && (
-            <motion.span
-              animate={{ opacity: [0.3, 0.6, 0.3] }}
-              transition={{ duration: 1.5, repeat: Infinity }}
-            >
-              listening...
-            </motion.span>
-          )}
-          {phase === 'deciding' && (
-            <motion.span
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.8 }}
-            >
-              {motionAvailable ? 'shake to refuse' : 'swipe down to refuse'}
-            </motion.span>
-          )}
+      {/* Decide phase: left/right labels with commit bars */}
+      {phase === 'deciding' && !resolvedRef.current && (
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+          {/* Left: let go */}
+          <div style={{
+            position: 'absolute',
+            top: '43%',
+            left: 24,
+            fontFamily: FONTS.serif,
+            fontStyle: 'italic',
+            fontSize: 14,
+            color: leanX < -0.2 ? COLORS.inkCream : COLORS.inkCreamSecondary,
+            transition: 'color 0.2s',
+          }}>
+            let go
+            {commitSide === 'trash' && commitProgress > 0 && (
+              <div style={{
+                marginTop: 4,
+                height: 2,
+                borderRadius: 1,
+                background: COLORS.inkCreamSecondary,
+                opacity: commitFillOpacity,
+                width: `${commitProgress * 100}%`,
+                transition: 'width 0.1s linear',
+              }} />
+            )}
+          </div>
+
+          {/* Right: keep */}
+          <div style={{
+            position: 'absolute',
+            top: '43%',
+            right: 24,
+            fontFamily: FONTS.serif,
+            fontStyle: 'italic',
+            fontSize: 14,
+            color: leanX > 0.2 ? COLORS.inkCream : COLORS.inkCreamSecondary,
+            transition: 'color 0.2s',
+            textAlign: 'right',
+          }}>
+            keep
+            {commitSide === 'keep' && commitProgress > 0 && (
+              <div style={{
+                marginTop: 4,
+                height: 2,
+                borderRadius: 1,
+                background: COLORS.scoreAmber,
+                opacity: commitFillOpacity,
+                width: `${commitProgress * 100}%`,
+                marginLeft: 'auto',
+                transition: 'width 0.1s linear',
+              }} />
+            )}
+          </div>
+
+          {/* Center cursor dot */}
+          <div style={{
+            position: 'absolute',
+            top: '44%',
+            left: `${50 + leanX * 30}%`,
+            transform: 'translateX(-50%)',
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: COLORS.scoreAmber,
+            opacity: 0.8,
+            transition: 'left 0.05s linear',
+          }} />
         </div>
+      )}
+
+      {/* Phase indicator */}
+      {textureIdx >= 0 && !resolvedRef.current && phase === 'listening' && (
+        <motion.div
+          style={{
+            position: 'absolute',
+            top: '36%',
+            left: 0,
+            right: 0,
+            textAlign: 'center',
+            fontFamily: FONTS.serif,
+            fontStyle: 'italic',
+            fontSize: 12,
+            color: COLORS.inkCreamSecondary,
+          }}
+          animate={{ opacity: [0.3, 0.6, 0.3] }}
+          transition={{ duration: 1.5, repeat: Infinity }}
+        >
+          listening...
+        </motion.div>
       )}
 
       {/* Decision flash */}
@@ -326,8 +437,8 @@ export default function Textures({ onNext, avd, inputMode }) {
           transition={{ delay: 1.5 }}
         >
           {motionAvailable
-            ? 'listen first \u00B7 then shake to throw away'
-            : 'listen first \u00B7 swipe down to throw away'}
+            ? 'lean right to keep \u00B7 left to let go'
+            : 'drag right to keep \u00B7 left to let go'}
         </motion.div>
       )}
     </div>
