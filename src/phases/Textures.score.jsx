@@ -34,22 +34,23 @@ const STAVE_Y = 280
 const STAVE_WIDTH = 320
 const STAVE_X_OFFSET = 20
 const MARK_SPACING = STAVE_WIDTH / 8
-const LISTEN_DURATION = 5000   // 5s listen — just hear it
-const LEAN_THRESHOLD = 0.45    // how far to lean to trigger
-const LEAN_HOLD_MS = 1500      // hold the lean for 1.5s to commit
-const DECIDE_GRACE_MS = 2200   // ignore lean while ConductingEngine recalibrates
+const LISTEN_DURATION = 5000
+const LEAN_THRESHOLD = 0.45
+const LEAN_HOLD_MS = 1500
+const CALIBRATION_SETTLE_MS = 2200
 
 export default function Textures({ onNext, avd, inputMode }) {
   const [textureIdx, setTextureIdx] = useState(-1)
   const [marks, setMarks] = useState([])
   const [currentName, setCurrentName] = useState('')
   const [showInstruction, setShowInstruction] = useState(true)
-  const [phase, setPhase] = useState('intro') // intro, listening, deciding
+  const [phase, setPhase] = useState('intro')
   const [motionAvailable, setMotionAvailable] = useState(true)
   const [decisionText, setDecisionText] = useState('')
-  const [leanX, setLeanX] = useState(0) // -1 to 1, for visual indicator
-  const [commitProgress, setCommitProgress] = useState(0) // 0-1
-  const [commitSide, setCommitSide] = useState(null) // 'keep' | 'trash'
+  const [leanX, setLeanX] = useState(0)
+  const [commitProgress, setCommitProgress] = useState(0)
+  const [commitSide, setCommitSide] = useState(null)
+  const [showDecideUI, setShowDecideUI] = useState(false)
 
   const conductingRef = useRef(null)
   const rafRef = useRef(null)
@@ -62,6 +63,7 @@ export default function Textures({ onNext, avd, inputMode }) {
   const leanSideRef = useRef(null)
   const leanStartRef = useRef(null)
   const decideStartTime = useRef(null)
+  const textureIdxRef = useRef(-1)
 
   useEffect(() => {
     preloadVoices(VOICE_PATHS)
@@ -75,16 +77,15 @@ export default function Textures({ onNext, avd, inputMode }) {
       }
     })
 
-    // Voice intro — spaced by actual durations
-    // textures-01: 0.7s, textures-02: 3.7s, textures-03: 3.2s
+    // Voice intro
     const timers = []
     const t = (ms, fn) => timers.push(setTimeout(fn, ms))
-    t(0, () => playVoice(VOICE_PATHS[0]))        // "Listen." (0.7s)
-    t(1200, () => playVoice(VOICE_PATHS[1]))      // "Lean right to keep it. Left to let it go." (3.7s)
-    t(5400, () => playVoice(VOICE_PATHS[2]))      // "Right to keep. Left to let go." (3.2s)
+    t(0, () => playVoice(VOICE_PATHS[0]))
+    t(1200, () => playVoice(VOICE_PATHS[1]))
+    t(5400, () => playVoice(VOICE_PATHS[2]))
     t(9000, () => {
       setShowInstruction(false)
-      advanceToTexture(0)
+      startTexture(0)
     })
 
     return () => {
@@ -95,12 +96,13 @@ export default function Textures({ onNext, avd, inputMode }) {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const advanceToTexture = useCallback((idx) => {
+  const startTexture = useCallback((idx) => {
     if (idx >= TEXTURE_DATA.length) {
       finishPhase()
       return
     }
     const texture = TEXTURE_DATA[idx]
+    textureIdxRef.current = idx
     setTextureIdx(idx)
     setCurrentName(texture.name)
     setPhase('listening')
@@ -108,19 +110,20 @@ export default function Textures({ onNext, avd, inputMode }) {
     setLeanX(0)
     setCommitProgress(0)
     setCommitSide(null)
+    setShowDecideUI(false)
     resolvedRef.current = false
     leanSideRef.current = null
     leanStartRef.current = null
     dwellStart.current = Date.now()
 
-    // Play texture audio for full duration
-    audioEngine.playTexture(texture.name, (LISTEN_DURATION + DECIDE_DURATION) / 1000)
+    // Play texture audio — long duration so it keeps playing through decide
+    audioEngine.playTexture(texture.name, 30)
 
-    // After listen phase, enter decide phase — waits for lean, no timeout
+    // After listen phase, switch to deciding
     phaseTimer.current = setTimeout(() => {
       setPhase('deciding')
+      setShowDecideUI(true)
       decideStartTime.current = Date.now()
-      // Recalibrate so current phone position = neutral
       const engine = conductingRef.current
       if (engine) engine.startCalibration()
     }, LISTEN_DURATION)
@@ -130,10 +133,11 @@ export default function Textures({ onNext, avd, inputMode }) {
     if (resolvedRef.current) return
     resolvedRef.current = true
     clearTimeout(phaseTimer.current)
+    setShowDecideUI(false)
     const texture = TEXTURE_DATA[idx]
     audioEngine.stopTexture()
 
-    if (kept === true) {
+    if (kept) {
       preferred.current.push(texture.name)
       const markX = STAVE_X_OFFSET + (idx * MARK_SPACING) + MARK_SPACING / 2
       setMarks(prev => [...prev, { x: markX, markType: texture.markType }])
@@ -151,11 +155,11 @@ export default function Textures({ onNext, avd, inputMode }) {
       setDecisionText('let go')
     }
 
-    setPhase('listening')
+    setPhase('resolved')
     setLeanX(0)
     setCommitProgress(0)
     setCommitSide(null)
-    setTimeout(() => advanceToTexture(idx + 1), 800)
+    setTimeout(() => startTexture(idx + 1), 800)
   }, [avd]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const finishPhase = useCallback(() => {
@@ -175,49 +179,48 @@ export default function Textures({ onNext, avd, inputMode }) {
     }, 2000)
   }, [avd, onNext])
 
-  // rAF loop: read lean during deciding phase
+  // rAF loop: lean detection during deciding phase only
   useEffect(() => {
     let running = true
     const loop = () => {
       if (!running) return
-      const engine = conductingRef.current
-      if (engine && phase === 'deciding' && !resolvedRef.current) {
-        const data = engine.getData()
-        // pan 0-1 → position -1 to +1
-        const position = (data.pan - 0.5) * 2
-        setLeanX(position)
 
-        // Grace period: ignore lean for first 800ms (recalibration settling)
-        const sinceDecideStart = Date.now() - (decideStartTime.current || Date.now())
-        if (sinceDecideStart < DECIDE_GRACE_MS) {
-          rafRef.current = requestAnimationFrame(loop)
-          return
-        }
+      if (phase === 'deciding' && !resolvedRef.current) {
+        const engine = conductingRef.current
+        if (engine) {
+          const data = engine.getData()
+          const position = (data.pan - 0.5) * 2
+          setLeanX(position)
 
-        // Right = keep, Left = trash
-        if (Math.abs(position) > LEAN_THRESHOLD) {
-          const side = position > 0 ? 'keep' : 'trash'
-          if (leanSideRef.current !== side) {
-            leanSideRef.current = side
-            leanStartRef.current = Date.now()
+          // Wait for calibration to settle
+          const sinceDecideStart = Date.now() - (decideStartTime.current || Date.now())
+          if (sinceDecideStart >= CALIBRATION_SETTLE_MS) {
+            if (Math.abs(position) > LEAN_THRESHOLD) {
+              const side = position > 0 ? 'keep' : 'trash'
+              if (leanSideRef.current !== side) {
+                leanSideRef.current = side
+                leanStartRef.current = Date.now()
+              }
+              const elapsed = Date.now() - leanStartRef.current
+              const progress = Math.min(1, elapsed / LEAN_HOLD_MS)
+              setCommitProgress(progress)
+              setCommitSide(side)
+
+              if (progress >= 1) {
+                resolveTexture(textureIdxRef.current, side === 'keep')
+                leanSideRef.current = null
+                leanStartRef.current = null
+              }
+            } else {
+              leanSideRef.current = null
+              leanStartRef.current = null
+              setCommitProgress(0)
+              setCommitSide(null)
+            }
           }
-          const elapsed = Date.now() - leanStartRef.current
-          const progress = Math.min(1, elapsed / LEAN_HOLD_MS)
-          setCommitProgress(progress)
-          setCommitSide(side)
-
-          if (progress >= 1) {
-            resolveTexture(textureIdx, side === 'keep')
-            leanSideRef.current = null
-            leanStartRef.current = null
-          }
-        } else {
-          leanSideRef.current = null
-          leanStartRef.current = null
-          setCommitProgress(0)
-          setCommitSide(null)
         }
       }
+
       rafRef.current = requestAnimationFrame(loop)
     }
     rafRef.current = requestAnimationFrame(loop)
@@ -225,7 +228,7 @@ export default function Textures({ onNext, avd, inputMode }) {
       running = false
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
     }
-  }, [phase, textureIdx]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [phase]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Touch fallback: drag right to keep, left to let go
   const touchStartX = useRef(null)
@@ -233,6 +236,7 @@ export default function Textures({ onNext, avd, inputMode }) {
     if (phase !== 'deciding') return
     touchStartX.current = e.touches[0].clientX
   }, [phase])
+
   const handleTouchMove = useCallback((e) => {
     if (phase !== 'deciding' || touchStartX.current === null || resolvedRef.current) return
     const dx = e.touches[0].clientX - touchStartX.current
@@ -241,19 +245,19 @@ export default function Textures({ onNext, avd, inputMode }) {
     const engine = conductingRef.current
     if (engine) engine.updateTouch((norm + 1) / 2, 0.5, true)
   }, [phase])
+
   const handleTouchEnd = useCallback(() => {
     if (phase !== 'deciding' || resolvedRef.current || touchStartX.current === null) return
     if (Math.abs(leanX) > 0.5) {
-      resolveTexture(textureIdx, leanX > 0)
+      resolveTexture(textureIdxRef.current, leanX > 0)
     } else {
       setLeanX(0)
     }
     touchStartX.current = null
     const engine = conductingRef.current
     if (engine) engine.updateTouch(0.5, 0.5, false)
-  }, [phase, textureIdx, leanX]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [phase, leanX]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Commit fill opacity
   const commitFillOpacity = commitProgress > 0 ? 0.15 + commitProgress * 0.4 : 0
 
   return (
@@ -294,8 +298,7 @@ export default function Textures({ onNext, avd, inputMode }) {
             style={{
               position: 'absolute',
               top: '28%',
-              left: 0,
-              right: 0,
+              left: 0, right: 0,
               textAlign: 'center',
               fontFamily: FONTS.serif,
               fontStyle: 'italic',
@@ -312,9 +315,34 @@ export default function Textures({ onNext, avd, inputMode }) {
         )}
       </AnimatePresence>
 
-      {/* Decide phase: left/right labels with commit bars */}
-      {phase === 'deciding' && !resolvedRef.current && (
-        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+      {/* Listening indicator */}
+      {phase === 'listening' && textureIdx >= 0 && (
+        <motion.div
+          style={{
+            position: 'absolute',
+            top: '36%',
+            left: 0, right: 0,
+            textAlign: 'center',
+            fontFamily: FONTS.serif,
+            fontStyle: 'italic',
+            fontSize: 12,
+            color: COLORS.inkCreamSecondary,
+          }}
+          animate={{ opacity: [0.3, 0.6, 0.3] }}
+          transition={{ duration: 1.5, repeat: Infinity }}
+        >
+          listening...
+        </motion.div>
+      )}
+
+      {/* Decide UI: keep/let go labels + cursor + commit bars */}
+      {showDecideUI && (
+        <motion.div
+          style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.4 }}
+        >
           {/* Left: let go */}
           <div style={{
             position: 'absolute',
@@ -329,9 +357,7 @@ export default function Textures({ onNext, avd, inputMode }) {
             let go
             {commitSide === 'trash' && commitProgress > 0 && (
               <div style={{
-                marginTop: 4,
-                height: 2,
-                borderRadius: 1,
+                marginTop: 4, height: 2, borderRadius: 1,
                 background: COLORS.inkCreamSecondary,
                 opacity: commitFillOpacity,
                 width: `${commitProgress * 100}%`,
@@ -355,9 +381,7 @@ export default function Textures({ onNext, avd, inputMode }) {
             keep
             {commitSide === 'keep' && commitProgress > 0 && (
               <div style={{
-                marginTop: 4,
-                height: 2,
-                borderRadius: 1,
+                marginTop: 4, height: 2, borderRadius: 1,
                 background: COLORS.scoreAmber,
                 opacity: commitFillOpacity,
                 width: `${commitProgress * 100}%`,
@@ -367,64 +391,44 @@ export default function Textures({ onNext, avd, inputMode }) {
             )}
           </div>
 
-          {/* Center cursor dot */}
+          {/* Cursor dot */}
           <div style={{
             position: 'absolute',
             top: '44%',
             left: `${50 + leanX * 30}%`,
             transform: 'translateX(-50%)',
-            width: 6,
-            height: 6,
+            width: 6, height: 6,
             borderRadius: '50%',
             background: COLORS.scoreAmber,
             opacity: 0.8,
             transition: 'left 0.05s linear',
           }} />
-        </div>
-      )}
-
-      {/* Phase indicator */}
-      {textureIdx >= 0 && !resolvedRef.current && phase === 'listening' && (
-        <motion.div
-          style={{
-            position: 'absolute',
-            top: '36%',
-            left: 0,
-            right: 0,
-            textAlign: 'center',
-            fontFamily: FONTS.serif,
-            fontStyle: 'italic',
-            fontSize: 12,
-            color: COLORS.inkCreamSecondary,
-          }}
-          animate={{ opacity: [0.3, 0.6, 0.3] }}
-          transition={{ duration: 1.5, repeat: Infinity }}
-        >
-          listening...
         </motion.div>
       )}
 
       {/* Decision flash */}
-      {decisionText && (
-        <motion.div
-          style={{
-            position: 'absolute',
-            top: '36%',
-            left: 0,
-            right: 0,
-            textAlign: 'center',
-            fontFamily: FONTS.mono,
-            fontSize: 10,
-            color: decisionText === 'kept' ? COLORS.inkCream : COLORS.inkCreamSecondary,
-            letterSpacing: '0.1em',
-          }}
-          initial={{ opacity: 0.8 }}
-          animate={{ opacity: 0 }}
-          transition={{ duration: 0.8 }}
-        >
-          {decisionText}
-        </motion.div>
-      )}
+      <AnimatePresence>
+        {decisionText && (
+          <motion.div
+            key={decisionText + textureIdx}
+            style={{
+              position: 'absolute',
+              top: '36%',
+              left: 0, right: 0,
+              textAlign: 'center',
+              fontFamily: FONTS.mono,
+              fontSize: 10,
+              color: decisionText === 'kept' ? COLORS.inkCream : COLORS.inkCreamSecondary,
+              letterSpacing: '0.1em',
+            }}
+            initial={{ opacity: 0.8 }}
+            animate={{ opacity: 0 }}
+            transition={{ duration: 0.8 }}
+          >
+            {decisionText}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Instruction text during intro */}
       {showInstruction && (
@@ -432,8 +436,7 @@ export default function Textures({ onNext, avd, inputMode }) {
           style={{
             position: 'absolute',
             top: '55%',
-            left: 24,
-            right: 24,
+            left: 24, right: 24,
             textAlign: 'center',
             fontFamily: FONTS.serif,
             fontStyle: 'italic',
