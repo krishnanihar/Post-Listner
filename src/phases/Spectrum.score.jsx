@@ -1,0 +1,355 @@
+import { useState, useRef, useCallback, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { audioEngine } from '../engine/audio'
+import ConductingEngine from '../orchestra/ConductingEngine'
+import Score from '../score/Score'
+import { Linea } from '../score/marks'
+import { COLORS, FONTS } from '../score/tokens'
+import { playVoice, preloadVoices } from '../score/voice'
+
+// Each pair has AVD coordinates from SPECTRUM-AUDIO-PROMPTS.md
+const PAIRS = [
+  { left: 'shadow',  right: 'warmth',
+    coordL: { a: 0.30, v: 0.10, d: 0.50 }, coordR: { a: 0.30, v: 0.85, d: 0.50 } },
+  { left: 'pulse',   right: 'shimmer',
+    coordL: { a: 0.55, v: 0.20, d: 0.35 }, coordR: { a: 0.55, v: 0.80, d: 0.35 } },
+  { left: 'weight',  right: 'air',
+    coordL: { a: 0.20, v: 0.15, d: 0.60 }, coordR: { a: 0.20, v: 0.70, d: 0.60 } },
+  { left: 'ache',    right: 'bloom',
+    coordL: { a: 0.25, v: 0.10, d: 0.75 }, coordR: { a: 0.25, v: 0.90, d: 0.75 } },
+  { left: 'machine', right: 'earth',
+    coordL: { a: 0.50, v: 0.20, d: 0.40 }, coordR: { a: 0.50, v: 0.65, d: 0.40 } },
+  { left: 'tension', right: 'resolve',
+    coordL: { a: 0.60, v: 0.05, d: 0.55 }, coordR: { a: 0.60, v: 0.85, d: 0.55 } },
+  { left: 'fog',     right: 'glass',
+    coordL: { a: 0.15, v: 0.20, d: 0.65 }, coordR: { a: 0.15, v: 0.75, d: 0.65 } },
+  { left: 'gravity', right: 'drift',
+    coordL: { a: 0.65, v: 0.30, d: 0.30 }, coordR: { a: 0.15, v: 0.60, d: 0.70 } },
+]
+
+const VOICE_PATHS = [
+  '/chamber/voices/score/spectrum-01.mp3',
+  '/chamber/voices/score/spectrum-02.mp3',
+  '/chamber/voices/score/spectrum-03.mp3',
+  '/chamber/voices/score/spectrum-04.mp3',
+]
+
+// Stave layout constants
+const STAVE_Y = 280
+const STAVE_WIDTH = 320
+const STAVE_X_OFFSET = 20
+const MARK_SPACING = STAVE_WIDTH / 8
+
+export default function Spectrum({ onNext, avd, inputMode }) {
+  const [pairIdx, setPairIdx] = useState(0)
+  const [transitioning, setTransitioning] = useState(false)
+  const [cursorX, setCursorX] = useState(0) // -1 to 1
+  const [marks, setMarks] = useState([]) // accumulated linea marks
+  const [pairVisible, setPairVisible] = useState(true)
+
+  const conductingRef = useRef(null)
+  const pairRef = useRef(null)
+  const rafRef = useRef(null)
+  const leanTimerRef = useRef(null)
+  const leanSideRef = useRef(null)
+  const leanStartRef = useRef(null)
+  const cursorHistoryRef = useRef([]) // last 2s of cursor positions for linea path
+  const pairStartTime = useRef(Date.now())
+  const reversalCount = useRef(0)
+  const lastSide = useRef(null)
+  const firstHovered = useRef(null)
+  const switched = useRef(false)
+  const results = useRef([])
+  const isMouse = inputMode === 'mouse'
+
+  const pair = PAIRS[pairIdx]
+
+  // Initialize ConductingEngine
+  useEffect(() => {
+    preloadVoices(VOICE_PATHS)
+    const engine = new ConductingEngine()
+    conductingRef.current = engine
+    engine.requestPermission().then(() => engine.start())
+    return () => engine.stop()
+  }, [])
+
+  // Stop audio helper
+  const stopAudio = useCallback(() => {
+    if (pairRef.current) {
+      pairRef.current.stop()
+      pairRef.current = null
+    }
+  }, [])
+
+  // Start audio for current pair
+  const startPair = useCallback(() => {
+    stopAudio()
+    const urlL = `/spectrum/${pair.left}.mp3`
+    const urlR = `/spectrum/${pair.right}.mp3`
+    pairRef.current = audioEngine.playMp3Pair(urlL, urlR, 10)
+    pairStartTime.current = Date.now()
+    firstHovered.current = null
+    reversalCount.current = 0
+    lastSide.current = null
+    switched.current = false
+    cursorHistoryRef.current = []
+    leanSideRef.current = null
+    leanStartRef.current = null
+  }, [pair, stopAudio])
+
+  // Start pair audio on mount and on pair change
+  useEffect(() => {
+    startPair()
+    return stopAudio
+  }, [pairIdx]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Commitment weight from slider position, reversals, dwell
+  const getSlideCommitmentWeight = useCallback((sliderPosition) => {
+    const positionFactor = Math.max(0.2, sliderPosition)
+    const reversals = reversalCount.current
+    const reversalPenalty = 1.0 / (1.0 + reversals * 0.3)
+    const dwellSec = (Date.now() - pairStartTime.current) / 1000
+    const dwellFactor = Math.max(0.3, Math.min(1.2, dwellSec / 4.0))
+    return positionFactor * reversalPenalty * dwellFactor
+  }, [])
+
+  // Build linea path from cursor history
+  const buildLineaPath = useCallback((side) => {
+    const history = cursorHistoryRef.current
+    // Sample 6 points from history
+    const samples = []
+    const step = Math.max(1, Math.floor(history.length / 6))
+    for (let i = 0; i < history.length && samples.length < 6; i += step) {
+      samples.push(history[i])
+    }
+    if (samples.length < 2) samples.push(side === 'left' ? -0.5 : 0.5)
+    return samples
+  }, [])
+
+  const lockChoice = useCallback((side) => {
+    if (transitioning) return
+    setTransitioning(true)
+    stopAudio()
+
+    const dwellSec = (Date.now() - pairStartTime.current) / 1000
+    const confidence = Math.max(0.2, Math.min(1, (dwellSec - 0.5) / 4.0))
+    const sliderPos = Math.min(1, Math.abs(cursorHistoryRef.current[cursorHistoryRef.current.length - 1] || 0))
+    const slideCommitmentWeight = getSlideCommitmentWeight(sliderPos)
+
+    if (firstHovered.current && firstHovered.current !== side) {
+      switched.current = true
+    }
+
+    const chosenCoord = side === 'left' ? pair.coordL : pair.coordR
+
+    results.current.push({
+      pair: pairIdx + 1,
+      choice: side,
+      label: side === 'left' ? pair.left : pair.right,
+      confidence,
+      reactionMs: Date.now() - pairStartTime.current,
+      switched: switched.current,
+      reversals: reversalCount.current,
+      coord: chosenCoord,
+    })
+
+    // AVD updates — same as original
+    const vDelta = (chosenCoord.v - 0.5) * confidence * slideCommitmentWeight
+    const aDelta = (chosenCoord.a - 0.5) * confidence * slideCommitmentWeight * 0.5
+    const dDelta = (chosenCoord.d - 0.5) * confidence * slideCommitmentWeight * 0.5
+    const switchWeight = switched.current ? 0.6 : 1.0
+    avd.updateValence(vDelta * switchWeight, 1.0)
+    avd.updateArousal(aDelta * switchWeight, 1.0)
+    avd.updateDepth(dDelta * switchWeight, 1.0)
+
+    if (navigator.vibrate) navigator.vibrate(10)
+
+    // Stamp a linea mark
+    const markX = STAVE_X_OFFSET + (pairIdx * MARK_SPACING) + MARK_SPACING / 2
+    const dip = side === 'left' ? 'left' : 'right'
+    setMarks(prev => [...prev, { x: markX, dip }])
+
+    // Voice cues after pairs 2, 4, 6, 8
+    const completedPair = pairIdx + 1
+    if (completedPair === 2) playVoice(VOICE_PATHS[0])
+    if (completedPair === 4) playVoice(VOICE_PATHS[1])
+    if (completedPair === 6) playVoice(VOICE_PATHS[2])
+
+    setPairVisible(false)
+
+    setTimeout(() => {
+      if (pairIdx < PAIRS.length - 1) {
+        setPairIdx(prev => prev + 1)
+        setCursorX(0)
+        setPairVisible(true)
+        setTransitioning(false)
+      } else {
+        // Final pair — voice 04 then advance
+        playVoice(VOICE_PATHS[3])
+        avd.setPhaseData('spectrum', { pairs: results.current })
+        setTimeout(() => onNext({ spectrum: results.current }), 1500)
+      }
+    }, 600)
+  }, [pairIdx, transitioning, avd, onNext, stopAudio, pair, getSlideCommitmentWeight])
+
+  // rAF loop: read ConductingEngine data, update cursor and audio balance
+  useEffect(() => {
+    let running = true
+    const loop = () => {
+      if (!running) return
+      const engine = conductingRef.current
+      if (engine && !transitioning) {
+        const data = engine.getData()
+        // pan is 0-1, map to -1 to +1
+        const position = (data.pan - 0.5) * 2
+        setCursorX(position)
+
+        // Track cursor history for linea path
+        cursorHistoryRef.current.push(position)
+        if (cursorHistoryRef.current.length > 60) cursorHistoryRef.current.shift() // ~2s at 30fps
+
+        // Audio balance
+        const balance = Math.sign(position) * Math.pow(Math.abs(position), 0.6) * 0.8
+        if (pairRef.current) pairRef.current.setBalance(balance)
+
+        // Track side and reversals
+        if (Math.abs(position) > 0.1) {
+          const side = position < 0 ? 'left' : 'right'
+          if (!firstHovered.current) firstHovered.current = side
+          if (lastSide.current && lastSide.current !== side) {
+            reversalCount.current++
+          }
+          lastSide.current = side
+        }
+
+        // Auto-commit: sustained lean > 0.4 for 1.5s
+        if (Math.abs(position) > 0.4) {
+          const side = position < 0 ? 'left' : 'right'
+          if (leanSideRef.current !== side) {
+            leanSideRef.current = side
+            leanStartRef.current = Date.now()
+          } else if (Date.now() - leanStartRef.current > 1500) {
+            lockChoice(side)
+            leanSideRef.current = null
+            leanStartRef.current = null
+          }
+        } else {
+          leanSideRef.current = null
+          leanStartRef.current = null
+        }
+      }
+      rafRef.current = requestAnimationFrame(loop)
+    }
+    rafRef.current = requestAnimationFrame(loop)
+    return () => {
+      running = false
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    }
+  }, [transitioning, lockChoice])
+
+  // Touch fallback: drag left/right
+  const handleTouchMove = useCallback((e) => {
+    if (transitioning) return
+    const touch = e.touches[0]
+    const x = touch.clientX / window.innerWidth
+    const engine = conductingRef.current
+    if (engine) engine.updateTouch(x, 0.5, true)
+  }, [transitioning])
+
+  const handleTouchEnd = useCallback(() => {
+    if (transitioning) return
+    // On release, lock to whichever side cursor is on
+    const pos = cursorHistoryRef.current[cursorHistoryRef.current.length - 1] || 0
+    if (Math.abs(pos) > 0.15) {
+      lockChoice(pos < 0 ? 'left' : 'right')
+    }
+    const engine = conductingRef.current
+    if (engine) engine.updateTouch(0.5, 0.5, false)
+  }, [transitioning, lockChoice])
+
+  // Tap to lock immediately
+  const handleTap = useCallback((e) => {
+    if (transitioning) return
+    // Use current cursor position's side
+    const pos = cursorHistoryRef.current[cursorHistoryRef.current.length - 1] || 0
+    if (Math.abs(pos) > 0.1) {
+      lockChoice(pos < 0 ? 'left' : 'right')
+    }
+  }, [transitioning, lockChoice])
+
+  // Cursor position on stave (SVG coordinates)
+  const cursorSvgX = STAVE_X_OFFSET + (STAVE_WIDTH / 2) + cursorX * (STAVE_WIDTH / 2)
+
+  return (
+    <div
+      style={{ position: 'absolute', inset: 0, touchAction: 'none' }}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onClick={isMouse ? handleTap : undefined}
+    >
+      <Score
+        variant="cream"
+        pageTitle="ii. spectrum"
+        pageNumber={`${pairIdx + 1} / ${PAIRS.length}`}
+        staves={[{ y: STAVE_Y, width: STAVE_WIDTH }]}
+      >
+        {/* Accumulated linea marks */}
+        {marks.map((m, i) => (
+          <g key={i} transform={`translate(${m.x}, ${STAVE_Y + 6})`}>
+            <Linea size={MARK_SPACING * 0.8} dip={m.dip} color={COLORS.inkCream} />
+          </g>
+        ))}
+
+        {/* Live amber cursor dot */}
+        {pairVisible && !transitioning && (
+          <circle
+            cx={cursorSvgX}
+            cy={STAVE_Y + 6}
+            r="3"
+            fill={COLORS.scoreAmber}
+          />
+        )}
+      </Score>
+
+      {/* Word labels — left and right of stave area */}
+      <AnimatePresence mode="wait">
+        {pairVisible && (
+          <motion.div
+            key={pairIdx}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.4 }}
+            style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+          >
+            <div style={{
+              position: 'absolute',
+              top: '40%',
+              left: 24,
+              fontFamily: FONTS.serif,
+              fontStyle: 'italic',
+              fontSize: 22,
+              color: cursorX < -0.2 ? COLORS.inkCream : COLORS.inkCreamSecondary,
+              transition: 'color 0.3s',
+            }}>
+              {pair.left}
+            </div>
+            <div style={{
+              position: 'absolute',
+              top: '40%',
+              right: 24,
+              fontFamily: FONTS.serif,
+              fontStyle: 'italic',
+              fontSize: 22,
+              color: cursorX > 0.2 ? COLORS.inkCream : COLORS.inkCreamSecondary,
+              transition: 'color 0.3s',
+              textAlign: 'right',
+            }}>
+              {pair.right}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}

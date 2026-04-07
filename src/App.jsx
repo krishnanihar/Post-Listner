@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import Entry from './phases/Entry.score'
-import Spectrum from './phases/Spectrum'
+import Spectrum from './phases/Spectrum.score'
 import DepthDial from './phases/DepthDial'
 import Textures from './phases/Textures'
 import Moment from './phases/Moment'
