@@ -38,7 +38,7 @@ const LISTEN_DURATION = 5000   // 5s listen — just hear it
 const DECIDE_DURATION = 6000   // 6s to lean left or right
 const LEAN_THRESHOLD = 0.45    // how far to lean to trigger (slightly higher to avoid drift)
 const LEAN_HOLD_MS = 1500      // hold the lean for 1.5s to commit
-const DECIDE_GRACE_MS = 800    // ignore lean for first 800ms of decide phase (recalibration)
+const DECIDE_GRACE_MS = 2200   // ignore lean while ConductingEngine recalibrates (2s + buffer)
 
 export default function Textures({ onNext, avd, inputMode }) {
   const [textureIdx, setTextureIdx] = useState(-1)
