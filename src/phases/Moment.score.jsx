@@ -33,6 +33,7 @@ export default function Moment({ onNext, avd, inputMode }) {
   const [tactusPath, setTactusPath] = useState('')
   const [phase, setPhase] = useState('intro')
   const [motionAvailable, setMotionAvailable] = useState(true)
+  const motionRef = useRef(true)
   const [elapsed, setElapsed] = useState(0)
   const [gestureIntensity, setGestureIntensity] = useState(0) // 0-1 for visual feedback
 
@@ -56,6 +57,12 @@ export default function Moment({ onNext, avd, inputMode }) {
     engine.requestPermission().then((granted) => {
       if (granted) {
         engine.start()
+        setTimeout(() => {
+          if (engine._rms < 0.01 && engine._gestureSize < 0.01) {
+            setMotionAvailable(false)
+            motionRef.current = false
+          }
+        }, 1000)
       } else {
         setMotionAvailable(false)
       }

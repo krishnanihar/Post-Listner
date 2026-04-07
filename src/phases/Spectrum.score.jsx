@@ -48,6 +48,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
   const [pairVisible, setPairVisible] = useState(true)
   const [showHint, setShowHint] = useState(true)
   const [motionAvailable, setMotionAvailable] = useState(true)
+  const motionRef = useRef(true) // ref mirror for rAF closure
   const [commitProgress, setCommitProgress] = useState(0) // 0-1, visible fill under chosen word
   const [commitSide, setCommitSide] = useState(null) // 'left' | 'right' | null
 
@@ -74,6 +75,12 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     engine.requestPermission().then((granted) => {
       if (granted) {
         engine.start()
+        setTimeout(() => {
+          if (engine._rms < 0.01 && engine._gestureSize < 0.01) {
+            setMotionAvailable(false)
+            motionRef.current = false
+          }
+        }, 1000)
       } else {
         setMotionAvailable(false)
       }
@@ -191,7 +198,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
       if (!running) return
       const engine = conductingRef.current
       if (engine && !transitioning) {
-        const data = engine.getData()
+        const data = !motionRef.current ? engine._getTouchData() : engine.getData()
         const position = (data.pan - 0.5) * 2
         setCursorX(position)
 
@@ -243,11 +250,18 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     }
   }, [transitioning, lockChoice])
 
-  // Touch fallback
+  // Touch/mouse fallback
   const handleTouchMove = useCallback((e) => {
     if (transitioning) return
     const touch = e.touches[0]
     const x = touch.clientX / window.innerWidth
+    const engine = conductingRef.current
+    if (engine) engine.updateTouch(x, 0.5, true)
+  }, [transitioning])
+
+  const handleMouseMove = useCallback((e) => {
+    if (transitioning) return
+    const x = e.clientX / window.innerWidth
     const engine = conductingRef.current
     if (engine) engine.updateTouch(x, 0.5, true)
   }, [transitioning])
@@ -280,6 +294,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
       style={{ position: 'absolute', inset: 0, touchAction: 'none' }}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onMouseMove={isMouse ? handleMouseMove : undefined}
       onClick={isMouse ? handleTap : undefined}
     >
       <Score

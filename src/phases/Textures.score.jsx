@@ -46,6 +46,7 @@ export default function Textures({ onNext, avd, inputMode }) {
   const [showInstruction, setShowInstruction] = useState(true)
   const [phase, setPhase] = useState('intro')
   const [motionAvailable, setMotionAvailable] = useState(true)
+  const motionRef = useRef(true)
   const [decisionText, setDecisionText] = useState('')
   const [leanX, setLeanX] = useState(0)
   const [commitProgress, setCommitProgress] = useState(0)
@@ -72,6 +73,12 @@ export default function Textures({ onNext, avd, inputMode }) {
     engine.requestPermission().then((granted) => {
       if (granted) {
         engine.start()
+        setTimeout(() => {
+          if (engine._rms < 0.01 && engine._gestureSize < 0.01) {
+            setMotionAvailable(false)
+            motionRef.current = false
+          }
+        }, 1000)
       } else {
         setMotionAvailable(false)
       }
@@ -188,7 +195,7 @@ export default function Textures({ onNext, avd, inputMode }) {
       if (phase === 'deciding' && !resolvedRef.current) {
         const engine = conductingRef.current
         if (engine) {
-          const data = engine.getData()
+          const data = !motionRef.current ? engine._getTouchData() : engine.getData()
           const position = (data.pan - 0.5) * 2
           setLeanX(position)
 
@@ -258,6 +265,32 @@ export default function Textures({ onNext, avd, inputMode }) {
     if (engine) engine.updateTouch(0.5, 0.5, false)
   }, [phase, leanX]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Mouse fallback for desktop testing
+  const mouseStartX = useRef(null)
+  const handleMouseDown = useCallback((e) => {
+    if (phase !== 'deciding') return
+    mouseStartX.current = e.clientX
+  }, [phase])
+  const handleMouseMove = useCallback((e) => {
+    if (phase !== 'deciding' || mouseStartX.current === null || resolvedRef.current) return
+    const dx = e.clientX - mouseStartX.current
+    const norm = Math.max(-1, Math.min(1, dx / 120))
+    setLeanX(norm)
+    const engine = conductingRef.current
+    if (engine) engine.updateTouch((norm + 1) / 2, 0.5, true)
+  }, [phase])
+  const handleMouseUp = useCallback(() => {
+    if (phase !== 'deciding' || resolvedRef.current || mouseStartX.current === null) return
+    if (Math.abs(leanX) > 0.5) {
+      resolveTexture(textureIdxRef.current, leanX > 0)
+    } else {
+      setLeanX(0)
+    }
+    mouseStartX.current = null
+    const engine = conductingRef.current
+    if (engine) engine.updateTouch(0.5, 0.5, false)
+  }, [phase, leanX]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const commitFillOpacity = commitProgress > 0 ? 0.15 + commitProgress * 0.4 : 0
 
   return (
@@ -266,6 +299,9 @@ export default function Textures({ onNext, avd, inputMode }) {
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
     >
       <Score
         variant="cream"
