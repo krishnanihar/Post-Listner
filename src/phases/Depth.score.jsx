@@ -168,8 +168,8 @@ export default function Depth({ onNext, avd, inputMode }) {
               {/* Vox mark */}
               <motion.g
                 transform={`translate(50, ${y})`}
-                initial={{ opacity: 0, scale: 0.5 }}
-                animate={{ opacity: 1, scale: 1 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
                 transition={{ duration: 0.3 }}
               >
                 <Vox size={16} color={COLORS.inkCream} />

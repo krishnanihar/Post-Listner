@@ -316,8 +316,8 @@ export default function Textures({ onNext, avd, inputMode }) {
             <motion.g
               key={i}
               transform={`translate(${m.x}, ${STAVE_Y + 6})`}
-              initial={{ opacity: 0, scale: 0.5 }}
-              animate={{ opacity: 1, scale: 1 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               transition={{ duration: 0.3 }}
             >
               <MarkComp size={18} color={COLORS.inkCream} />
