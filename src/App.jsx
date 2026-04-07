@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import Entry from './phases/Entry.score'
 import Spectrum from './phases/Spectrum.score'
@@ -13,10 +13,21 @@ import { useInputMode } from './hooks/useInputMode'
 
 const PHASES = ['entry', 'spectrum', 'depth', 'textures', 'moment', 'reveal', 'orchestra']
 
+const _params = new URLSearchParams(window.location.search)
+const _startPhase = _params.get('phase')
+
 function App() {
-  const [phase, setPhase] = useState('entry')
+  const [phase, setPhase] = useState(PHASES.includes(_startPhase) ? _startPhase : 'entry')
   const [sessionData, setSessionData] = useState({})
   const inputMode = useInputMode()
+
+  // If skipping Entry via ?phase=, init audio so voices/sounds work
+  useEffect(() => {
+    if (_startPhase && _startPhase !== 'entry') {
+      audioEngine.init()
+      audioEngine.resume()
+    }
+  }, [])
 
   const musicPromiseRef = useRef(null)
   const revealAudioRef = useRef(null)
