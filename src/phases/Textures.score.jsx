@@ -35,10 +35,9 @@ const STAVE_WIDTH = 320
 const STAVE_X_OFFSET = 20
 const MARK_SPACING = STAVE_WIDTH / 8
 const LISTEN_DURATION = 5000   // 5s listen — just hear it
-const DECIDE_DURATION = 6000   // 6s to lean left or right
-const LEAN_THRESHOLD = 0.45    // how far to lean to trigger (slightly higher to avoid drift)
+const LEAN_THRESHOLD = 0.45    // how far to lean to trigger
 const LEAN_HOLD_MS = 1500      // hold the lean for 1.5s to commit
-const DECIDE_GRACE_MS = 2200   // ignore lean while ConductingEngine recalibrates (2s + buffer)
+const DECIDE_GRACE_MS = 2200   // ignore lean while ConductingEngine recalibrates
 
 export default function Textures({ onNext, avd, inputMode }) {
   const [textureIdx, setTextureIdx] = useState(-1)
@@ -117,18 +116,13 @@ export default function Textures({ onNext, avd, inputMode }) {
     // Play texture audio for full duration
     audioEngine.playTexture(texture.name, (LISTEN_DURATION + DECIDE_DURATION) / 1000)
 
-    // After listen phase, enter decide phase
+    // After listen phase, enter decide phase — waits for lean, no timeout
     phaseTimer.current = setTimeout(() => {
       setPhase('deciding')
       decideStartTime.current = Date.now()
       // Recalibrate so current phone position = neutral
       const engine = conductingRef.current
       if (engine) engine.startCalibration()
-
-      // Safety: skip (neutral) if no decision after decide duration
-      phaseTimer.current = setTimeout(() => {
-        if (!resolvedRef.current) resolveTexture(idx, null) // null = skipped
-      }, DECIDE_DURATION)
     }, LISTEN_DURATION)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -151,14 +145,10 @@ export default function Textures({ onNext, avd, inputMode }) {
       avd.updateValence((texture.coord.v - 0.5) * dwellWeight, 1.0)
       avd.updateDepth((texture.coord.d - 0.5) * dwellWeight, 1.0)
       avd.updateArousal((texture.coord.a - 0.5) * dwellWeight * 0.5, 1.0)
-    } else if (kept === false) {
+    } else {
       neutral.current.push(texture.name)
       if (navigator.vibrate) navigator.vibrate(30)
       setDecisionText('let go')
-    } else {
-      // null = skipped (no decision made)
-      neutral.current.push(texture.name)
-      setDecisionText('skipped')
     }
 
     setPhase('listening')
@@ -237,11 +227,12 @@ export default function Textures({ onNext, avd, inputMode }) {
     }
   }, [phase, textureIdx]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Touch fallback: drag right to keep, left to trash
+  // Touch fallback: drag right to keep, left to let go
   const touchStartX = useRef(null)
   const handleTouchStart = useCallback((e) => {
+    if (phase !== 'deciding') return
     touchStartX.current = e.touches[0].clientX
-  }, [])
+  }, [phase])
   const handleTouchMove = useCallback((e) => {
     if (phase !== 'deciding' || touchStartX.current === null || resolvedRef.current) return
     const dx = e.touches[0].clientX - touchStartX.current
@@ -251,12 +242,13 @@ export default function Textures({ onNext, avd, inputMode }) {
     if (engine) engine.updateTouch((norm + 1) / 2, 0.5, true)
   }, [phase])
   const handleTouchEnd = useCallback(() => {
-    if (phase !== 'deciding' || resolvedRef.current) return
-    if (Math.abs(leanX) > 0.6) {
+    if (phase !== 'deciding' || resolvedRef.current || touchStartX.current === null) return
+    if (Math.abs(leanX) > 0.5) {
       resolveTexture(textureIdx, leanX > 0)
+    } else {
+      setLeanX(0)
     }
     touchStartX.current = null
-    setLeanX(0)
     const engine = conductingRef.current
     if (engine) engine.updateTouch(0.5, 0.5, false)
   }, [phase, textureIdx, leanX]) // eslint-disable-line react-hooks/exhaustive-deps
