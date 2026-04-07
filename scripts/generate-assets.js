@@ -87,6 +87,54 @@ const TTS_ENTRIES = [
   { file: 'whispers/whisper-05.mp3', text: 'always the sound', voiceId: ADMIRER_VOICE_ID, stability: 0.20, similarity_boost: 0.80, style: 0.00 },
 ]
 
+// ─── The Score — new voice lines (PostListener rebuild) ─────────────────────
+
+const SCORE_TTS_ENTRIES = [
+  // ENTRY (calibration, 4 lines)
+  { file: 'voices/score/entry-01.mp3', text: 'There you are.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.80, style: 0.35 },
+  { file: 'voices/score/entry-02.mp3', text: 'Hold the phone like you would hold a pen.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.80, style: 0.35 },
+  { file: 'voices/score/entry-03.mp3', text: 'I am going to ask you to listen, and to lean.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.80, style: 0.35 },
+  { file: 'voices/score/entry-04.mp3', text: 'Do not decide. Just lean.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.80, style: 0.35 },
+
+  // SPECTRUM (interjections between pairs, 4 lines)
+  { file: 'voices/score/spectrum-01.mp3', text: 'You already know.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.80, style: 0.35 },
+  { file: 'voices/score/spectrum-02.mp3', text: 'Most people fight this. You are not fighting.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.80, style: 0.35 },
+  { file: 'voices/score/spectrum-03.mp3', text: 'Two more.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.80, style: 0.35 },
+  { file: 'voices/score/spectrum-04.mp3', text: 'Good.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.80, style: 0.35 },
+
+  // DEPTH (4 lines)
+  { file: 'voices/score/depth-01.mp3', text: 'Tap to add a voice.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.80, style: 0.35 },
+  { file: 'voices/score/depth-02.mp3', text: 'Each one is yours to keep or release.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.80, style: 0.35 },
+  { file: 'voices/score/depth-03.mp3', text: 'Stop when it is enough.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.80, style: 0.35 },
+  { file: 'voices/score/depth-04.mp3', text: 'That is how much you can hold.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.80, style: 0.35 },
+
+  // TEXTURES (4 lines)
+  { file: 'voices/score/textures-01.mp3', text: 'Listen.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.80, style: 0.35 },
+  { file: 'voices/score/textures-02.mp3', text: 'If you want to keep it, hold the phone still.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.80, style: 0.35 },
+  { file: 'voices/score/textures-03.mp3', text: 'If it is not yours, turn the phone over.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.80, style: 0.35 },
+  { file: 'voices/score/textures-04.mp3', text: 'I have a sense of you now.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.80, style: 0.35 },
+
+  // MOMENT (4 lines)
+  { file: 'voices/score/moment-01.mp3', text: 'I am going to play something. Conduct it.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.80, style: 0.35 },
+  { file: 'voices/score/moment-02.mp3', text: 'Move the phone like you mean it.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.80, style: 0.35 },
+  { file: 'voices/score/moment-03.mp3', text: 'There.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.80, style: 0.35 },
+  { file: 'voices/score/moment-04.mp3', text: 'I felt that.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.80, style: 0.35 },
+
+  // REVEAL (6 lines)
+  { file: 'voices/score/reveal-01.mp3', text: 'Here it is. Your score.', voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.80, style: 0.30 },
+  { file: 'voices/score/reveal-02.mp3', text: 'Every mark on this paper came from your body.', voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.80, style: 0.30 },
+  { file: 'voices/score/reveal-03.mp3', text: 'The line you drew. The voices you held. The textures you kept.', voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.80, style: 0.30 },
+  { file: 'voices/score/reveal-04.mp3', text: 'This is what your taste looks like written down.', voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.80, style: 0.30 },
+  { file: 'voices/score/reveal-05.mp3', text: 'Listen to what it sounds like.', voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.80, style: 0.30 },
+  { file: 'voices/score/reveal-06.mp3', text: 'Made by an algorithm. Read by you. Held by you.', voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.80, style: 0.30 },
+
+  // RETURN (4 lines)
+  { file: 'voices/score/return-01.mp3', text: 'There were others before you tonight.', voiceId: ADMIRER_VOICE_ID, stability: 0.60, similarity_boost: 0.80, style: 0.40 },
+  { file: 'voices/score/return-02.mp3', text: 'Look.', voiceId: ADMIRER_VOICE_ID, stability: 0.60, similarity_boost: 0.80, style: 0.40 },
+  { file: 'voices/score/return-03.mp3', text: 'You were always part of this.', voiceId: ADMIRER_VOICE_ID, stability: 0.60, similarity_boost: 0.80, style: 0.40 },
+  { file: 'voices/score/return-04.mp3', text: 'Thank you for letting me listen.', voiceId: ADMIRER_VOICE_ID, stability: 0.60, similarity_boost: 0.80, style: 0.40 },
+]
+
 // ─── Sound Effects entries (crowd sounds) ────────────────────────────────────
 
 const SFX_ENTRIES = [
@@ -270,13 +318,13 @@ async function main() {
   const outDir = path.join(ROOT, 'public', 'chamber')
 
   // Create directory structure
-  for (const dir of ['tracks', 'voices', 'whispers', 'crowd']) {
+  for (const dir of ['tracks', 'voices', 'voices/score', 'whispers', 'crowd']) {
     fs.mkdirSync(path.join(outDir, dir), { recursive: true })
   }
 
   console.log(`\n  Orchestra Asset Generator`)
   console.log(`  Output: public/chamber/`)
-  console.log(`  TTS: ${TTS_ENTRIES.length} | SFX: ${SFX_ENTRIES.length} | Music: 1 | Hall IR: 1`)
+  console.log(`  TTS: ${TTS_ENTRIES.length} | Score TTS: ${SCORE_TTS_ENTRIES.length} | SFX: ${SFX_ENTRIES.length} | Music: 1 | Hall IR: 1`)
   console.log()
 
   // ── 1. Generate TTS voices ──
@@ -305,6 +353,33 @@ async function main() {
     }
   }
   console.log(`  TTS done: ${ttsCompleted}/${TTS_ENTRIES.length}\n`)
+
+  // ── 1b. Generate Score TTS voices ──
+
+  console.log('  --- Score TTS Voices ---')
+  let scoreTtsCompleted = 0
+  for (const entry of SCORE_TTS_ENTRIES) {
+    const outPath = path.join(outDir, entry.file)
+
+    if (fs.existsSync(outPath)) {
+      console.log(`  [skip] ${entry.file}`)
+      scoreTtsCompleted++
+      continue
+    }
+
+    try {
+      console.log(`  [${scoreTtsCompleted + 1}/${SCORE_TTS_ENTRIES.length}] ${entry.file}`)
+      console.log(`         "${entry.text}"`)
+      const audio = await generateTTS(entry)
+      fs.writeFileSync(outPath, audio)
+      console.log(`         -> ${(audio.length / 1024).toFixed(1)} KB`)
+      scoreTtsCompleted++
+      await new Promise(r => setTimeout(r, 150))
+    } catch (err) {
+      console.error(`  [ERROR] ${entry.file}: ${err.message}`)
+    }
+  }
+  console.log(`  Score TTS done: ${scoreTtsCompleted}/${SCORE_TTS_ENTRIES.length}\n`)
 
   // ── 2. Generate crowd sounds (Sound Effects API) ──
 
