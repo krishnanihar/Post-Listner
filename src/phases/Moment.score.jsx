@@ -51,12 +51,13 @@ export default function Moment({ onNext, avd, inputMode }) {
       }
     })
 
-    // Voice intro then start
+    // Voice intro then start — spaced by actual durations
+    // moment-01: 2.8s, moment-02: 1.7s
     const timers = []
     const t = (ms, fn) => timers.push(setTimeout(fn, ms))
-    t(0, () => playVoice(VOICE_PATHS[0]))
-    t(2000, () => playVoice(VOICE_PATHS[1]))
-    t(4000, () => startPlaying())
+    t(0, () => playVoice(VOICE_PATHS[0]))        // "I am going to play something. Conduct it." (2.8s)
+    t(3300, () => playVoice(VOICE_PATHS[1]))      // "Move the phone like you mean it." (1.7s)
+    t(5500, () => startPlaying())
 
     return () => {
       engine.stop()

@@ -82,15 +82,16 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef }) {
       }, d)
     })
 
-    // Voice cues
+    // Voice cues — spaced by actual durations + 0.5s breathing room
+    // reveal-01: 2.0s, 02: 3.6s, 03: 5.7s, 04: 3.1s, 05: 1.6s, 06: 6.4s
     const timers = []
     const t = (ms, fn) => timers.push(setTimeout(fn, ms))
-    t(5000, () => playVoice(VOICE_PATHS[0]))   // "Here it is. Your score."
-    t(8000, () => playVoice(VOICE_PATHS[1]))   // "Every mark on this paper came from your body."
-    t(12000, () => playVoice(VOICE_PATHS[2]))  // "The line you drew..."
-    t(17000, () => playVoice(VOICE_PATHS[3]))  // "This is what your taste looks like..."
-    t(21000, () => playVoice(VOICE_PATHS[4]))  // "Listen to what it sounds like."
-    t(23000, () => {
+    t(5000, () => playVoice(VOICE_PATHS[0]))    // "Here it is. Your score." (2.0s)
+    t(7500, () => playVoice(VOICE_PATHS[1]))    // "Every mark on this paper came from your body." (3.6s)
+    t(11600, () => playVoice(VOICE_PATHS[2]))   // "The line you drew. The voices you held. The textures you kept." (5.7s)
+    t(17800, () => playVoice(VOICE_PATHS[3]))   // "This is what your taste looks like written down." (3.1s)
+    t(21400, () => playVoice(VOICE_PATHS[4]))   // "Listen to what it sounds like." (1.6s)
+    t(23500, () => {
       // Start music
       setStage('listening')
       if (audioRef.current) {

@@ -50,13 +50,14 @@ export default function Entry({ onNext }) {
     }
 
     // Now audio context is unlocked — voices will play
-    t(0, () => playVoice(VOICES[0]))        // "There you are."
-    t(2500, () => setLineDrawn(true))
-    t(3000, () => playVoice(VOICES[2]))      // "I am going to ask you to listen, and to lean."
-    t(4500, () => setShowLine1(true))
-    t(7000, () => playVoice(VOICES[3]))      // "Do not decide. Just lean."
-    t(8500, () => setShowLine2(true))
-    t(11000, () => setTapReady(true))
+    // entry-01: 1.3s, entry-03: 3.7s, entry-04: 2.9s
+    t(0, () => playVoice(VOICES[0]))        // "There you are." (1.3s)
+    t(1800, () => setLineDrawn(true))
+    t(2000, () => playVoice(VOICES[2]))      // "I am going to ask you to listen, and to lean." (3.7s)
+    t(4000, () => setShowLine1(true))
+    t(6200, () => playVoice(VOICES[3]))      // "Do not decide. Just lean." (2.9s)
+    t(7500, () => setShowLine2(true))
+    t(9500, () => setTapReady(true))
   }
 
   const handleAdvance = () => {

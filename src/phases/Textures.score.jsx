@@ -68,13 +68,14 @@ export default function Textures({ onNext, avd, inputMode }) {
       }
     })
 
-    // Voice intro
+    // Voice intro — spaced by actual durations
+    // textures-01: 0.7s, textures-02: 2.9s, textures-03: 2.9s
     const timers = []
     const t = (ms, fn) => timers.push(setTimeout(fn, ms))
-    t(0, () => playVoice(VOICE_PATHS[0]))
-    t(1500, () => playVoice(VOICE_PATHS[1]))
-    t(5500, () => playVoice(VOICE_PATHS[2]))
-    t(9500, () => {
+    t(0, () => playVoice(VOICE_PATHS[0]))        // "Listen." (0.7s)
+    t(1200, () => playVoice(VOICE_PATHS[1]))      // "If you want to keep it..." (2.9s)
+    t(4600, () => playVoice(VOICE_PATHS[2]))      // "If it is not yours..." (2.9s)
+    t(8000, () => {
       setShowInstruction(false)
       advanceToTexture(0)
     })
