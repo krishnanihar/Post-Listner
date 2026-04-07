@@ -1,106 +1,152 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-
-const BRIEFING_LINES = [
-  "You're about to step inside your music.",
-  "Hold your phone up. Move it. The sound follows.",
-  "Close your eyes.",
-]
-
-const LINE_DURATION = 3 // seconds per line
-const HOLD_AFTER_LAST = 17 // seconds to hold after last line (total: 3×3 + 17 + 4 = 30s)
-const DIM_DURATION = 4 // seconds for screen to dim
-
-function ConductorSVG() {
-  return (
-    <svg
-      width="200"
-      height="200"
-      viewBox="0 0 200 200"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      style={{ opacity: 0.8 }}
-    >
-      <circle cx="100" cy="48" r="14" stroke="#D4A053" strokeWidth="2" />
-      <path
-        d="M72 80 Q80 68 100 66 Q120 68 128 80 L124 130 Q112 134 100 135 Q88 134 76 130 Z"
-        stroke="#D4A053" strokeWidth="2" strokeLinejoin="round"
-      />
-      <path d="M72 82 Q58 96 54 120 Q52 130 56 134" stroke="#D4A053" strokeWidth="2" strokeLinecap="round" />
-      <path d="M128 82 Q142 70 148 44 Q150 38 154 32" stroke="#D4A053" strokeWidth="2" strokeLinecap="round" />
-      <line x1="154" y1="32" x2="166" y2="14" stroke="#D4A053" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M40 160 Q70 148 100 150 Q130 148 160 160" stroke="#D4A053" strokeWidth="1" strokeOpacity="0.4" fill="none" />
-      <path d="M30 174 Q65 158 100 162 Q135 158 170 174" stroke="#D4A053" strokeWidth="1" strokeOpacity="0.25" fill="none" />
-      <path d="M20 188 Q60 170 100 174 Q140 170 180 188" stroke="#D4A053" strokeWidth="1" strokeOpacity="0.15" fill="none" />
-    </svg>
-  )
-}
+import Paper from '../score/Paper'
+import Stave from '../score/Stave'
+import { Linea, Vox, Tremolo, Tactus } from '../score/marks'
+import { COLORS, FONTS } from '../score/tokens'
+import { playVoice } from '../score/voice'
+import { avdEngine } from '../engine/avd'
 
 export default function BriefingScreen({ onComplete }) {
-  const [visibleLines, setVisibleLines] = useState(0)
-  const [dimming, setDimming] = useState(false)
+  const [blackOverlay, setBlackOverlay] = useState(0) // 0 to 1
+  const [showDarkScore, setShowDarkScore] = useState(false)
   const completedRef = useRef(false)
+
+  const phaseData = avdEngine.getPhaseData()
+  const avdValues = avdEngine.getAVD()
 
   useEffect(() => {
     const timers = []
+    const t = (ms, fn) => timers.push(setTimeout(fn, ms))
 
-    // Show lines one at a time
-    for (let i = 0; i < BRIEFING_LINES.length; i++) {
-      timers.push(setTimeout(() => setVisibleLines(i + 1), i * LINE_DURATION * 1000))
-    }
+    // t=0.5: bridge voice from existing assets
+    t(500, () => playVoice('/chamber/voices/admirer-warm-01.mp3'))
 
-    // Start dimming after last line + hold
-    const dimStart = BRIEFING_LINES.length * LINE_DURATION + HOLD_AFTER_LAST
-    timers.push(setTimeout(() => setDimming(true), dimStart * 1000))
+    // t=4: begin darkening — opacity 0 → 0.4 over 1.5s
+    t(4000, () => setBlackOverlay(0.4))
 
-    // Complete after dim finishes
-    const totalTime = dimStart + DIM_DURATION
-    timers.push(setTimeout(() => {
+    // t=6: opacity 0.4 → 0.85 over 2s
+    t(6000, () => setBlackOverlay(0.85))
+
+    // t=9: opacity → 1.0 over 1s
+    t(9000, () => setBlackOverlay(1))
+
+    // t=11: 2 seconds of pure black (already at 1.0)
+
+    // t=13: show dark version of score
+    t(13000, () => setShowDarkScore(true))
+
+    // t=18: complete
+    t(18000, () => {
       if (!completedRef.current) {
         completedRef.current = true
         onComplete()
       }
-    }, totalTime * 1000))
+    })
 
     return () => timers.forEach(clearTimeout)
   }, [onComplete])
 
-  return (
-    <div
-      className="h-full w-full flex flex-col items-center justify-center select-none"
-      style={{ position: 'relative', background: 'var(--bg)' }}
-    >
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 2 }}
-        style={{ marginBottom: 48 }}
-      >
-        <ConductorSVG />
-      </motion.div>
+  // Build spectrum marks
+  const spectrumMarks = (phaseData.spectrum?.pairs || []).map((p, i) => ({
+    x: 20 + i * 38 + 19,
+    dip: p.choice === 'left' ? 'left' : 'right',
+  }))
 
-      <div className="text-center px-8" style={{ maxWidth: 360, minHeight: 120 }}>
-        {BRIEFING_LINES.map((line, i) => (
-          <motion.p
-            key={i}
-            className="font-serif mb-4"
-            style={{ fontSize: 'clamp(16px, 4vw, 22px)', color: 'var(--text)', lineHeight: 1.6 }}
-            initial={{ opacity: 0, y: 8 }}
-            animate={i < visibleLines ? { opacity: 1, y: 0 } : {}}
-            transition={{ duration: 1, ease: 'easeOut' }}
-          >
-            {line}
-          </motion.p>
+  const depthLayers = phaseData.depth?.finalLayer || 0
+
+  const renderScore = (variant) => {
+    const ink = variant === 'cream' ? COLORS.inkCream : COLORS.inkDark
+    const inkSec = variant === 'cream' ? COLORS.inkCreamSecondary : COLORS.inkDarkSecondary
+
+    return (
+      <svg viewBox="0 0 360 600" preserveAspectRatio="xMidYMid meet"
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+        {/* Spectrum stave */}
+        <Stave width={310} y={90} color={ink} />
+        <text x="5" y={84} fill={inkSec} fontSize="8" fontFamily={FONTS.serif} fontStyle="italic">spectrum</text>
+        {spectrumMarks.map((m, i) => (
+          <g key={i} transform={`translate(${m.x}, 96)`}>
+            <Linea size={30} dip={m.dip} color={ink} />
+          </g>
         ))}
-      </div>
 
-      {/* Dim overlay — auto-advances, no button */}
+        {/* Depth stave */}
+        <Stave width={310} y={180} color={ink} />
+        <text x="5" y={174} fill={inkSec} fontSize="8" fontFamily={FONTS.serif} fontStyle="italic">depth</text>
+        {Array.from({ length: depthLayers }, (_, i) => (
+          <g key={i} transform={`translate(${30 + i * 20}, 182)`}>
+            <Vox size={10} color={ink} />
+          </g>
+        ))}
+
+        {/* Textures stave */}
+        <Stave width={310} y={270} color={ink} />
+        <text x="5" y={264} fill={inkSec} fontSize="8" fontFamily={FONTS.serif} fontStyle="italic">textures</text>
+
+        {/* Moment stave */}
+        <Stave width={310} y={360} color={ink} />
+        <text x="5" y={354} fill={inkSec} fontSize="8" fontFamily={FONTS.serif} fontStyle="italic">moment</text>
+        <g transform="translate(20, 366)">
+          <Tactus width={290} color={ink} amplitude={4} frequency={3 + avdValues.a * 4} />
+        </g>
+      </svg>
+    )
+  }
+
+  return (
+    <div style={{ position: 'absolute', inset: 0 }}>
+      {/* Cream paper with score — visible under the overlay */}
+      <Paper variant="cream">
+        {/* Page header */}
+        <div style={{
+          position: 'absolute', top: 32, left: 24, right: 24,
+          display: 'flex', justifyContent: 'space-between',
+          fontSize: 11, color: COLORS.inkCreamSecondary,
+          fontFamily: FONTS.serif, fontStyle: 'italic',
+        }}>
+          <span>vi. reveal</span>
+        </div>
+        <div style={{ position: 'absolute', top: 50, left: 24, right: 24, height: 0.5, background: COLORS.inkCreamSecondary, opacity: 0.5 }} />
+        {renderScore('cream')}
+      </Paper>
+
+      {/* Black overlay — the inversion */}
       <motion.div
-        style={{ position: 'absolute', inset: 0, background: '#000000', pointerEvents: 'none' }}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: dimming ? 1 : 0 }}
-        transition={{ duration: DIM_DURATION, ease: 'easeIn' }}
+        style={{
+          position: 'absolute', inset: 0,
+          background: COLORS.paperPureBlack,
+          pointerEvents: 'none',
+        }}
+        animate={{ opacity: blackOverlay }}
+        transition={{
+          duration: blackOverlay <= 0.4 ? 1.5 : blackOverlay <= 0.85 ? 2 : 1,
+          ease: 'easeIn',
+        }}
       />
+
+      {/* Dark score — fades in after pure black moment */}
+      {showDarkScore && (
+        <motion.div
+          style={{ position: 'absolute', inset: 0 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 3 }}
+        >
+          <Paper variant="dark">
+            <div style={{
+              position: 'absolute', top: 32, left: 24, right: 24,
+              display: 'flex', justifyContent: 'space-between',
+              fontSize: 11, color: COLORS.inkDarkSecondary,
+              fontFamily: FONTS.serif, fontStyle: 'italic',
+            }}>
+              <span>vi. reveal</span>
+            </div>
+            <div style={{ position: 'absolute', top: 50, left: 24, right: 24, height: 0.5, background: COLORS.inkDarkSecondary, opacity: 0.5 }} />
+            {renderScore('dark')}
+          </Paper>
+        </motion.div>
+      )}
     </div>
   )
 }
