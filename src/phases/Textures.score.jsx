@@ -125,9 +125,9 @@ export default function Textures({ onNext, avd, inputMode }) {
       const engine = conductingRef.current
       if (engine) engine.startCalibration()
 
-      // Safety: auto-keep if no decision after decide duration
+      // Safety: skip (neutral) if no decision after decide duration
       phaseTimer.current = setTimeout(() => {
-        if (!resolvedRef.current) resolveTexture(idx, true)
+        if (!resolvedRef.current) resolveTexture(idx, null) // null = skipped
       }, DECIDE_DURATION)
     }, LISTEN_DURATION)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -139,7 +139,7 @@ export default function Textures({ onNext, avd, inputMode }) {
     const texture = TEXTURE_DATA[idx]
     audioEngine.stopTexture()
 
-    if (kept) {
+    if (kept === true) {
       preferred.current.push(texture.name)
       const markX = STAVE_X_OFFSET + (idx * MARK_SPACING) + MARK_SPACING / 2
       setMarks(prev => [...prev, { x: markX, markType: texture.markType }])
@@ -151,10 +151,14 @@ export default function Textures({ onNext, avd, inputMode }) {
       avd.updateValence((texture.coord.v - 0.5) * dwellWeight, 1.0)
       avd.updateDepth((texture.coord.d - 0.5) * dwellWeight, 1.0)
       avd.updateArousal((texture.coord.a - 0.5) * dwellWeight * 0.5, 1.0)
-    } else {
+    } else if (kept === false) {
       neutral.current.push(texture.name)
       if (navigator.vibrate) navigator.vibrate(30)
       setDecisionText('let go')
+    } else {
+      // null = skipped (no decision made)
+      neutral.current.push(texture.name)
+      setDecisionText('skipped')
     }
 
     setPhase('listening')
