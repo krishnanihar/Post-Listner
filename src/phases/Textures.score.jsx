@@ -48,6 +48,7 @@ export default function Textures({ onNext, avd, inputMode }) {
   const [currentName, setCurrentName] = useState('')
   const [showInstruction, setShowInstruction] = useState(true)
   const [deciding, setDeciding] = useState(false) // true during clip playback
+  const [motionAvailable, setMotionAvailable] = useState(true)
 
   const conductingRef = useRef(null)
   const rafRef = useRef(null)
@@ -58,13 +59,20 @@ export default function Textures({ onNext, avd, inputMode }) {
   const dwellStart = useRef(null)
   const faceDownDebounce = useRef(null)
   const isFaceDown = useRef(false)
+  const resolvedRef = useRef(false) // guard against double-resolve per texture
 
   // Initialize ConductingEngine for orientation detection
   useEffect(() => {
     preloadVoices(VOICE_PATHS)
     const engine = new ConductingEngine()
     conductingRef.current = engine
-    engine.requestPermission().then(() => engine.start())
+    engine.requestPermission().then((granted) => {
+      if (granted) {
+        engine.start()
+      } else {
+        setMotionAvailable(false)
+      }
+    })
 
     // Play voice intro sequence
     const timers = []
@@ -97,6 +105,7 @@ export default function Textures({ onNext, avd, inputMode }) {
     setCurrentName(texture.name)
     setDeciding(true)
     isFaceDown.current = false
+    resolvedRef.current = false
     dwellStart.current = Date.now()
 
     // Play texture audio
@@ -109,6 +118,9 @@ export default function Textures({ onNext, avd, inputMode }) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const resolveTexture = useCallback((idx) => {
+    if (resolvedRef.current) return
+    resolvedRef.current = true
+    clearTimeout(clipTimer.current)
     const texture = TEXTURE_DATA[idx]
     setDeciding(false)
     audioEngine.stopTexture()
@@ -121,6 +133,7 @@ export default function Textures({ onNext, avd, inputMode }) {
       preferred.current.push(texture.name)
       const markX = STAVE_X_OFFSET + (idx * MARK_SPACING) + MARK_SPACING / 2
       setMarks(prev => [...prev, { x: markX, markType: texture.markType }])
+      if (navigator.vibrate) navigator.vibrate(15)
 
       // AVD update
       const dwell = (Date.now() - (dwellStart.current || Date.now())) / 1000
@@ -283,7 +296,7 @@ export default function Textures({ onNext, avd, inputMode }) {
           animate={{ opacity: 0.8 }}
           transition={{ delay: 1.5 }}
         >
-          hold to keep{'\n'}turn over to refuse
+          {motionAvailable ? 'hold still to keep \u00B7 turn over to refuse' : 'tap to keep \u00B7 swipe down to refuse'}
         </motion.div>
       )}
     </div>

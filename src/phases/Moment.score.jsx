@@ -23,6 +23,7 @@ export default function Moment({ onNext, avd, inputMode }) {
   const [downbeats, setDownbeats] = useState([]) // { x, y }
   const [tactusPath, setTactusPath] = useState('')
   const [phase, setPhase] = useState('intro') // intro, playing, done
+  const [motionAvailable, setMotionAvailable] = useState(true)
 
   const conductingRef = useRef(null)
   const rafRef = useRef(null)
@@ -41,7 +42,13 @@ export default function Moment({ onNext, avd, inputMode }) {
 
     const engine = new ConductingEngine()
     conductingRef.current = engine
-    engine.requestPermission().then(() => engine.start())
+    engine.requestPermission().then((granted) => {
+      if (granted) {
+        engine.start()
+      } else {
+        setMotionAvailable(false)
+      }
+    })
 
     // Voice intro
     const timers = []
@@ -226,6 +233,23 @@ export default function Moment({ onNext, avd, inputMode }) {
             transition={{ duration: 2, repeat: Infinity }}
           >
             listen...
+          </motion.div>
+        )}
+
+        {/* Tap fallback hint when motion unavailable */}
+        {phase === 'playing' && !motionAvailable && (
+          <motion.div
+            style={{
+              position: 'absolute', bottom: '12%', left: 0, right: 0,
+              textAlign: 'center',
+              fontFamily: FONTS.serif, fontStyle: 'italic',
+              fontSize: 13, color: COLORS.inkDarkSecondary,
+            }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.6 }}
+            transition={{ delay: 1 }}
+          >
+            tap to the beat
           </motion.div>
         )}
       </Paper>

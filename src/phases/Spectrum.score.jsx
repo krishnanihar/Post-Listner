@@ -46,6 +46,8 @@ export default function Spectrum({ onNext, avd, inputMode }) {
   const [cursorX, setCursorX] = useState(0) // -1 to 1
   const [marks, setMarks] = useState([]) // accumulated linea marks
   const [pairVisible, setPairVisible] = useState(true)
+  const [showHint, setShowHint] = useState(true)
+  const [motionAvailable, setMotionAvailable] = useState(true)
 
   const conductingRef = useRef(null)
   const pairRef = useRef(null)
@@ -69,7 +71,14 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     preloadVoices(VOICE_PATHS)
     const engine = new ConductingEngine()
     conductingRef.current = engine
-    engine.requestPermission().then(() => engine.start())
+    engine.requestPermission().then((granted) => {
+      if (granted) {
+        engine.start()
+      } else {
+        setMotionAvailable(false)
+      }
+    })
+    // Hide hint after first commit
     return () => engine.stop()
   }, [])
 
@@ -176,6 +185,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     if (completedPair === 6) playVoice(VOICE_PATHS[2])
 
     setPairVisible(false)
+    if (showHint) setShowHint(false)
 
     setTimeout(() => {
       if (pairIdx < PAIRS.length - 1) {
@@ -350,6 +360,28 @@ export default function Spectrum({ onNext, avd, inputMode }) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Interaction hint — fades after first commit */}
+      {showHint && (
+        <motion.div
+          style={{
+            position: 'absolute',
+            bottom: '18%',
+            left: 0,
+            right: 0,
+            textAlign: 'center',
+            fontFamily: FONTS.serif,
+            fontStyle: 'italic',
+            fontSize: 13,
+            color: COLORS.inkCreamSecondary,
+          }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.7 }}
+          transition={{ delay: 1.5, duration: 1 }}
+        >
+          {motionAvailable ? 'lean the phone toward a word' : 'drag left or right'}
+        </motion.div>
+      )}
     </div>
   )
 }

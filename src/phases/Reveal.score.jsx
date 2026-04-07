@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import Score from '../score/Score'
+import Paper from '../score/Paper'
 import Stave from '../score/Stave'
 import { Linea, Vox, Tremolo, Marcato, Caesura, Pneuma, Ponticello, Legno, Fermata, Tactus, Downbeat } from '../score/marks'
 import { COLORS, FONTS } from '../score/tokens'
@@ -169,6 +170,29 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef }) {
 
   return (
     <div style={{ position: 'absolute', inset: 0 }}>
+      {/* Loading state — before score assembles */}
+      {stage === 'computing' && (
+        <Paper variant="cream">
+          <motion.div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontFamily: FONTS.serif,
+              fontStyle: 'italic',
+              fontSize: 16,
+              color: COLORS.inkCreamSecondary,
+            }}
+            animate={{ opacity: [0.3, 0.7, 0.3] }}
+            transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            composing your score...
+          </motion.div>
+        </Paper>
+      )}
+
       <Score
         variant="cream"
         pageTitle="vi. reveal"
