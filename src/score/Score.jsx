@@ -33,7 +33,7 @@ export default function Score({
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', color: inkColor }}
       >
         {staves.map((s, i) => (
-          <Stave key={i} width={s.width || 320} y={s.y} color={inkColor} opacity={s.opacity || 1} />
+          <Stave key={i} x={s.x || 10} width={s.width || 340} y={s.y} color={inkColor} opacity={s.opacity || 1} />
         ))}
         {marks.map((m, i) => {
           const Mark = ALL_MARKS[m.type]

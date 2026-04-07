@@ -34,8 +34,8 @@ const VOICE_PATHS = [
 ]
 
 const STAVE_Y = 280
-const STAVE_WIDTH = 320
-const STAVE_X_OFFSET = 20
+const STAVE_WIDTH = 340
+const STAVE_X_OFFSET = 10
 const MARK_SPACING = STAVE_WIDTH / 8
 const LEAN_THRESHOLD = 0.35
 const COMMIT_DURATION = 3000 // 3 seconds to commit

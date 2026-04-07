@@ -28,11 +28,12 @@ const TEXTURE_MARK_MAP = {
 }
 
 // Stave Y positions for the 4 score sections
-const STAVE_SPECTRUM_Y = 90
-const STAVE_DEPTH_Y = 180
-const STAVE_TEXTURES_Y = 270
-const STAVE_TACTUS_Y = 360
-const STAVE_WIDTH = 310
+const STAVE_SPECTRUM_Y = 100
+const STAVE_DEPTH_Y = 200
+const STAVE_TEXTURES_Y = 300
+const STAVE_TACTUS_Y = 400
+const STAVE_WIDTH = 340
+const STAVE_X = 10
 
 export default function Reveal({ onNext, avd, sessionData, revealAudioRef }) {
   const [staveVisible, setStaveVisible] = useState([false, false, false, false])
@@ -156,7 +157,7 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef }) {
 
   // Build spectrum marks from phaseData
   const spectrumMarks = (phaseData.spectrum?.pairs || []).map((p, i) => ({
-    x: 20 + i * (STAVE_WIDTH / 8) + (STAVE_WIDTH / 16),
+    x: i * (STAVE_WIDTH / 8) + (STAVE_WIDTH / 16),
     dip: p.choice === 'left' ? 'left' : 'right',
   }))
 
@@ -206,11 +207,11 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef }) {
             animate={{ opacity: 1 }}
             transition={{ duration: 1.5 }}
           >
-            <Stave width={STAVE_WIDTH} y={STAVE_SPECTRUM_Y} color={COLORS.inkCream} />
-            <text x="5" y={STAVE_SPECTRUM_Y - 6} fill={COLORS.inkCreamSecondary} fontSize="8" fontFamily={FONTS.serif} fontStyle="italic">spectrum</text>
+            <Stave x={STAVE_X} width={STAVE_WIDTH} y={STAVE_SPECTRUM_Y} color={COLORS.inkCream} />
+            <text x={STAVE_X} y={STAVE_SPECTRUM_Y - 8} fill={COLORS.inkCreamSecondary} fontSize="10" fontFamily={FONTS.serif} fontStyle="italic">spectrum</text>
             {spectrumMarks.map((m, i) => (
-              <g key={i} transform={`translate(${m.x}, ${STAVE_SPECTRUM_Y + 6})`}>
-                <Linea size={30} dip={m.dip} color={COLORS.inkCream} />
+              <g key={i} transform={`translate(${STAVE_X + m.x}, ${STAVE_SPECTRUM_Y + 6})`}>
+                <Linea size={36} dip={m.dip} color={COLORS.inkCream} />
               </g>
             ))}
           </motion.g>
@@ -223,11 +224,11 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef }) {
             animate={{ opacity: 1 }}
             transition={{ duration: 1.5 }}
           >
-            <Stave width={STAVE_WIDTH} y={STAVE_DEPTH_Y} color={COLORS.inkCream} />
-            <text x="5" y={STAVE_DEPTH_Y - 6} fill={COLORS.inkCreamSecondary} fontSize="8" fontFamily={FONTS.serif} fontStyle="italic">depth</text>
+            <Stave x={STAVE_X} width={STAVE_WIDTH} y={STAVE_DEPTH_Y} color={COLORS.inkCream} />
+            <text x={STAVE_X} y={STAVE_DEPTH_Y - 8} fill={COLORS.inkCreamSecondary} fontSize="10" fontFamily={FONTS.serif} fontStyle="italic">depth</text>
             {Array.from({ length: depthLayers }, (_, i) => (
-              <g key={i} transform={`translate(${30 + i * 20}, ${STAVE_DEPTH_Y + 2})`}>
-                <Vox size={10} color={COLORS.inkCream} />
+              <g key={i} transform={`translate(${STAVE_X + 20 + i * 28}, ${STAVE_DEPTH_Y + 2})`}>
+                <Vox size={16} color={COLORS.inkCream} />
               </g>
             ))}
           </motion.g>
@@ -240,14 +241,14 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef }) {
             animate={{ opacity: 1 }}
             transition={{ duration: 1.5 }}
           >
-            <Stave width={STAVE_WIDTH} y={STAVE_TEXTURES_Y} color={COLORS.inkCream} />
-            <text x="5" y={STAVE_TEXTURES_Y - 6} fill={COLORS.inkCreamSecondary} fontSize="8" fontFamily={FONTS.serif} fontStyle="italic">textures</text>
+            <Stave x={STAVE_X} width={STAVE_WIDTH} y={STAVE_TEXTURES_Y} color={COLORS.inkCream} />
+            <text x={STAVE_X} y={STAVE_TEXTURES_Y - 8} fill={COLORS.inkCreamSecondary} fontSize="10" fontFamily={FONTS.serif} fontStyle="italic">textures</text>
             {preferredTextures.map((name, i) => {
               const MarkComp = TEXTURE_MARK_MAP[name]
               if (!MarkComp) return null
               return (
-                <g key={i} transform={`translate(${30 + i * 35}, ${STAVE_TEXTURES_Y + 6})`}>
-                  <MarkComp size={12} color={COLORS.inkCream} />
+                <g key={i} transform={`translate(${STAVE_X + 20 + i * 40}, ${STAVE_TEXTURES_Y + 6})`}>
+                  <MarkComp size={18} color={COLORS.inkCream} />
                 </g>
               )
             })}
@@ -261,10 +262,10 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef }) {
             animate={{ opacity: 1 }}
             transition={{ duration: 1.5 }}
           >
-            <Stave width={STAVE_WIDTH} y={STAVE_TACTUS_Y} color={COLORS.inkCream} />
-            <text x="5" y={STAVE_TACTUS_Y - 6} fill={COLORS.inkCreamSecondary} fontSize="8" fontFamily={FONTS.serif} fontStyle="italic">moment</text>
-            <g transform={`translate(20, ${STAVE_TACTUS_Y + 6})`}>
-              <Tactus width={STAVE_WIDTH - 20} color={COLORS.inkCream} amplitude={4} frequency={3 + avdValues.a * 4} />
+            <Stave x={STAVE_X} width={STAVE_WIDTH} y={STAVE_TACTUS_Y} color={COLORS.inkCream} />
+            <text x={STAVE_X} y={STAVE_TACTUS_Y - 8} fill={COLORS.inkCreamSecondary} fontSize="10" fontFamily={FONTS.serif} fontStyle="italic">moment</text>
+            <g transform={`translate(${STAVE_X}, ${STAVE_TACTUS_Y + 6})`}>
+              <Tactus width={STAVE_WIDTH} color={COLORS.inkCream} amplitude={6} frequency={3 + avdValues.a * 4} />
             </g>
           </motion.g>
         )}

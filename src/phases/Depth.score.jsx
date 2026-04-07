@@ -15,9 +15,9 @@ const VOICE_PATHS = [
   '/chamber/voices/score/depth-04.mp3',
 ]
 
-const STAVE_START_Y = 120
-const STAVE_SPACING = 36
-const STAVE_WIDTH = 280
+const STAVE_START_Y = 130
+const STAVE_SPACING = 40
+const STAVE_WIDTH = 340
 
 export default function Depth({ onNext, avd, inputMode }) {
   const [layers, setLayers] = useState(0)
@@ -156,10 +156,10 @@ export default function Depth({ onNext, avd, inputMode }) {
             <g key={i}>
               {/* Roman numeral */}
               <text
-                x="10"
-                y={y + 4}
+                x="18"
+                y={y + 5}
                 fill={COLORS.inkCreamSecondary}
-                fontSize="9"
+                fontSize="11"
                 fontFamily={FONTS.serif}
                 fontStyle="italic"
               >
@@ -167,12 +167,12 @@ export default function Depth({ onNext, avd, inputMode }) {
               </text>
               {/* Vox mark */}
               <motion.g
-                transform={`translate(40, ${y})`}
+                transform={`translate(50, ${y})`}
                 initial={{ opacity: 0, scale: 0.5 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.3 }}
               >
-                <Vox size={12} color={COLORS.inkCream} />
+                <Vox size={16} color={COLORS.inkCream} />
               </motion.g>
             </g>
           )
