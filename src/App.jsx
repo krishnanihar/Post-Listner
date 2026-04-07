@@ -7,7 +7,6 @@ import Textures from './phases/Textures.score'
 import Moment from './phases/Moment.score'
 import Reveal from './phases/Reveal.score'
 import Orchestra from './phases/Orchestra'
-import TraceCanvas from './components/TraceCanvas'
 import { avdEngine } from './engine/avd'
 import { audioEngine } from './engine/audio'
 import { useInputMode } from './hooks/useInputMode'
@@ -49,7 +48,6 @@ function App() {
 
   return (
     <div className="h-full w-full relative">
-      {phase !== 'entry' && <TraceCanvas avd={avdEngine} phase={phase} />}
       <AnimatePresence mode="wait">
         <motion.div
           key={phase}
