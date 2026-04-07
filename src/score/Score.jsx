@@ -4,6 +4,14 @@ import Stave from './Stave'
 import { ALL_MARKS } from './marks'
 import { COLORS, FONTS } from './tokens'
 
+// All content lives inside one SVG viewBox — single coordinate system.
+// No CSS/SVG misalignment on any screen size.
+const VB_W = 360
+const VB_H = 660
+const MARGIN_X = 20
+const HEADER_Y = 30
+const DIVIDER_Y = 42
+
 export default function Score({
   variant = 'cream',
   pageTitle,
@@ -19,22 +27,60 @@ export default function Score({
 
   return (
     <Paper variant={variant}>
-      {/* Page header */}
-      <div style={{ position: 'absolute', top: 32, left: 24, right: 24, display: 'flex', justifyContent: 'space-between', fontSize: 11, color: inkSecondary, fontFamily: FONTS.serif, fontStyle: 'italic' }}>
-        <span>{pageTitle}</span>
-        <span style={{ fontFamily: FONTS.mono, fontStyle: 'normal' }}>{pageNumber}</span>
-      </div>
-      <div style={{ position: 'absolute', top: 50, left: 24, right: 24, height: 0.5, background: inkSecondary, opacity: 0.5 }} />
-
-      {/* SVG canvas */}
       <svg
-        viewBox="0 0 360 600"
+        viewBox={`0 0 ${VB_W} ${VB_H}`}
         preserveAspectRatio="xMidYMid meet"
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', color: inkColor }}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
       >
+        {/* Page header — inside SVG */}
+        {pageTitle && (
+          <text
+            x={MARGIN_X}
+            y={HEADER_Y}
+            fill={inkSecondary}
+            fontSize="11"
+            fontFamily={FONTS.serif}
+            fontStyle="italic"
+          >
+            {pageTitle}
+          </text>
+        )}
+        {pageNumber && (
+          <text
+            x={VB_W - MARGIN_X}
+            y={HEADER_Y}
+            fill={inkSecondary}
+            fontSize="11"
+            fontFamily={FONTS.mono}
+            textAnchor="end"
+          >
+            {pageNumber}
+          </text>
+        )}
+        {/* Divider line */}
+        <line
+          x1={MARGIN_X}
+          y1={DIVIDER_Y}
+          x2={VB_W - MARGIN_X}
+          y2={DIVIDER_Y}
+          stroke={inkSecondary}
+          strokeWidth="0.5"
+          opacity="0.5"
+        />
+
+        {/* Staves */}
         {staves.map((s, i) => (
-          <Stave key={i} x={s.x || 10} width={s.width || 340} y={s.y} color={inkColor} opacity={s.opacity || 1} />
+          <Stave
+            key={i}
+            x={s.x != null ? s.x : MARGIN_X}
+            width={s.width || (VB_W - MARGIN_X * 2)}
+            y={s.y}
+            color={inkColor}
+            opacity={s.opacity || 1}
+          />
         ))}
+
+        {/* Marks from props */}
         {marks.map((m, i) => {
           const Mark = ALL_MARKS[m.type]
           if (!Mark) return null
@@ -44,22 +90,38 @@ export default function Score({
             </g>
           )
         })}
+
+        {/* Phase-specific SVG children */}
         {children}
+
+        {/* Voice cue — bottom center */}
+        {voiceCue && (
+          <text
+            x={VB_W / 2}
+            y={VB_H - 50}
+            fill={inkColor}
+            fontSize="14"
+            fontFamily={FONTS.serif}
+            fontStyle="italic"
+            textAnchor="middle"
+          >
+            {voiceCue}
+          </text>
+        )}
+
+        {/* Footer — bottom left */}
+        {footer && (
+          <text
+            x={MARGIN_X}
+            y={VB_H - 20}
+            fill={inkSecondary}
+            fontSize="9"
+            fontFamily={FONTS.mono}
+          >
+            {footer}
+          </text>
+        )}
       </svg>
-
-      {/* Voice cue */}
-      {voiceCue && (
-        <div style={{ position: 'absolute', bottom: 60, left: 24, right: 24, textAlign: 'center', fontSize: 14, color: inkColor, fontFamily: FONTS.serif, fontStyle: 'italic', lineHeight: 1.5 }}>
-          {voiceCue}
-        </div>
-      )}
-
-      {/* Footer */}
-      {footer && (
-        <div style={{ position: 'absolute', bottom: 24, left: 24, right: 24, fontSize: 9, color: inkSecondary, fontFamily: FONTS.mono, textAlign: 'left' }}>
-          {footer}
-        </div>
-      )}
     </Paper>
   )
 }
