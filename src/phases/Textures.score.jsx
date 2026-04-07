@@ -35,9 +35,10 @@ const STAVE_WIDTH = 320
 const STAVE_X_OFFSET = 20
 const MARK_SPACING = STAVE_WIDTH / 8
 const LISTEN_DURATION = 5000   // 5s listen — just hear it
-const DECIDE_DURATION = 5000   // 5s to lean left or right
-const LEAN_THRESHOLD = 0.4     // how far to lean to trigger
+const DECIDE_DURATION = 6000   // 6s to lean left or right
+const LEAN_THRESHOLD = 0.45    // how far to lean to trigger (slightly higher to avoid drift)
 const LEAN_HOLD_MS = 1500      // hold the lean for 1.5s to commit
+const DECIDE_GRACE_MS = 800    // ignore lean for first 800ms of decide phase (recalibration)
 
 export default function Textures({ onNext, avd, inputMode }) {
   const [textureIdx, setTextureIdx] = useState(-1)
@@ -61,6 +62,7 @@ export default function Textures({ onNext, avd, inputMode }) {
   const dwellStart = useRef(null)
   const leanSideRef = useRef(null)
   const leanStartRef = useRef(null)
+  const decideStartTime = useRef(null)
 
   useEffect(() => {
     preloadVoices(VOICE_PATHS)
@@ -118,6 +120,10 @@ export default function Textures({ onNext, avd, inputMode }) {
     // After listen phase, enter decide phase
     phaseTimer.current = setTimeout(() => {
       setPhase('deciding')
+      decideStartTime.current = Date.now()
+      // Recalibrate so current phone position = neutral
+      const engine = conductingRef.current
+      if (engine) engine.startCalibration()
 
       // Safety: auto-keep if no decision after decide duration
       phaseTimer.current = setTimeout(() => {
@@ -186,6 +192,13 @@ export default function Textures({ onNext, avd, inputMode }) {
         // pan 0-1 → position -1 to +1
         const position = (data.pan - 0.5) * 2
         setLeanX(position)
+
+        // Grace period: ignore lean for first 800ms (recalibration settling)
+        const sinceDecideStart = Date.now() - (decideStartTime.current || Date.now())
+        if (sinceDecideStart < DECIDE_GRACE_MS) {
+          rafRef.current = requestAnimationFrame(loop)
+          return
+        }
 
         // Right = keep, Left = trash
         if (Math.abs(position) > LEAN_THRESHOLD) {
