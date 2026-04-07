@@ -1,4 +1,4 @@
-import { STARTS, SECTIONS, FRACTURE, TRACK_B, GAINS, DUCK, CONDUCTING } from './constants.js'
+import { STARTS, SECTIONS, FRACTURE, TRACK_B, GAINS, DUCK, CONDUCTING, CONDUCTING_EXAGGERATION } from './constants.js'
 import { HALL_IR_FILE, TRACK_B_FILE, AUDIENCE_FILES, OVATION_FILE } from './scripts.js'
 import { lerp, clamp, sphericalToCartesian } from '../chamber/utils/math.js'
 
@@ -301,7 +301,7 @@ export default class OrchestraEngine {
   tick(t, dt) {
     const now = this.ctx.currentTime
 
-    // 1. Bloom crossfade (30s–50s): dry→0, split→1, hall wet→0.55, audience→0.10
+    // 1. Bloom crossfade (32s–95s): dry→0, split→1, hall wet→0.55, audience→0.10
     if (t >= STARTS.BLOOM && t < STARTS.THRONE) {
       const p = clamp((t - STARTS.BLOOM) / (STARTS.THRONE - STARTS.BLOOM), 0, 1)
       this.dryGain.gain.setTargetAtTime(1.0 - p, now, 0.1)
@@ -399,10 +399,10 @@ export default class OrchestraEngine {
     this.binauralRight.frequency.setTargetAtTime(GAINS.BINAURAL.CARRIER + beatFreq, now, 0.5)
 
     // Binaural gain
-    if (t >= STARTS.BLOOM && t < STARTS.SILENCE) {
+    if (t >= STARTS.BLOOM && t < STARTS.RETURN) {
       this.binauralGain.gain.setTargetAtTime(GAINS.BINAURAL.MAX, now, 0.3)
-    } else if (t >= STARTS.SILENCE) {
-      const fadeP = clamp((t - STARTS.SILENCE) / (STARTS.RETURN - STARTS.SILENCE), 0, 1)
+    } else if (t >= STARTS.RETURN) {
+      const fadeP = clamp((t - STARTS.RETURN) / (STARTS.END - STARTS.RETURN), 0, 1)
       this.binauralGain.gain.setTargetAtTime(GAINS.BINAURAL.MAX * (1 - fadeP), now, 0.3)
     }
   }
@@ -412,7 +412,13 @@ export default class OrchestraEngine {
   applyConducting(params) {
     if (!params) return
     const now = this.ctx.currentTime
+    const t = this._lastT || 0
     const { pan, filterNorm, gestureGain, articulation, downbeat } = params
+
+    // Conducting exaggeration during first 60s of Throne
+    const inExaggeration = t >= CONDUCTING_EXAGGERATION.START && t < CONDUCTING_EXAGGERATION.END
+    const gainMul = inExaggeration ? CONDUCTING_EXAGGERATION.GAIN_MULTIPLIER : 1.0
+    const filterMul = inExaggeration ? CONDUCTING_EXAGGERATION.FILTER_MULTIPLIER : 1.0
 
     // Pan: tilt emphasizes different sections (gain + spatial movement)
     // Left tilt (pan < 0.5) → LOW +, HIGH -
@@ -432,11 +438,11 @@ export default class OrchestraEngine {
       if (name === 'LOW') sectionGainMod = lerp(1.0, lowBoost, coupling)
       else if (name === 'HIGH') sectionGainMod = lerp(1.0, highBoost, coupling)
 
-      // Gesture size → dynamics
+      // Gesture size → dynamics (with exaggeration multiplier)
       const dynamicsGain = lerp(
         CONDUCTING.GESTURE_SIZE_GAIN_MIN,
         CONDUCTING.GESTURE_SIZE_GAIN_MAX,
-        gestureGain * coupling
+        clamp(gestureGain * coupling * gainMul, 0, 1)
       )
 
       const finalGain = dynamicsGain * sectionGainMod
@@ -459,7 +465,7 @@ export default class OrchestraEngine {
     // Filter cutoff (shared)
     if (this.conductingFilter) {
       const avgCoupling = (this.sectionCoupling.LOW + this.sectionCoupling.MID + this.sectionCoupling.HIGH) / 3
-      const cutoff = 200 + filterNorm * avgCoupling * 3800
+      const cutoff = 200 + filterNorm * avgCoupling * 3800 * filterMul
       this.conductingFilter.frequency.setTargetAtTime(cutoff, now, CONDUCTING.FILTER_FREQ_TC)
     }
 
@@ -807,14 +813,14 @@ export default class OrchestraEngine {
 
   _getTrackAGain(t) {
     this._lastT = t
-    if (t < STARTS.THRONE) return GAINS.TRACK_A.REVEAL
+    if (t < STARTS.THRONE) return GAINS.TRACK_A.BLOOM
     if (t < STARTS.ASCENT) return GAINS.TRACK_A.THRONE
     if (t < STARTS.DISSOLUTION) {
       const p = (t - STARTS.ASCENT) / (STARTS.DISSOLUTION - STARTS.ASCENT)
       return lerp(GAINS.TRACK_A.THRONE, GAINS.TRACK_A.ASCENT_END, p)
     }
-    if (t < 450) { // gone by 7:30
-      const p = (t - STARTS.DISSOLUTION) / (450 - STARTS.DISSOLUTION)
+    if (t < 720) { // gone by ~12:00
+      const p = (t - STARTS.DISSOLUTION) / (720 - STARTS.DISSOLUTION)
       return lerp(GAINS.TRACK_A.ASCENT_END, GAINS.TRACK_A.DISSOLUTION_END, p)
     }
     return 0
@@ -822,39 +828,43 @@ export default class OrchestraEngine {
 
   _getTrackBGain(t) {
     if (t < TRACK_B.ENTER) return 0
-    if (t < 320) { // crossover at ~5:20
-      const p = (t - TRACK_B.ENTER) / (320 - TRACK_B.ENTER)
+    // Crossover at ~8:40 (520s)
+    if (t < 520) {
+      const p = (t - TRACK_B.ENTER) / (520 - TRACK_B.ENTER)
       return lerp(GAINS.TRACK_B.ENTER, GAINS.TRACK_B.CROSSOVER, p)
     }
     if (t < STARTS.DISSOLUTION) {
-      const p = (t - 320) / (STARTS.DISSOLUTION - 320)
+      const p = (t - 520) / (STARTS.DISSOLUTION - 520)
       return lerp(GAINS.TRACK_B.CROSSOVER, GAINS.TRACK_B.DISSOLUTION, p)
     }
-    if (t < STARTS.SILENCE) {
-      // Check for "Good" swell near 530s
-      if (t >= 528 && t <= 535) {
-        const swellP = t < 530 ? (t - 528) / 2 : (535 - t) / 5
+    if (t < STARTS.RETURN) {
+      // Check for "Good" swell near 835s (line 34)
+      if (t >= 833 && t <= 840) {
+        const swellP = t < 835 ? (t - 833) / 2 : (840 - t) / 5
         return lerp(GAINS.TRACK_B.DISSOLUTION, GAINS.TRACK_B.PEAK, clamp(swellP, 0, 1))
       }
       return GAINS.TRACK_B.DISSOLUTION
     }
-    // Silence phase: fade out
-    const p = (t - STARTS.SILENCE) / (STARTS.RETURN - STARTS.SILENCE)
+    // Return phase: fade out
+    const p = (t - STARTS.RETURN) / (STARTS.END - STARTS.RETURN)
     return lerp(GAINS.TRACK_B.DISSOLUTION, GAINS.TRACK_B.SILENCE, clamp(p, 0, 1))
   }
 
   _getBinauralBeat(t) {
-    if (t < STARTS.BLOOM) return 10
+    // Bloom–Throne: 10Hz (alpha)
     if (t < STARTS.ASCENT) return 10
+    // Ascent: 10Hz→6Hz
     if (t < STARTS.DISSOLUTION) {
       const p = (t - STARTS.ASCENT) / (STARTS.DISSOLUTION - STARTS.ASCENT)
       return lerp(10, 6, p)
     }
-    if (t < STARTS.SILENCE) {
-      const p = (t - STARTS.DISSOLUTION) / (STARTS.SILENCE - STARTS.DISSOLUTION)
+    // Dissolution: 6Hz→4Hz
+    if (t < STARTS.RETURN) {
+      const p = (t - STARTS.DISSOLUTION) / (STARTS.RETURN - STARTS.DISSOLUTION)
       return lerp(6, 4, p)
     }
-    const p = (t - STARTS.SILENCE) / (STARTS.RETURN - STARTS.SILENCE)
+    // Return: 4Hz→2Hz→off
+    const p = (t - STARTS.RETURN) / (STARTS.END - STARTS.RETURN)
     return lerp(4, 2, clamp(p, 0, 1))
   }
 }

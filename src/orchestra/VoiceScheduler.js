@@ -1,9 +1,9 @@
-import { VOICES, WHISPERS } from './scripts.js'
+import { VOICES, getDynamicVoices } from './scripts.js'
 import { STARTS } from './constants.js'
-import { VOICE_CATEGORY_GAINS } from '../chamber/utils/constants.js'
 
 /**
- * Schedules all voice and whisper playback at absolute timestamps.
+ * Schedules all voice playback at absolute timestamps.
+ * v2: One voice (The Admirer), no categories, no whispers.
  * All scheduling uses AudioBufferSourceNode.start(when) for sample-accurate timing.
  */
 export default class VoiceScheduler {
@@ -13,60 +13,49 @@ export default class VoiceScheduler {
   }
 
   /**
-   * Schedule all voices, whispers, and ovation at once.
+   * Schedule all voices at once.
    * @param {number} experienceStartCtxTime - AudioContext.currentTime when experience begins
+   * @param {{ a: number, v: number, d: number }} avd - AVD values for dynamic line selection
    */
-  scheduleAll(experienceStartCtxTime) {
+  scheduleAll(experienceStartCtxTime, avd) {
     const offset = experienceStartCtxTime
-    // Voice timestamps are absolute from button press (include 30s briefing).
+    // Voice timestamps are absolute from button press (include briefing).
     // scheduleAll is called at briefing end, so subtract briefing duration.
     const briefingOffset = STARTS.BLOOM
 
-    // Schedule main voices
+    // Schedule fixed voices
     for (const voice of VOICES) {
-      const buffer = this.engine.buffers.get(voice.file)
-      if (!buffer) {
-        console.warn(`VoiceScheduler: missing buffer for ${voice.file}`)
-        continue
-      }
-      const playAt = offset + (voice.time - briefingOffset)
-      const categoryGain = voice.gain != null ? voice.gain : (VOICE_CATEGORY_GAINS[voice.category] || 1.0)
-      const source = this.engine.scheduleVoice(buffer, playAt, {
-        duck: voice.duck,
-        azimuth: voice.azimuth,
-        elevation: voice.elevation,
-        distance: voice.distance,
-        gain: categoryGain,
-      })
-      if (source) this.scheduledSources.push(source)
+      this._scheduleVoice(voice, offset, briefingOffset)
     }
 
-    // Schedule whispers
-    for (const whisper of WHISPERS) {
-      const buffer = this.engine.buffers.get(whisper.file)
-      if (!buffer) {
-        console.warn(`VoiceScheduler: missing buffer for ${whisper.file}`)
-        continue
+    // Schedule dynamic voices (AVD-selected)
+    if (avd) {
+      const dynamicVoices = getDynamicVoices(avd)
+      for (const voice of dynamicVoices) {
+        this._scheduleVoice(voice, offset, briefingOffset)
       }
-      const playAt = offset + (whisper.time - briefingOffset)
-
-      // Whispers with null azimuth get random placement
-      const azimuth = whisper.azimuth != null ? whisper.azimuth : Math.random() * 360
-      const elevation = whisper.elevation != null ? whisper.elevation : Math.random() * 40
-
-      const source = this.engine.scheduleVoice(buffer, playAt, {
-        duck: false,
-        azimuth,
-        elevation,
-        distance: 5,
-        lowpass: 2000,
-        gain: 0.35,
-      })
-      if (source) this.scheduledSources.push(source)
     }
 
     // Schedule ovation (subtract briefing offset since OVATION.TIME is absolute)
     this.engine.scheduleOvation(offset - briefingOffset)
+  }
+
+  _scheduleVoice(voice, offset, briefingOffset) {
+    const buffer = this.engine.buffers.get(voice.file)
+    if (!buffer) {
+      console.warn(`VoiceScheduler: missing buffer for ${voice.file}`)
+      return
+    }
+    const playAt = offset + (voice.time - briefingOffset)
+    const source = this.engine.scheduleVoice(buffer, playAt, {
+      duck: voice.duck,
+      azimuth: voice.azimuth,
+      elevation: voice.elevation,
+      distance: voice.distance,
+      gain: voice.gain || 1.0,
+      lowpass: voice.lowpass,
+    })
+    if (source) this.scheduledSources.push(source)
   }
 
   stopAll() {

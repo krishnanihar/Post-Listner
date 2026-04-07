@@ -6,7 +6,7 @@ import VoiceScheduler from '../orchestra/VoiceScheduler.js'
 import BriefingScreen from '../orchestra/BriefingScreen.jsx'
 import ReturnScreen from '../orchestra/ReturnScreen.jsx'
 import { getAllPaths } from '../orchestra/scripts.js'
-import { STARTS } from '../orchestra/constants.js'
+import { STARTS, TOTAL_DURATION } from '../orchestra/constants.js'
 
 export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx }) {
   const [phase, setPhase] = useState('loading') // loading | briefing | experience | return
@@ -106,8 +106,8 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
     // Start audience ambient
     engine.startAudience()
 
-    // Schedule all voices
-    scheduler.scheduleAll(audioCtx.currentTime)
+    // Schedule all voices (pass AVD for dynamic line selection)
+    scheduler.scheduleAll(audioCtx.currentTime, avd.getAVD())
 
     // Wake lock
     if (navigator.wakeLock) {
@@ -141,20 +141,20 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
         }
       }
 
-      // Return tone at ~9:55
-      if (t >= 595 && !returnTonePlayed.current) {
+      // Return tone at 14:20 (860s) — sine wave from depth value, fades in over 8s
+      if (t >= STARTS.RETURN + 5 && !returnTonePlayed.current) {
         engine.playReturnTone(avd.getAVD().d)
         returnTonePlayed.current = true
       }
 
       // Fade return tone before stopAll
-      if (t >= 598 && !returnToneFaded.current) {
-        engine.fadeReturnTone(2)
+      if (t >= STARTS.END - 5 && !returnToneFaded.current) {
+        engine.fadeReturnTone(3)
         returnToneFaded.current = true
       }
 
-      // Transition to return at 600s
-      if (t >= 600) {
+      // Transition to return at 960s (16:00)
+      if (t >= STARTS.END) {
         engine.stopAll()
         if (revealAudioRef.current) revealAudioRef.current.pause()
         setPhase('return')

@@ -1,16 +1,17 @@
 // All times in seconds from the moment "show me who I am" is pressed (time 0:00)
+// v2 — 16-minute timeline per ORCHESTRA-V2-VOICE-SCRIPTS-FINAL.md
 
 export const STARTS = {
-  REVEAL: 0,         // 0:00 — briefing screen, song still playing
-  BLOOM: 30,         // 0:30 — hall materializes, conducting goes live
-  THRONE: 50,        // 0:50 — full conducting, ego inflation
-  ASCENT: 180,       // 3:00 — orchestra fractures
-  DISSOLUTION: 360,  // 6:00 — song dies, Track B dominant
-  SILENCE: 555,      // 9:15 — everything fades
-  RETURN: 600,       // 10:00 — screen brightens
+  BRIEFING: 0,       // 0:00
+  BLOOM: 32,         // 0:32
+  THRONE: 95,        // 1:35
+  ASCENT: 390,       // 6:30
+  DISSOLUTION: 645,  // 10:45
+  RETURN: 855,       // 14:15
+  END: 960,          // 16:00
 }
 
-export const TOTAL_DURATION = 630 // 10:30
+export const TOTAL_DURATION = 960 // 16:00
 
 // Track A (user's song) — 3-band frequency split
 export const SECTIONS = {
@@ -22,13 +23,13 @@ export const SECTIONS = {
 // Per-section coupling decay during Ascent (absolute times)
 export const FRACTURE = {
   HIGH: [
-    [180, 1.0], [200, 0.7], [220, 0.5], [240, 0.2], [300, 0.1],
+    [390, 1.0], [420, 0.7], [460, 0.5], [510, 0.2], [580, 0.1],
   ],
   MID: [
-    [180, 1.0], [210, 0.8], [240, 0.5], [270, 0.3], [300, 0.15],
+    [390, 1.0], [440, 0.8], [500, 0.5], [560, 0.3], [620, 0.15],
   ],
   LOW: [
-    [180, 1.0], [220, 0.85], [260, 0.6], [300, 0.35], [330, 0.15],
+    [390, 1.0], [460, 0.85], [530, 0.6], [600, 0.35], [645, 0.15],
   ],
   HIGH_DRIFT: 40,    // max azimuth drift in degrees
   MID_DRIFT: 15,
@@ -38,7 +39,7 @@ export const FRACTURE = {
 
 // Track B
 export const TRACK_B = {
-  ENTER: 240,              // 4:00 — enters during Ascent
+  ENTER: 490,              // 8:10 — enters during Ascent
   INITIAL_LOWPASS: 800,
   FINAL_LOWPASS: 4500,
   ORBITAL_SPEED: 0.03,     // rad/s
@@ -47,26 +48,26 @@ export const TRACK_B = {
 // Gains at key moments (interpolate between these)
 export const GAINS = {
   TRACK_A: {
-    REVEAL: 0.7,
+    BLOOM: 0.7,
     THRONE: 0.7,
     ASCENT_END: 0.25,
     DISSOLUTION_MID: 0.05,
-    DISSOLUTION_END: 0.0,   // gone by 7:30 (450s)
+    DISSOLUTION_END: 0.0,   // gone by ~12:00 (720s)
   },
   TRACK_B: {
     ENTER: 0.0,
-    CROSSOVER: 0.25,        // ~5:20 (320s) — node gain matches Track A (heard level lower due to 4m panner atten)
+    CROSSOVER: 0.25,        // ~8:40 (520s) — gain matches Track A
     DISSOLUTION: 0.70,
-    PEAK: 0.80,             // brief swell on "Good"
+    PEAK: 0.80,             // brief swell on "Good" at 13:55 (835s)
     SILENCE: 0.0,
   },
   AUDIENCE: {
     BLOOM: 0.10,
-    DISSOLUTION: 0.0,       // gone by 6:00
+    DISSOLUTION: 0.0,       // gone by Dissolution start
   },
   OVATION: {
     PEAK: 0.25,
-    TIME: 160,              // 2:40 absolute
+    TIME: 320,              // 5:20 absolute
     DURATION: 12,           // seconds
   },
   HALL_WET: {
@@ -86,6 +87,19 @@ export const DUCK = {
   GAIN: 0.71,          // 3dB cut
   ATTACK_TC: 0.033,
   RELEASE_TC: 0.1,
+}
+
+// Conducting exaggeration (first 60s of Throne)
+export const CONDUCTING_EXAGGERATION = {
+  START: 95,                // when Throne begins (absolute)
+  END: 155,                 // 60 seconds of exaggerated response
+  GAIN_MULTIPLIER: 2.5,
+  FILTER_MULTIPLIER: 1.8,
+}
+
+// Caretaking trigger (fixed time, no gesture detection)
+export const CARETAKING_TRIGGER = {
+  FALLBACK_TIME: 450,      // 7:30 absolute
 }
 
 // Conducting parameters — re-export from existing chamber constants

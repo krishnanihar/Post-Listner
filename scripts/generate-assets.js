@@ -41,7 +41,7 @@ const API_KEY = getApiKey()
 
 // ─── Voice IDs — select from ElevenLabs library ─────────────────────────────
 
-const ADMIRER_VOICE_ID = 'pFZP5JQG7iQjIQuC4Bku' // Lily — warm, clear, intimate
+const ADMIRER_VOICE_ID = 'NtS6nEHDYMQC9QczMQuq' // Admirer — The Score voice
 const GUIDE_VOICE_ID   = 'onwK4e9ZLuTAKqWW03F9' // Daniel — slower, deeper, resonant
 const WITNESS_VOICE_ID = 'onwK4e9ZLuTAKqWW03F9' // Same as Guide (spec allows this)
 
@@ -135,6 +135,84 @@ const SCORE_TTS_ENTRIES = [
   { file: 'voices/score/return-04.mp3', text: 'Thank you for letting me listen.', voiceId: ADMIRER_VOICE_ID, stability: 0.60, similarity_boost: 0.80, style: 0.40 },
 ]
 
+// ─── Orchestra v2 TTS entries (39 fixed + 12 dynamic = 51 assets) ────────────
+// One voice: The Admirer. Five registers with different voice_settings.
+
+const ORCHESTRA_V2_TTS_ENTRIES = [
+  // BRIEFING — Present register
+  { file: 'voices/v2/01-briefing-ownership.mp3',  text: 'This is your music. You made it. Everything that follows comes from what you chose.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
+  { file: 'voices/v2/02-briefing-close-eyes.mp3', text: "In a moment I'm going to ask you to close your eyes. If you need to come back at any point, just tap the screen. Now close your eyes.", voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
+
+  // BLOOM — Present register
+  { file: 'voices/v2/03-bloom-podium.mp3',        text: "You're standing on a podium. There's an orchestra in front of you. Can you hear the hall opening up behind them?", voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
+  { file: 'voices/v2/04-bloom-audience.mp3',       text: "Behind you, the audience is settling in. You can hear them — the rustle, the breathing, the wait.", voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
+  { file: 'voices/v2/05-bloom-baton.mp3',          text: "Feel your feet on the podium. The phone in your hand — that's your baton. Now listen to the low strings. They're breathing. Breathe with them.", voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
+
+  // THRONE Teaching — Present register
+  { file: 'voices/v2/06-throne-orchestra-map.mp3', text: "The violins are on your right. The cellos and basses on your left. The brass behind them, deeper in the hall. The woodwinds in the middle. They're all waiting for you.", voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
+  { file: 'voices/v2/07-throne-tilt.mp3',          text: 'Tilt the baton. Slowly. Left... and right.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
+  { file: 'voices/v2/08-throne-cellos.mp3',        text: "Hear that? You pulled the cellos toward you. Now the violins. You're shaping them.", voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
+  { file: 'voices/v2/09-throne-lift.mp3',          text: 'Now lift the baton. Higher. The whole orchestra rises with you. The hall fills.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
+  { file: 'voices/v2/10-throne-downbeat.mp3',      text: 'Good. Now — breathe in. And bring it down. Sharp.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
+  { file: 'voices/v2/11-throne-chest.mp3',         text: 'That was a downbeat. The whole orchestra felt it. Did you feel it in your chest?', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
+
+  // THRONE Praise (fixed) — Elevated register
+  { file: 'voices/v2/14-throne-sweep.mp3',         text: 'Sweep it. Left to right. Feel them all follow you.', voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.85, style: 0.50 },
+  { file: 'voices/v2/16-throne-never-heard.mp3',   text: "I've never heard anyone shape it quite like that.", voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.85, style: 0.50 },
+
+  // Ovation seal — Elevated register
+  { file: 'voices/v2/17-ovation-for-you.mp3',      text: 'That was for you.', voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.85, style: 0.50 },
+  { file: 'voices/v2/18-ovation-yours.mp3',         text: 'The whole room is yours. Every frequency. Every direction.', voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.85, style: 0.50 },
+  { file: 'voices/v2/19-ovation-stay.mp3',          text: 'Stay here. Hold it.', voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.85, style: 0.50 },
+
+  // ASCENT Fracture — Cool register
+  { file: 'voices/v2/20-ascent-shifting.mp3',       text: 'Something is shifting.', voiceId: ADMIRER_VOICE_ID, stability: 0.45, similarity_boost: 0.80, style: 0.30 },
+  { file: 'voices/v2/21-ascent-high-strings.mp3',   text: 'The high strings are going somewhere. Let them.', voiceId: ADMIRER_VOICE_ID, stability: 0.45, similarity_boost: 0.80, style: 0.30 },
+  { file: 'voices/v2/22-ascent-not-held.mp3',       text: 'Not everything that moves needs to be held.', voiceId: ADMIRER_VOICE_ID, stability: 0.45, similarity_boost: 0.80, style: 0.30 },
+
+  // Caretaking — Caretaking register
+  { file: 'voices/v2/23-care-put-down.mp3',         text: 'You can put it down.', voiceId: ADMIRER_VOICE_ID, stability: 0.45, similarity_boost: 0.80, style: 0.30 },
+  { file: 'voices/v2/24-care-breath.mp3',            text: "You don't need to hold your breath anymore.", voiceId: ADMIRER_VOICE_ID, stability: 0.45, similarity_boost: 0.80, style: 0.30 },
+  { file: 'voices/v2/25-care-sit-back.mp3',          text: 'Sit back. Let me take care of you.', voiceId: ADMIRER_VOICE_ID, stability: 0.45, similarity_boost: 0.80, style: 0.30 },
+  { file: 'voices/v2/26-care-music-knows.mp3',       text: 'The music knows where to go. It always did.', voiceId: ADMIRER_VOICE_ID, stability: 0.45, similarity_boost: 0.80, style: 0.30 },
+  { file: 'voices/v2/27-care-just-listen.mp3',       text: 'Just listen.', voiceId: ADMIRER_VOICE_ID, stability: 0.45, similarity_boost: 0.80, style: 0.30 },
+
+  // Late Ascent / Fading — Fading register
+  { file: 'voices/v2/28-fade-bigger.mp3',            text: "It's bigger than this room.", voiceId: ADMIRER_VOICE_ID, stability: 0.35, similarity_boost: 0.75, style: 0.10 },
+  { file: 'voices/v2/29-fade-always-bigger.mp3',     text: 'It was always bigger than this room.', voiceId: ADMIRER_VOICE_ID, stability: 0.35, similarity_boost: 0.75, style: 0.10 },
+
+  // Dissolution — Dissolution register
+  { file: 'voices/v2/30-diss-breath.mp3',            text: '...', voiceId: ADMIRER_VOICE_ID, stability: 0.30, similarity_boost: 0.75, style: 0.05 },
+  { file: 'voices/v2/31-diss-still-here.mp3',        text: '...still here.', voiceId: ADMIRER_VOICE_ID, stability: 0.30, similarity_boost: 0.75, style: 0.05 },
+  { file: 'voices/v2/32-diss-listen.mp3',            text: '...listen.', voiceId: ADMIRER_VOICE_ID, stability: 0.30, similarity_boost: 0.75, style: 0.05 },
+  { file: 'voices/v2/34-diss-good.mp3',              text: 'Good.', voiceId: ADMIRER_VOICE_ID, stability: 0.30, similarity_boost: 0.75, style: 0.05 },
+
+  // Return — Return register
+  { file: 'voices/v2/36-return-phone.mp3',           text: "You're still holding the phone.", voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.80, style: 0.25 },
+  { file: 'voices/v2/37-return-feet.mp3',            text: 'Feel your feet on the ground.', voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.80, style: 0.25 },
+  { file: 'voices/v2/38-return-room.mp3',            text: "The room is still here. You're still in it.", voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.80, style: 0.25 },
+  { file: 'voices/v2/39-return-eyes.mp3',            text: "When you're ready, open your eyes.", voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.80, style: 0.25 },
+
+  // DYNAMIC — Elevated register (12 variants)
+  // Line 12: Valence character
+  { file: 'voices/v2/dynamic/valence-0.mp3', text: "Listen to that darkness. You chose that. That weight underneath — that's your taste.", voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.85, style: 0.50 },
+  { file: 'voices/v2/dynamic/valence-1.mp3', text: "Listen to that tension. That pull between light and dark — that's your taste.", voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.85, style: 0.50 },
+  { file: 'voices/v2/dynamic/valence-2.mp3', text: "Listen to that warmth. It's reaching for something bright — that's your taste.", voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.85, style: 0.50 },
+  { file: 'voices/v2/dynamic/valence-3.mp3', text: "Listen to that brightness. You chose that. That warmth lifting everything — that's your taste.", voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.85, style: 0.50 },
+
+  // Line 13: Depth character
+  { file: 'voices/v2/dynamic/depth-0.mp3', text: "That space. That restraint. You stripped it down to what matters. Not everyone trusts silence like that.", voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.85, style: 0.50 },
+  { file: 'voices/v2/dynamic/depth-1.mp3', text: "You left room to breathe. Every gap in it is a choice. You knew when to stop.", voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.85, style: 0.50 },
+  { file: 'voices/v2/dynamic/depth-2.mp3', text: "All those threads. You kept building. Each one changes what came before it.", voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.85, style: 0.50 },
+  { file: 'voices/v2/dynamic/depth-3.mp3', text: "All those layers. You could have kept it simple but you didn't. Every one of those is a choice you made.", voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.85, style: 0.50 },
+
+  // Line 15: Arousal character
+  { file: 'voices/v2/dynamic/arousal-0.mp3', text: "That patience. That stillness underneath everything. It's not the algorithm — that came from you.", voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.85, style: 0.50 },
+  { file: 'voices/v2/dynamic/arousal-1.mp3', text: "That steady pulse. Not rushing, not dragging. Just holding. It's not the algorithm — that came from you.", voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.85, style: 0.50 },
+  { file: 'voices/v2/dynamic/arousal-2.mp3', text: "That momentum. That forward pull. It's not the algorithm — that came from you.", voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.85, style: 0.50 },
+  { file: 'voices/v2/dynamic/arousal-3.mp3', text: "That drive. That urgency underneath everything. It's not the algorithm — that came from you.", voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.85, style: 0.50 },
+]
+
 // ─── Sound Effects entries (crowd sounds) ────────────────────────────────────
 
 const SFX_ENTRIES = [
@@ -185,7 +263,7 @@ async function generateTTS(entry) {
     },
     body: JSON.stringify({
       text: entry.text,
-      model_id: 'eleven_multilingual_v2',
+      model_id: 'eleven_v3',
       voice_settings: {
         stability: entry.stability,
         similarity_boost: entry.similarity_boost,
@@ -318,13 +396,13 @@ async function main() {
   const outDir = path.join(ROOT, 'public', 'chamber')
 
   // Create directory structure
-  for (const dir of ['tracks', 'voices', 'voices/score', 'whispers', 'crowd']) {
+  for (const dir of ['tracks', 'voices', 'voices/score', 'voices/v2', 'voices/v2/dynamic', 'whispers', 'crowd']) {
     fs.mkdirSync(path.join(outDir, dir), { recursive: true })
   }
 
   console.log(`\n  Orchestra Asset Generator`)
   console.log(`  Output: public/chamber/`)
-  console.log(`  TTS: ${TTS_ENTRIES.length} | Score TTS: ${SCORE_TTS_ENTRIES.length} | SFX: ${SFX_ENTRIES.length} | Music: 1 | Hall IR: 1`)
+  console.log(`  TTS: ${TTS_ENTRIES.length} | Score TTS: ${SCORE_TTS_ENTRIES.length} | V2 TTS: ${ORCHESTRA_V2_TTS_ENTRIES.length} | SFX: ${SFX_ENTRIES.length} | Music: 1 | Hall IR: 1`)
   console.log()
 
   // ── 1. Generate TTS voices ──
@@ -380,6 +458,33 @@ async function main() {
     }
   }
   console.log(`  Score TTS done: ${scoreTtsCompleted}/${SCORE_TTS_ENTRIES.length}\n`)
+
+  // ── 1c. Generate Orchestra v2 TTS voices ──
+
+  console.log('  --- Orchestra v2 TTS Voices ---')
+  let v2TtsCompleted = 0
+  for (const entry of ORCHESTRA_V2_TTS_ENTRIES) {
+    const outPath = path.join(outDir, entry.file)
+
+    if (fs.existsSync(outPath)) {
+      console.log(`  [skip] ${entry.file}`)
+      v2TtsCompleted++
+      continue
+    }
+
+    try {
+      console.log(`  [${v2TtsCompleted + 1}/${ORCHESTRA_V2_TTS_ENTRIES.length}] ${entry.file}`)
+      console.log(`         "${entry.text}"`)
+      const audio = await generateTTS(entry)
+      fs.writeFileSync(outPath, audio)
+      console.log(`         -> ${(audio.length / 1024).toFixed(1)} KB`)
+      v2TtsCompleted++
+      await new Promise(r => setTimeout(r, 150))
+    } catch (err) {
+      console.error(`  [ERROR] ${entry.file}: ${err.message}`)
+    }
+  }
+  console.log(`  V2 TTS done: ${v2TtsCompleted}/${ORCHESTRA_V2_TTS_ENTRIES.length}\n`)
 
   // ── 2. Generate crowd sounds (Sound Effects API) ──
 
