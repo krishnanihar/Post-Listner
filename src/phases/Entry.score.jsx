@@ -15,7 +15,8 @@ const VOICES = [
 export default function Entry({ onNext }) {
   const [tapEnabled, setTapEnabled] = useState(false)
   const [lineDrawn, setLineDrawn] = useState(false)
-  const [textVisible, setTextVisible] = useState(false)
+  const [showLine1, setShowLine1] = useState(false)
+  const [showLine2, setShowLine2] = useState(false)
 
   useEffect(() => {
     preloadVoices(VOICES)
@@ -23,13 +24,19 @@ export default function Entry({ onNext }) {
     let timers = []
     const t = (ms, fn) => timers.push(setTimeout(fn, ms))
 
+    // "There you are." — warm welcome, nothing else
     t(0, () => playVoice(VOICES[0]))
     t(2500, () => setLineDrawn(true))
-    t(3000, () => playVoice(VOICES[1]))
-    t(5000, () => setTextVisible(true))
-    t(7000, () => playVoice(VOICES[2]))
-    t(11000, () => playVoice(VOICES[3]))
-    t(14000, () => setTapEnabled(true))
+
+    // "I am going to ask you to listen, and to lean."
+    t(3000, () => playVoice(VOICES[2]))
+    t(4500, () => setShowLine1(true))
+
+    // "Do not decide. Just lean."
+    t(7000, () => playVoice(VOICES[3]))
+    t(8500, () => setShowLine2(true))
+
+    t(11000, () => setTapEnabled(true))
 
     return () => timers.forEach(clearTimeout)
   }, [])
@@ -44,6 +51,7 @@ export default function Entry({ onNext }) {
   return (
     <div onClick={handleTap} style={{ position: 'absolute', inset: 0, cursor: tapEnabled ? 'pointer' : 'default' }}>
       <Paper variant="cream">
+        {/* Ink line drawing itself */}
         <svg viewBox="0 0 360 600" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
           <motion.path
             d="M120 280 Q170 250 220 270 Q260 286 280 260"
@@ -65,19 +73,32 @@ export default function Entry({ onNext }) {
             />
           )}
         </svg>
-        <motion.div
-          style={{
-            position: 'absolute', bottom: '38%', left: 0, right: 0,
-            textAlign: 'center',
-            fontFamily: FONTS.serif, fontStyle: 'italic',
-            fontSize: 18, color: COLORS.inkCream,
-          }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: textVisible ? 1 : 0 }}
-          transition={{ duration: 1.5 }}
-        >
-          hold the phone like you would hold a pen
-        </motion.div>
+
+        {/* Two lines of text that build the invitation */}
+        <div style={{
+          position: 'absolute', bottom: '32%', left: 24, right: 24,
+          textAlign: 'center',
+          fontFamily: FONTS.serif, fontStyle: 'italic',
+          fontSize: 17, color: COLORS.inkCream, lineHeight: 2,
+        }}>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: showLine1 ? 0.9 : 0 }}
+            transition={{ duration: 1.5 }}
+          >
+            listen, and lean
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: showLine2 ? 0.6 : 0 }}
+            transition={{ duration: 1.5 }}
+            style={{ fontSize: 14, color: COLORS.inkCreamSecondary }}
+          >
+            do not decide
+          </motion.div>
+        </div>
+
+        {/* Begin */}
         {tapEnabled && (
           <motion.div
             style={{

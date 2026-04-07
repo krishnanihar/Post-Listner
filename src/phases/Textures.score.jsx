@@ -19,14 +19,8 @@ const TEXTURE_DATA = [
 ]
 
 const MARK_COMPONENTS = {
-  tremolo: Tremolo,
-  vox: Vox,
-  marcato: Marcato,
-  caesura: Caesura,
-  pneuma: Pneuma,
-  ponticello: Ponticello,
-  legno: Legno,
-  fermata: Fermata,
+  tremolo: Tremolo, vox: Vox, marcato: Marcato, caesura: Caesura,
+  pneuma: Pneuma, ponticello: Ponticello, legno: Legno, fermata: Fermata,
 }
 
 const VOICE_PATHS = [
@@ -40,28 +34,28 @@ const STAVE_Y = 280
 const STAVE_WIDTH = 320
 const STAVE_X_OFFSET = 20
 const MARK_SPACING = STAVE_WIDTH / 8
-const CLIP_DURATION = 5000 // 5 seconds per texture
+const LISTEN_DURATION = 5000  // 5s listen phase — just hear it
+const DECIDE_DURATION = 4000  // 4s decision window after listening
+const SHAKE_THRESHOLD = 12    // RMS jerk threshold for "shake to refuse"
 
 export default function Textures({ onNext, avd, inputMode }) {
-  const [textureIdx, setTextureIdx] = useState(-1) // -1 = voice intro
-  const [marks, setMarks] = useState([]) // { x, markType }
+  const [textureIdx, setTextureIdx] = useState(-1)
+  const [marks, setMarks] = useState([])
   const [currentName, setCurrentName] = useState('')
   const [showInstruction, setShowInstruction] = useState(true)
-  const [deciding, setDeciding] = useState(false) // true during clip playback
+  const [phase, setPhase] = useState('intro') // intro, listening, deciding
   const [motionAvailable, setMotionAvailable] = useState(true)
+  const [decisionText, setDecisionText] = useState('') // "kept" or "refused" flash
 
   const conductingRef = useRef(null)
   const rafRef = useRef(null)
-  const clipTimer = useRef(null)
+  const phaseTimer = useRef(null)
   const finishedRef = useRef(false)
+  const resolvedRef = useRef(false)
   const preferred = useRef([])
   const neutral = useRef([])
   const dwellStart = useRef(null)
-  const faceDownDebounce = useRef(null)
-  const isFaceDown = useRef(false)
-  const resolvedRef = useRef(false) // guard against double-resolve per texture
 
-  // Initialize ConductingEngine for orientation detection
   useEffect(() => {
     preloadVoices(VOICE_PATHS)
     const engine = new ConductingEngine()
@@ -74,12 +68,12 @@ export default function Textures({ onNext, avd, inputMode }) {
       }
     })
 
-    // Play voice intro sequence
+    // Voice intro
     const timers = []
     const t = (ms, fn) => timers.push(setTimeout(fn, ms))
-    t(0, () => playVoice(VOICE_PATHS[0]))      // "Listen."
-    t(1500, () => playVoice(VOICE_PATHS[1]))    // "If you want to keep it..."
-    t(5500, () => playVoice(VOICE_PATHS[2]))    // "If it is not yours..."
+    t(0, () => playVoice(VOICE_PATHS[0]))
+    t(1500, () => playVoice(VOICE_PATHS[1]))
+    t(5500, () => playVoice(VOICE_PATHS[2]))
     t(9500, () => {
       setShowInstruction(false)
       advanceToTexture(0)
@@ -88,66 +82,66 @@ export default function Textures({ onNext, avd, inputMode }) {
     return () => {
       engine.stop()
       timers.forEach(clearTimeout)
-      clearTimeout(clipTimer.current)
-      clearTimeout(faceDownDebounce.current)
+      clearTimeout(phaseTimer.current)
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const advanceToTexture = useCallback((idx) => {
     if (idx >= TEXTURE_DATA.length) {
-      // All done
       finishPhase()
       return
     }
     const texture = TEXTURE_DATA[idx]
     setTextureIdx(idx)
     setCurrentName(texture.name)
-    setDeciding(true)
-    isFaceDown.current = false
+    setPhase('listening')
+    setDecisionText('')
     resolvedRef.current = false
     dwellStart.current = Date.now()
 
     // Play texture audio
-    audioEngine.playTexture(texture.name, CLIP_DURATION / 1000)
+    audioEngine.playTexture(texture.name, (LISTEN_DURATION + DECIDE_DURATION) / 1000)
 
-    // After clip duration, resolve based on orientation
-    clipTimer.current = setTimeout(() => {
-      resolveTexture(idx)
-    }, CLIP_DURATION)
+    // After listen phase, enter decide phase
+    phaseTimer.current = setTimeout(() => {
+      setPhase('deciding')
+
+      // Auto-keep after decide duration if not shaken
+      phaseTimer.current = setTimeout(() => {
+        if (!resolvedRef.current) resolveTexture(idx, true) // true = kept
+      }, DECIDE_DURATION)
+    }, LISTEN_DURATION)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const resolveTexture = useCallback((idx) => {
+  const resolveTexture = useCallback((idx, kept) => {
     if (resolvedRef.current) return
     resolvedRef.current = true
-    clearTimeout(clipTimer.current)
+    clearTimeout(phaseTimer.current)
     const texture = TEXTURE_DATA[idx]
-    setDeciding(false)
     audioEngine.stopTexture()
 
-    if (isFaceDown.current) {
-      // Refused
-      neutral.current.push(texture.name)
-    } else {
-      // Kept — stamp mark
+    if (kept) {
       preferred.current.push(texture.name)
       const markX = STAVE_X_OFFSET + (idx * MARK_SPACING) + MARK_SPACING / 2
       setMarks(prev => [...prev, { x: markX, markType: texture.markType }])
       if (navigator.vibrate) navigator.vibrate(15)
+      setDecisionText('kept')
 
       // AVD update
       const dwell = (Date.now() - (dwellStart.current || Date.now())) / 1000
       const dwellWeight = Math.max(0.3, Math.min(1.0, dwell / 8))
-      const vDelta = (texture.coord.v - 0.5) * dwellWeight
-      const dDelta = (texture.coord.d - 0.5) * dwellWeight
-      const aDelta = (texture.coord.a - 0.5) * dwellWeight * 0.5
-      avd.updateValence(vDelta, 1.0)
-      avd.updateDepth(dDelta, 1.0)
-      avd.updateArousal(aDelta, 1.0)
+      avd.updateValence((texture.coord.v - 0.5) * dwellWeight, 1.0)
+      avd.updateDepth((texture.coord.d - 0.5) * dwellWeight, 1.0)
+      avd.updateArousal((texture.coord.a - 0.5) * dwellWeight * 0.5, 1.0)
+    } else {
+      neutral.current.push(texture.name)
+      if (navigator.vibrate) navigator.vibrate(30)
+      setDecisionText('refused')
     }
 
-    // Brief pause then next texture
-    setTimeout(() => advanceToTexture(idx + 1), 600)
+    setPhase('listening') // reset visual state
+    setTimeout(() => advanceToTexture(idx + 1), 800)
   }, [avd]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const finishPhase = useCallback(() => {
@@ -161,39 +155,22 @@ export default function Textures({ onNext, avd, inputMode }) {
       neutral: neutral.current,
     })
 
-    playVoice(VOICE_PATHS[3]) // "I have a sense of you now."
+    playVoice(VOICE_PATHS[3])
     setTimeout(() => {
       onNext({ textures: { preferred: preferred.current, rejected: [], neutral: neutral.current } })
     }, 2000)
   }, [avd, onNext])
 
-  // rAF loop: check orientation for face-down detection
+  // rAF loop: detect shake gesture during deciding phase
   useEffect(() => {
     let running = true
     const loop = () => {
       if (!running) return
       const engine = conductingRef.current
-      if (engine && deciding) {
-        const beta = engine._beta
-        // Face-down: beta > 90 or beta < -90
-        if (Math.abs(beta) > 90) {
-          if (!isFaceDown.current) {
-            // Debounce: must stay face-down for 1 second
-            if (!faceDownDebounce.current) {
-              faceDownDebounce.current = setTimeout(() => {
-                isFaceDown.current = true
-                if (navigator.vibrate) navigator.vibrate(30)
-                faceDownDebounce.current = null
-              }, 1000)
-            }
-          }
-        } else {
-          // Cleared face-down debounce
-          if (faceDownDebounce.current) {
-            clearTimeout(faceDownDebounce.current)
-            faceDownDebounce.current = null
-          }
-          isFaceDown.current = false
+      if (engine && phase === 'deciding' && !resolvedRef.current) {
+        // Shake detection: high RMS jerk = user shook the phone
+        if (engine._jerk > SHAKE_THRESHOLD) {
+          resolveTexture(textureIdx, false) // refused
         }
       }
       rafRef.current = requestAnimationFrame(loop)
@@ -203,24 +180,21 @@ export default function Textures({ onNext, avd, inputMode }) {
       running = false
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
     }
-  }, [deciding])
+  }, [phase, textureIdx]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Touch fallback: swipe down to refuse
+  // Touch fallback: swipe down to refuse during deciding phase
   const touchStartY = useRef(null)
   const handleTouchStart = useCallback((e) => {
     touchStartY.current = e.touches[0].clientY
   }, [])
   const handleTouchEnd = useCallback((e) => {
-    if (!deciding || touchStartY.current === null) return
+    if (phase !== 'deciding' || touchStartY.current === null || resolvedRef.current) return
     const endY = e.changedTouches[0].clientY
     if (endY - touchStartY.current > 80) {
-      // Swipe down — refuse
-      isFaceDown.current = true
-      clearTimeout(clipTimer.current)
-      resolveTexture(textureIdx)
+      resolveTexture(textureIdx, false)
     }
     touchStartY.current = null
-  }, [deciding, textureIdx, resolveTexture])
+  }, [phase, textureIdx]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div
@@ -234,9 +208,9 @@ export default function Textures({ onNext, avd, inputMode }) {
         pageNumber={textureIdx >= 0 ? `${textureIdx + 1} / ${TEXTURE_DATA.length}` : ''}
         staves={[{ y: STAVE_Y, width: STAVE_WIDTH }]}
       >
-        {/* Accumulated marks */}
         {marks.map((m, i) => {
           const MarkComp = MARK_COMPONENTS[m.markType]
+          if (!MarkComp) return null
           return (
             <motion.g
               key={i}
@@ -258,7 +232,7 @@ export default function Textures({ onNext, avd, inputMode }) {
             key={textureIdx}
             style={{
               position: 'absolute',
-              top: '30%',
+              top: '28%',
               left: 0,
               right: 0,
               textAlign: 'center',
@@ -277,7 +251,61 @@ export default function Textures({ onNext, avd, inputMode }) {
         )}
       </AnimatePresence>
 
-      {/* Instruction text */}
+      {/* Phase indicator — listening vs deciding */}
+      {textureIdx >= 0 && !resolvedRef.current && (
+        <div style={{
+          position: 'absolute',
+          top: '36%',
+          left: 0,
+          right: 0,
+          textAlign: 'center',
+          fontFamily: FONTS.serif,
+          fontStyle: 'italic',
+          fontSize: 12,
+          color: COLORS.inkCreamSecondary,
+        }}>
+          {phase === 'listening' && (
+            <motion.span
+              animate={{ opacity: [0.3, 0.6, 0.3] }}
+              transition={{ duration: 1.5, repeat: Infinity }}
+            >
+              listening...
+            </motion.span>
+          )}
+          {phase === 'deciding' && (
+            <motion.span
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.8 }}
+            >
+              {motionAvailable ? 'shake to refuse' : 'swipe down to refuse'}
+            </motion.span>
+          )}
+        </div>
+      )}
+
+      {/* Decision flash */}
+      {decisionText && (
+        <motion.div
+          style={{
+            position: 'absolute',
+            top: '36%',
+            left: 0,
+            right: 0,
+            textAlign: 'center',
+            fontFamily: FONTS.mono,
+            fontSize: 10,
+            color: decisionText === 'kept' ? COLORS.inkCream : COLORS.inkCreamSecondary,
+            letterSpacing: '0.1em',
+          }}
+          initial={{ opacity: 0.8 }}
+          animate={{ opacity: 0 }}
+          transition={{ duration: 0.8 }}
+        >
+          {decisionText}
+        </motion.div>
+      )}
+
+      {/* Instruction text during intro */}
       {showInstruction && (
         <motion.div
           style={{
@@ -296,7 +324,9 @@ export default function Textures({ onNext, avd, inputMode }) {
           animate={{ opacity: 0.8 }}
           transition={{ delay: 1.5 }}
         >
-          {motionAvailable ? 'hold still to keep \u00B7 turn over to refuse' : 'tap to keep \u00B7 swipe down to refuse'}
+          {motionAvailable
+            ? 'listen first \u00B7 then shake to throw away'
+            : 'listen first \u00B7 swipe down to throw away'}
         </motion.div>
       )}
     </div>

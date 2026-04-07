@@ -14,16 +14,17 @@ const VOICE_PATHS = [
   '/chamber/voices/score/moment-04.mp3',
 ]
 
-const DURATION = 30 // seconds
+const DURATION = 30
 const TACTUS_WIDTH = 320
 const TACTUS_Y = 300
 const TACTUS_X_OFFSET = 20
 
 export default function Moment({ onNext, avd, inputMode }) {
-  const [downbeats, setDownbeats] = useState([]) // { x, y }
+  const [downbeats, setDownbeats] = useState([])
   const [tactusPath, setTactusPath] = useState('')
   const [phase, setPhase] = useState('intro') // intro, playing, done
   const [motionAvailable, setMotionAvailable] = useState(true)
+  const [elapsed, setElapsed] = useState(0) // 0-1 progress
 
   const conductingRef = useRef(null)
   const rafRef = useRef(null)
@@ -50,12 +51,12 @@ export default function Moment({ onNext, avd, inputMode }) {
       }
     })
 
-    // Voice intro
+    // Voice intro then start
     const timers = []
     const t = (ms, fn) => timers.push(setTimeout(fn, ms))
-    t(0, () => playVoice(VOICE_PATHS[0]))      // "I am going to play something. Conduct it."
-    t(2000, () => playVoice(VOICE_PATHS[1]))    // "Move the phone like you mean it."
-    t(3000, () => startPlaying())
+    t(0, () => playVoice(VOICE_PATHS[0]))
+    t(2000, () => playVoice(VOICE_PATHS[1]))
+    t(4000, () => startPlaying())
 
     return () => {
       engine.stop()
@@ -69,10 +70,7 @@ export default function Moment({ onNext, avd, inputMode }) {
     setPhase('playing')
     startTimeRef.current = Date.now()
     trackRef.current = audioEngine.playBuildAndDrop(DURATION)
-
-    setTimeout(() => {
-      finishPhase()
-    }, DURATION * 1000)
+    setTimeout(() => finishPhase(), DURATION * 1000)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const finishPhase = useCallback(() => {
@@ -80,7 +78,6 @@ export default function Moment({ onNext, avd, inputMode }) {
     finishedRef.current = true
     setPhase('done')
 
-    // Calculate arousal from gesture data
     const avgGesture = sampleCount.current > 0 ? gestureSum.current / sampleCount.current : 0
     const dbCount = downbeatCount.current
     const downbeatBonus = dbCount > 5 ? 0.2 : dbCount * 0.04
@@ -90,14 +87,12 @@ export default function Moment({ onNext, avd, inputMode }) {
     avd.setPhaseData('moment', {
       totalDownbeats: dbCount,
       avgGestureGain: Math.round(avgGesture * 100) / 100,
-      tactus: tactusPoints.current.slice(), // save for Reveal score assembly
+      tactus: tactusPoints.current.slice(),
     })
 
-    // Use pre-generated demo track
     const musicPromise = Promise.resolve('/chamber/tracks/track-a.mp3')
 
-    // Voice 04 then advance
-    playVoice(VOICE_PATHS[3]) // "I felt that."
+    playVoice(VOICE_PATHS[3])
     setTimeout(() => {
       onNext({
         moment: { totalDownbeats: dbCount, avgGestureGain: avgGesture },
@@ -106,7 +101,7 @@ export default function Moment({ onNext, avd, inputMode }) {
     }, 1500)
   }, [avd, onNext])
 
-  // rAF loop: read conducting data, build tactus, detect downbeats
+  // rAF loop
   useEffect(() => {
     let running = true
     const loop = () => {
@@ -114,22 +109,19 @@ export default function Moment({ onNext, avd, inputMode }) {
       const engine = conductingRef.current
       if (engine && phase === 'playing' && startTimeRef.current) {
         const data = engine.getData()
-        const elapsed = (Date.now() - startTimeRef.current) / 1000
-        const progress = clamp(elapsed / DURATION, 0, 1)
+        const sec = (Date.now() - startTimeRef.current) / 1000
+        const progress = clamp(sec / DURATION, 0, 1)
+        setElapsed(progress)
 
-        // Sample gesture
         gestureSum.current += data.gestureGain
         sampleCount.current++
 
-        // Build tactus line point
         const x = TACTUS_X_OFFSET + progress * TACTUS_WIDTH
-        const y = TACTUS_Y + (data.gestureGain - 0.3) * 40 // gesture maps to vertical offset
+        const y = TACTUS_Y + (data.gestureGain - 0.3) * 40
         tactusPoints.current.push({ x, y })
 
-        // Keep last 240 points (~8 seconds at 30fps)
         if (tactusPoints.current.length > 240) tactusPoints.current.shift()
 
-        // Build SVG path from points
         if (tactusPoints.current.length > 1) {
           const pts = tactusPoints.current
           let d = `M${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`
@@ -139,17 +131,13 @@ export default function Moment({ onNext, avd, inputMode }) {
           setTactusPath(d)
         }
 
-        // Downbeat detection
         if (data.downbeat.fired) {
           downbeatCount.current++
           setDownbeats(prev => [...prev, { x, y }])
-
           if (navigator.vibrate) navigator.vibrate(15)
-
-          // Voice 03 on strong downbeat, max once per 8s
           if (data.downbeat.intensity > 0.7 && Date.now() - lastVoice03Time.current > 8000) {
             lastVoice03Time.current = Date.now()
-            playVoice(VOICE_PATHS[2]) // "There."
+            playVoice(VOICE_PATHS[2])
           }
         }
       }
@@ -162,12 +150,11 @@ export default function Moment({ onNext, avd, inputMode }) {
     }
   }, [phase])
 
-  // Touch fallback: tap to register beats
+  // Touch fallback: tap for beats
   const handleTap = useCallback(() => {
     if (phase !== 'playing') return
     const engine = conductingRef.current
     if (engine) {
-      // Simulate a touch-based downbeat
       engine.updateTouch(0.5, 0.5, true)
       setTimeout(() => engine.updateTouch(0.5, 0.5, false), 100)
     }
@@ -190,9 +177,21 @@ export default function Moment({ onNext, avd, inputMode }) {
           v. moment
         </div>
 
-        {/* SVG canvas for tactus and downbeats */}
+        {/* Progress — thin amber line at top */}
+        {phase === 'playing' && (
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: `${elapsed * 100}%`,
+            height: 1,
+            background: COLORS.scoreAmber,
+            opacity: 0.4,
+          }} />
+        )}
+
+        {/* SVG canvas */}
         <svg viewBox="0 0 360 600" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-          {/* Tactus line */}
           {tactusPath && (
             <path
               d={tactusPath}
@@ -205,7 +204,6 @@ export default function Moment({ onNext, avd, inputMode }) {
             />
           )}
 
-          {/* Downbeat dots */}
           {downbeats.map((db, i) => (
             <motion.circle
               key={i}
@@ -220,36 +218,58 @@ export default function Moment({ onNext, avd, inputMode }) {
           ))}
         </svg>
 
-        {/* Instruction during intro */}
+        {/* Intro — explain what happens */}
         {phase === 'intro' && (
-          <motion.div
-            style={{
-              position: 'absolute', bottom: '25%', left: 0, right: 0,
-              textAlign: 'center',
-              fontFamily: FONTS.serif, fontStyle: 'italic',
-              fontSize: 14, color: COLORS.inkDarkSecondary,
-            }}
-            animate={{ opacity: [0.4, 0.7, 0.4] }}
-            transition={{ duration: 2, repeat: Infinity }}
-          >
-            listen...
-          </motion.div>
+          <div style={{
+            position: 'absolute',
+            top: '38%',
+            left: 24,
+            right: 24,
+            textAlign: 'center',
+            fontFamily: FONTS.serif,
+            fontStyle: 'italic',
+            color: COLORS.inkDarkSecondary,
+            lineHeight: 2.2,
+          }}>
+            <motion.div
+              style={{ fontSize: 16, color: COLORS.inkDark }}
+              animate={{ opacity: [0.4, 0.8, 0.4] }}
+              transition={{ duration: 2, repeat: Infinity }}
+            >
+              a track will play
+            </motion.div>
+            <motion.div
+              style={{ fontSize: 13 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.6 }}
+              transition={{ delay: 1 }}
+            >
+              {motionAvailable
+                ? 'move the phone to conduct it'
+                : 'tap the screen to the beat'}
+            </motion.div>
+          </div>
         )}
 
-        {/* Tap fallback hint when motion unavailable */}
-        {phase === 'playing' && !motionAvailable && (
+        {/* During play — subtle instruction if no gesture detected yet */}
+        {phase === 'playing' && downbeats.length === 0 && elapsed > 0.1 && (
           <motion.div
             style={{
-              position: 'absolute', bottom: '12%', left: 0, right: 0,
+              position: 'absolute',
+              bottom: '12%',
+              left: 0,
+              right: 0,
               textAlign: 'center',
-              fontFamily: FONTS.serif, fontStyle: 'italic',
-              fontSize: 13, color: COLORS.inkDarkSecondary,
+              fontFamily: FONTS.serif,
+              fontStyle: 'italic',
+              fontSize: 13,
+              color: COLORS.inkDarkSecondary,
             }}
             initial={{ opacity: 0 }}
-            animate={{ opacity: 0.6 }}
-            transition={{ delay: 1 }}
+            animate={{ opacity: 0.5 }}
+            transition={{ delay: 2 }}
           >
-            tap to the beat
+            {motionAvailable ? 'move your hand' : 'tap to the beat'}
           </motion.div>
         )}
       </Paper>

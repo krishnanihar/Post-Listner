@@ -7,7 +7,6 @@ import { Linea } from '../score/marks'
 import { COLORS, FONTS } from '../score/tokens'
 import { playVoice, preloadVoices } from '../score/voice'
 
-// Each pair has AVD coordinates from SPECTRUM-AUDIO-PROMPTS.md
 const PAIRS = [
   { left: 'shadow',  right: 'warmth',
     coordL: { a: 0.30, v: 0.10, d: 0.50 }, coordR: { a: 0.30, v: 0.85, d: 0.50 } },
@@ -34,28 +33,30 @@ const VOICE_PATHS = [
   '/chamber/voices/score/spectrum-04.mp3',
 ]
 
-// Stave layout constants
 const STAVE_Y = 280
 const STAVE_WIDTH = 320
 const STAVE_X_OFFSET = 20
 const MARK_SPACING = STAVE_WIDTH / 8
+const LEAN_THRESHOLD = 0.35
+const COMMIT_DURATION = 3000 // 3 seconds to commit
 
 export default function Spectrum({ onNext, avd, inputMode }) {
   const [pairIdx, setPairIdx] = useState(0)
   const [transitioning, setTransitioning] = useState(false)
-  const [cursorX, setCursorX] = useState(0) // -1 to 1
-  const [marks, setMarks] = useState([]) // accumulated linea marks
+  const [cursorX, setCursorX] = useState(0)
+  const [marks, setMarks] = useState([])
   const [pairVisible, setPairVisible] = useState(true)
   const [showHint, setShowHint] = useState(true)
   const [motionAvailable, setMotionAvailable] = useState(true)
+  const [commitProgress, setCommitProgress] = useState(0) // 0-1, visible fill under chosen word
+  const [commitSide, setCommitSide] = useState(null) // 'left' | 'right' | null
 
   const conductingRef = useRef(null)
   const pairRef = useRef(null)
   const rafRef = useRef(null)
-  const leanTimerRef = useRef(null)
   const leanSideRef = useRef(null)
   const leanStartRef = useRef(null)
-  const cursorHistoryRef = useRef([]) // last 2s of cursor positions for linea path
+  const cursorHistoryRef = useRef([])
   const pairStartTime = useRef(Date.now())
   const reversalCount = useRef(0)
   const lastSide = useRef(null)
@@ -66,7 +67,6 @@ export default function Spectrum({ onNext, avd, inputMode }) {
 
   const pair = PAIRS[pairIdx]
 
-  // Initialize ConductingEngine
   useEffect(() => {
     preloadVoices(VOICE_PATHS)
     const engine = new ConductingEngine()
@@ -78,11 +78,9 @@ export default function Spectrum({ onNext, avd, inputMode }) {
         setMotionAvailable(false)
       }
     })
-    // Hide hint after first commit
     return () => engine.stop()
   }, [])
 
-  // Stop audio helper
   const stopAudio = useCallback(() => {
     if (pairRef.current) {
       pairRef.current.stop()
@@ -90,7 +88,6 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     }
   }, [])
 
-  // Start audio for current pair
   const startPair = useCallback(() => {
     stopAudio()
     const urlL = `/spectrum/${pair.left}.mp3`
@@ -104,15 +101,15 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     cursorHistoryRef.current = []
     leanSideRef.current = null
     leanStartRef.current = null
+    setCommitProgress(0)
+    setCommitSide(null)
   }, [pair, stopAudio])
 
-  // Start pair audio on mount and on pair change
   useEffect(() => {
     startPair()
     return stopAudio
   }, [pairIdx]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Commitment weight from slider position, reversals, dwell
   const getSlideCommitmentWeight = useCallback((sliderPosition) => {
     const positionFactor = Math.max(0.2, sliderPosition)
     const reversals = reversalCount.current
@@ -120,19 +117,6 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     const dwellSec = (Date.now() - pairStartTime.current) / 1000
     const dwellFactor = Math.max(0.3, Math.min(1.2, dwellSec / 4.0))
     return positionFactor * reversalPenalty * dwellFactor
-  }, [])
-
-  // Build linea path from cursor history
-  const buildLineaPath = useCallback((side) => {
-    const history = cursorHistoryRef.current
-    // Sample 6 points from history
-    const samples = []
-    const step = Math.max(1, Math.floor(history.length / 6))
-    for (let i = 0; i < history.length && samples.length < 6; i += step) {
-      samples.push(history[i])
-    }
-    if (samples.length < 2) samples.push(side === 'left' ? -0.5 : 0.5)
-    return samples
   }, [])
 
   const lockChoice = useCallback((side) => {
@@ -162,7 +146,6 @@ export default function Spectrum({ onNext, avd, inputMode }) {
       coord: chosenCoord,
     })
 
-    // AVD updates — same as original
     const vDelta = (chosenCoord.v - 0.5) * confidence * slideCommitmentWeight
     const aDelta = (chosenCoord.a - 0.5) * confidence * slideCommitmentWeight * 0.5
     const dDelta = (chosenCoord.d - 0.5) * confidence * slideCommitmentWeight * 0.5
@@ -173,12 +156,10 @@ export default function Spectrum({ onNext, avd, inputMode }) {
 
     if (navigator.vibrate) navigator.vibrate(10)
 
-    // Stamp a linea mark
     const markX = STAVE_X_OFFSET + (pairIdx * MARK_SPACING) + MARK_SPACING / 2
     const dip = side === 'left' ? 'left' : 'right'
     setMarks(prev => [...prev, { x: markX, dip }])
 
-    // Voice cues after pairs 2, 4, 6, 8
     const completedPair = pairIdx + 1
     if (completedPair === 2) playVoice(VOICE_PATHS[0])
     if (completedPair === 4) playVoice(VOICE_PATHS[1])
@@ -186,6 +167,8 @@ export default function Spectrum({ onNext, avd, inputMode }) {
 
     setPairVisible(false)
     if (showHint) setShowHint(false)
+    setCommitProgress(0)
+    setCommitSide(null)
 
     setTimeout(() => {
       if (pairIdx < PAIRS.length - 1) {
@@ -194,15 +177,14 @@ export default function Spectrum({ onNext, avd, inputMode }) {
         setPairVisible(true)
         setTransitioning(false)
       } else {
-        // Final pair — voice 04 then advance
         playVoice(VOICE_PATHS[3])
         avd.setPhaseData('spectrum', { pairs: results.current })
         setTimeout(() => onNext({ spectrum: results.current }), 1500)
       }
     }, 600)
-  }, [pairIdx, transitioning, avd, onNext, stopAudio, pair, getSlideCommitmentWeight])
+  }, [pairIdx, transitioning, avd, onNext, stopAudio, pair, getSlideCommitmentWeight, showHint])
 
-  // rAF loop: read ConductingEngine data, update cursor and audio balance
+  // rAF loop
   useEffect(() => {
     let running = true
     const loop = () => {
@@ -210,19 +192,15 @@ export default function Spectrum({ onNext, avd, inputMode }) {
       const engine = conductingRef.current
       if (engine && !transitioning) {
         const data = engine.getData()
-        // pan is 0-1, map to -1 to +1
         const position = (data.pan - 0.5) * 2
         setCursorX(position)
 
-        // Track cursor history for linea path
         cursorHistoryRef.current.push(position)
-        if (cursorHistoryRef.current.length > 60) cursorHistoryRef.current.shift() // ~2s at 30fps
+        if (cursorHistoryRef.current.length > 60) cursorHistoryRef.current.shift()
 
-        // Audio balance
         const balance = Math.sign(position) * Math.pow(Math.abs(position), 0.6) * 0.8
         if (pairRef.current) pairRef.current.setBalance(balance)
 
-        // Track side and reversals
         if (Math.abs(position) > 0.1) {
           const side = position < 0 ? 'left' : 'right'
           if (!firstHovered.current) firstHovered.current = side
@@ -232,13 +210,19 @@ export default function Spectrum({ onNext, avd, inputMode }) {
           lastSide.current = side
         }
 
-        // Auto-commit: sustained lean > 0.4 for 1.5s
-        if (Math.abs(position) > 0.4) {
+        // Commit progress: lean past threshold builds a visible fill over 3 seconds
+        if (Math.abs(position) > LEAN_THRESHOLD) {
           const side = position < 0 ? 'left' : 'right'
           if (leanSideRef.current !== side) {
             leanSideRef.current = side
             leanStartRef.current = Date.now()
-          } else if (Date.now() - leanStartRef.current > 1500) {
+          }
+          const elapsed = Date.now() - leanStartRef.current
+          const progress = Math.min(1, elapsed / COMMIT_DURATION)
+          setCommitProgress(progress)
+          setCommitSide(side)
+
+          if (progress >= 1) {
             lockChoice(side)
             leanSideRef.current = null
             leanStartRef.current = null
@@ -246,6 +230,8 @@ export default function Spectrum({ onNext, avd, inputMode }) {
         } else {
           leanSideRef.current = null
           leanStartRef.current = null
+          setCommitProgress(0)
+          setCommitSide(null)
         }
       }
       rafRef.current = requestAnimationFrame(loop)
@@ -257,7 +243,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     }
   }, [transitioning, lockChoice])
 
-  // Touch fallback: drag left/right
+  // Touch fallback
   const handleTouchMove = useCallback((e) => {
     if (transitioning) return
     const touch = e.touches[0]
@@ -268,7 +254,6 @@ export default function Spectrum({ onNext, avd, inputMode }) {
 
   const handleTouchEnd = useCallback(() => {
     if (transitioning) return
-    // On release, lock to whichever side cursor is on
     const pos = cursorHistoryRef.current[cursorHistoryRef.current.length - 1] || 0
     if (Math.abs(pos) > 0.15) {
       lockChoice(pos < 0 ? 'left' : 'right')
@@ -277,18 +262,18 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     if (engine) engine.updateTouch(0.5, 0.5, false)
   }, [transitioning, lockChoice])
 
-  // Tap to lock immediately
-  const handleTap = useCallback((e) => {
+  const handleTap = useCallback(() => {
     if (transitioning) return
-    // Use current cursor position's side
     const pos = cursorHistoryRef.current[cursorHistoryRef.current.length - 1] || 0
     if (Math.abs(pos) > 0.1) {
       lockChoice(pos < 0 ? 'left' : 'right')
     }
   }, [transitioning, lockChoice])
 
-  // Cursor position on stave (SVG coordinates)
   const cursorSvgX = STAVE_X_OFFSET + (STAVE_WIDTH / 2) + cursorX * (STAVE_WIDTH / 2)
+
+  // Commit fill: a small arc under the word that fills as the user holds
+  const commitFillOpacity = commitProgress > 0 ? 0.15 + commitProgress * 0.35 : 0
 
   return (
     <div
@@ -303,14 +288,12 @@ export default function Spectrum({ onNext, avd, inputMode }) {
         pageNumber={`${pairIdx + 1} / ${PAIRS.length}`}
         staves={[{ y: STAVE_Y, width: STAVE_WIDTH }]}
       >
-        {/* Accumulated linea marks */}
         {marks.map((m, i) => (
           <g key={i} transform={`translate(${m.x}, ${STAVE_Y + 6})`}>
             <Linea size={MARK_SPACING * 0.8} dip={m.dip} color={COLORS.inkCream} />
           </g>
         ))}
 
-        {/* Live amber cursor dot */}
         {pairVisible && !transitioning && (
           <circle
             cx={cursorSvgX}
@@ -321,7 +304,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
         )}
       </Score>
 
-      {/* Word labels — left and right of stave area */}
+      {/* Word labels */}
       <AnimatePresence mode="wait">
         {pairVisible && (
           <motion.div
@@ -332,9 +315,10 @@ export default function Spectrum({ onNext, avd, inputMode }) {
             transition={{ duration: 0.4 }}
             style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
           >
+            {/* Left word */}
             <div style={{
               position: 'absolute',
-              top: '40%',
+              top: '37%',
               left: 24,
               fontFamily: FONTS.serif,
               fontStyle: 'italic',
@@ -343,10 +327,24 @@ export default function Spectrum({ onNext, avd, inputMode }) {
               transition: 'color 0.3s',
             }}>
               {pair.left}
+              {/* Commit fill bar under the word */}
+              {commitSide === 'left' && commitProgress > 0 && (
+                <div style={{
+                  marginTop: 6,
+                  height: 2,
+                  borderRadius: 1,
+                  background: COLORS.scoreAmber,
+                  opacity: commitFillOpacity,
+                  width: `${commitProgress * 100}%`,
+                  transition: 'width 0.1s linear',
+                }} />
+              )}
             </div>
+
+            {/* Right word */}
             <div style={{
               position: 'absolute',
-              top: '40%',
+              top: '37%',
               right: 24,
               fontFamily: FONTS.serif,
               fontStyle: 'italic',
@@ -356,12 +354,24 @@ export default function Spectrum({ onNext, avd, inputMode }) {
               textAlign: 'right',
             }}>
               {pair.right}
+              {commitSide === 'right' && commitProgress > 0 && (
+                <div style={{
+                  marginTop: 6,
+                  height: 2,
+                  borderRadius: 1,
+                  background: COLORS.scoreAmber,
+                  opacity: commitFillOpacity,
+                  width: `${commitProgress * 100}%`,
+                  marginLeft: 'auto',
+                  transition: 'width 0.1s linear',
+                }} />
+              )}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Interaction hint — fades after first commit */}
+      {/* Hint */}
       {showHint && (
         <motion.div
           style={{
@@ -374,12 +384,15 @@ export default function Spectrum({ onNext, avd, inputMode }) {
             fontStyle: 'italic',
             fontSize: 13,
             color: COLORS.inkCreamSecondary,
+            lineHeight: 1.8,
           }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 0.7 }}
           transition={{ delay: 1.5, duration: 1 }}
         >
-          {motionAvailable ? 'lean the phone toward a word' : 'drag left or right'}
+          {motionAvailable
+            ? 'lean toward a word and hold'
+            : 'drag toward a word and hold'}
         </motion.div>
       )}
     </div>
