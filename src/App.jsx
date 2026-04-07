@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import Entry from './phases/Entry.score'
 import Spectrum from './phases/Spectrum.score'
-import DepthDial from './phases/DepthDial'
+import Depth from './phases/Depth.score'
 import Textures from './phases/Textures'
 import Moment from './phases/Moment'
 import Reveal from './phases/Reveal'
@@ -40,7 +40,7 @@ function App() {
   const phaseComponent = {
     entry: <Entry onNext={nextPhase} />,
     spectrum: <Spectrum onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
-    depth: <DepthDial onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
+    depth: <Depth onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
     textures: <Textures onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
     moment: <Moment onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
     reveal: <Reveal onNext={nextPhase} avd={avdEngine} sessionData={{ ...sessionData, musicPromise: musicPromiseRef.current }} revealAudioRef={revealAudioRef} />,
