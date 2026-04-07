@@ -15,16 +15,26 @@ const VOICE_PATHS = [
 ]
 
 const DURATION = 30
-const TACTUS_WIDTH = 320
-const TACTUS_Y = 300
-const TACTUS_X_OFFSET = 20
+
+// Drawing area — spans most of the screen width and centered vertically
+const SVG_W = 360
+const SVG_H = 700
+const DRAW_LEFT = 20
+const DRAW_RIGHT = 340
+const DRAW_WIDTH = DRAW_RIGHT - DRAW_LEFT
+const DRAW_CENTER_Y = 350    // vertical center of the drawing area
+const DRAW_AMPLITUDE = 80    // max vertical displacement from gesture
+const STAVE_TOP = 240        // top stave position
+const STAVE_BOTTOM = 460     // bottom stave position
+const STAVE_COUNT = 5        // 5 stave lines spanning the drawing area
 
 export default function Moment({ onNext, avd, inputMode }) {
   const [downbeats, setDownbeats] = useState([])
   const [tactusPath, setTactusPath] = useState('')
-  const [phase, setPhase] = useState('intro') // intro, playing, done
+  const [phase, setPhase] = useState('intro')
   const [motionAvailable, setMotionAvailable] = useState(true)
-  const [elapsed, setElapsed] = useState(0) // 0-1 progress
+  const [elapsed, setElapsed] = useState(0)
+  const [gestureIntensity, setGestureIntensity] = useState(0) // 0-1 for visual feedback
 
   const conductingRef = useRef(null)
   const rafRef = useRef(null)
@@ -51,12 +61,10 @@ export default function Moment({ onNext, avd, inputMode }) {
       }
     })
 
-    // Voice intro then start — spaced by actual durations
-    // moment-01: 2.8s, moment-02: 1.7s
     const timers = []
     const t = (ms, fn) => timers.push(setTimeout(fn, ms))
-    t(0, () => playVoice(VOICE_PATHS[0]))        // "I am going to play something. Conduct it." (2.8s)
-    t(3300, () => playVoice(VOICE_PATHS[1]))      // "Move the phone like you mean it." (1.7s)
+    t(0, () => playVoice(VOICE_PATHS[0]))
+    t(3300, () => playVoice(VOICE_PATHS[1]))
     t(5500, () => startPlaying())
 
     return () => {
@@ -114,14 +122,27 @@ export default function Moment({ onNext, avd, inputMode }) {
         const progress = clamp(sec / DURATION, 0, 1)
         setElapsed(progress)
 
-        gestureSum.current += data.gestureGain
+        const gain = data.gestureGain
+        gestureSum.current += gain
         sampleCount.current++
+        setGestureIntensity(gain)
 
-        const x = TACTUS_X_OFFSET + progress * TACTUS_WIDTH
-        const y = TACTUS_Y + (data.gestureGain - 0.3) * 40
+        // X: left to right across the full drawing width
+        const x = DRAW_LEFT + progress * DRAW_WIDTH
+        // Y: gesture maps to vertical displacement — bigger gesture = bigger wave
+        const y = DRAW_CENTER_Y + (gain - 0.3) * DRAW_AMPLITUDE * 2
         tactusPoints.current.push({ x, y })
 
-        if (tactusPoints.current.length > 240) tactusPoints.current.shift()
+        // Keep ALL points (don't shift) — the full line is the score
+        // But limit to prevent memory issues
+        if (tactusPoints.current.length > 2000) {
+          // Downsample: keep every other point from the first half
+          const half = Math.floor(tactusPoints.current.length / 2)
+          const thinned = []
+          for (let i = 0; i < half; i += 2) thinned.push(tactusPoints.current[i])
+          thinned.push(...tactusPoints.current.slice(half))
+          tactusPoints.current = thinned
+        }
 
         if (tactusPoints.current.length > 1) {
           const pts = tactusPoints.current
@@ -163,6 +184,13 @@ export default function Moment({ onNext, avd, inputMode }) {
     audioEngine.playTapSound()
   }, [phase])
 
+  // Stave lines spanning the drawing area
+  const staveSpacing = (STAVE_BOTTOM - STAVE_TOP) / (STAVE_COUNT - 1)
+
+  // Line thickness responds to gesture intensity
+  const lineWidth = 1.5 + gestureIntensity * 2.5 // 1.5 to 4
+  const lineOpacity = 0.5 + gestureIntensity * 0.5 // 0.5 to 1.0
+
   return (
     <div
       style={{ position: 'absolute', inset: 0, touchAction: 'none' }}
@@ -178,54 +206,94 @@ export default function Moment({ onNext, avd, inputMode }) {
           v. moment
         </div>
 
-        {/* Progress — thin amber line at top */}
+        {/* Progress bar — 2px amber, more visible */}
         {phase === 'playing' && (
           <div style={{
             position: 'absolute',
-            top: 0,
-            left: 0,
-            width: `${elapsed * 100}%`,
+            top: 52,
+            left: 24,
+            right: 24,
             height: 1,
-            background: COLORS.scoreAmber,
-            opacity: 0.4,
-          }} />
+            background: COLORS.inkDarkSecondary,
+            opacity: 0.2,
+          }}>
+            <div style={{
+              height: '100%',
+              width: `${elapsed * 100}%`,
+              background: COLORS.scoreAmber,
+              opacity: 0.6,
+              transition: 'width 0.3s linear',
+            }} />
+          </div>
         )}
 
         {/* SVG canvas */}
-        <svg viewBox="0 0 360 600" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+        <svg
+          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+          preserveAspectRatio="xMidYMid meet"
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+        >
+          {/* Stave lines — faint horizontal guides across drawing area */}
+          {Array.from({ length: STAVE_COUNT }, (_, i) => (
+            <line
+              key={i}
+              x1={DRAW_LEFT}
+              y1={STAVE_TOP + i * staveSpacing}
+              x2={DRAW_RIGHT}
+              y2={STAVE_TOP + i * staveSpacing}
+              stroke={COLORS.inkDarkSecondary}
+              strokeWidth="0.3"
+              opacity="0.25"
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+
+          {/* Tactus line — the live drawing */}
           {tactusPath && (
             <path
               d={tactusPath}
               stroke={COLORS.inkDark}
-              strokeWidth="1"
+              strokeWidth={lineWidth}
               fill="none"
               strokeLinecap="round"
+              strokeLinejoin="round"
               vectorEffect="non-scaling-stroke"
-              opacity="0.8"
+              opacity={lineOpacity}
             />
           )}
 
+          {/* Downbeat dots — bigger and more visible */}
           {downbeats.map((db, i) => (
             <motion.circle
               key={i}
               cx={db.x}
               cy={db.y}
-              r="3"
+              r="5"
               fill={COLORS.scoreAmber}
               initial={{ opacity: 0, scale: 0 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.2 }}
+              animate={{ opacity: 0.9, scale: 1 }}
+              transition={{ duration: 0.3, ease: 'easeOut' }}
             />
           ))}
+
+          {/* Leading point — amber dot at the drawing edge */}
+          {phase === 'playing' && tactusPoints.current.length > 0 && (
+            <circle
+              cx={DRAW_LEFT + elapsed * DRAW_WIDTH}
+              cy={DRAW_CENTER_Y + (gestureIntensity - 0.3) * DRAW_AMPLITUDE * 2}
+              r="4"
+              fill={COLORS.scoreAmber}
+              opacity="0.7"
+            />
+          )}
         </svg>
 
-        {/* Intro — explain what happens */}
+        {/* Intro text */}
         {phase === 'intro' && (
           <div style={{
             position: 'absolute',
             top: '38%',
-            left: 24,
-            right: 24,
+            left: 24, right: 24,
             textAlign: 'center',
             fontFamily: FONTS.serif,
             fontStyle: 'italic',
@@ -252,23 +320,21 @@ export default function Moment({ onNext, avd, inputMode }) {
           </div>
         )}
 
-        {/* During play — subtle instruction if no gesture detected yet */}
-        {phase === 'playing' && downbeats.length === 0 && elapsed > 0.1 && (
+        {/* Persistent hint during play — fades when gesture detected */}
+        {phase === 'playing' && (
           <motion.div
             style={{
               position: 'absolute',
-              bottom: '12%',
-              left: 0,
-              right: 0,
+              bottom: '10%',
+              left: 0, right: 0,
               textAlign: 'center',
               fontFamily: FONTS.serif,
               fontStyle: 'italic',
-              fontSize: 13,
+              fontSize: 12,
               color: COLORS.inkDarkSecondary,
             }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 0.5 }}
-            transition={{ delay: 2 }}
+            animate={{ opacity: gestureIntensity > 0.15 ? 0 : 0.4 }}
+            transition={{ duration: 0.5 }}
           >
             {motionAvailable ? 'move your hand' : 'tap to the beat'}
           </motion.div>
