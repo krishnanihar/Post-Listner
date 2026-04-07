@@ -31,6 +31,7 @@ export default function Depth({ onNext, avd, inputMode }) {
   const reEngaged = useRef(false)
   const finishedRef = useRef(false)
   const layersRef = useRef(0)
+  const pointerDownTime = useRef(null)
 
   useEffect(() => {
     preloadVoices(VOICE_PATHS)
@@ -72,7 +73,7 @@ export default function Depth({ onNext, avd, inputMode }) {
   const resetInactivityTimer = useCallback(() => {
     clearTimeout(inactivityTimer.current)
     if (!finishedRef.current) {
-      inactivityTimer.current = setTimeout(finish, 4000)
+      inactivityTimer.current = setTimeout(finish, 6000)
     }
   }, [finish])
 
@@ -109,20 +110,24 @@ export default function Depth({ onNext, avd, inputMode }) {
     resetInactivityTimer()
   }, [finish, resetInactivityTimer])
 
-  // Tap handler
-  const handleTap = useCallback((e) => {
-    e.preventDefault()
+  // Tap handler — only fires if pointer was brief (not a long-press)
+  const handleTap = useCallback(() => {
+    // If this was a long-press, don't also add a layer
+    if (pointerDownTime.current && Date.now() - pointerDownTime.current > 500) return
     addLayer()
   }, [addLayer])
 
-  // Long-press to commit immediately
+  // Long-press to commit immediately — only after at least 1 layer
   const handlePointerDown = useCallback(() => {
+    pointerDownTime.current = Date.now()
     if (layersRef.current === 0) return
-    longPressTimer.current = setTimeout(finish, 600)
+    clearTimeout(longPressTimer.current)
+    longPressTimer.current = setTimeout(finish, 800)
   }, [finish])
 
   const handlePointerUp = useCallback(() => {
     clearTimeout(longPressTimer.current)
+    pointerDownTime.current = null
   }, [])
 
   // Build stave data
