@@ -146,15 +146,15 @@ const ORCHESTRA_V2_TTS_ENTRIES = [
   // BLOOM — Present register
   { file: 'voices/v2/03-bloom-podium.mp3',        text: "You're standing on a podium. There's an orchestra in front of you. Can you hear the hall opening up behind them?", voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
   { file: 'voices/v2/04-bloom-audience.mp3',       text: "Behind you, the audience is settling in. You can hear them — the rustle, the breathing, the wait.", voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
-  { file: 'voices/v2/05-bloom-baton.mp3',          text: "Feel your feet on the podium. The phone in your hand — that's your baton. Now listen to the low strings. They're breathing. Breathe with them.", voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
+  { file: 'voices/v2/05-bloom-baton.mp3',          text: "Feel your feet on the podium. The phone in your hand — that's your baton. Now listen to what's heavy underneath — the low end, the weight of it. It's breathing. Breathe with it.", voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
 
   // THRONE Teaching — Present register
-  { file: 'voices/v2/06-throne-orchestra-map.mp3', text: "The violins are on your right. The cellos and basses on your left. The brass behind them, deeper in the hall. The woodwinds in the middle. They're all waiting for you.", voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
+  { file: 'voices/v2/06-throne-orchestra-map.mp3', text: "Everything heavy is on your left. Everything bright is on your right. What holds it together sits in the middle. And behind all of it, the hall is waiting. All of it — waiting for you.", voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
   { file: 'voices/v2/07-throne-tilt.mp3',          text: 'Tilt the baton. Slowly. Left... and right.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
-  { file: 'voices/v2/08-throne-cellos.mp3',        text: "Hear that? You pulled the cellos toward you. Now the violins. You're shaping them.", voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
-  { file: 'voices/v2/09-throne-lift.mp3',          text: 'Now lift the baton. Higher. The whole orchestra rises with you. The hall fills.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
+  { file: 'voices/v2/08-throne-cellos.mp3',        text: "Hear that? You pulled the heavy side toward you. Now the bright. You're shaping it.", voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
+  { file: 'voices/v2/09-throne-lift.mp3',          text: 'Now lift the baton. Higher. The whole sound rises with you. The hall fills.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
   { file: 'voices/v2/10-throne-downbeat.mp3',      text: 'Good. Now — breathe in. And bring it down. Sharp.', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
-  { file: 'voices/v2/11-throne-chest.mp3',         text: 'That was a downbeat. The whole orchestra felt it. Did you feel it in your chest?', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
+  { file: 'voices/v2/11-throne-chest.mp3',         text: 'That was a downbeat. The whole sound felt it. Did you feel it in your chest?', voiceId: ADMIRER_VOICE_ID, stability: 0.55, similarity_boost: 0.85, style: 0.45 },
 
   // THRONE Praise (fixed) — Elevated register
   { file: 'voices/v2/14-throne-sweep.mp3',         text: 'Sweep it. Left to right. Feel them all follow you.', voiceId: ADMIRER_VOICE_ID, stability: 0.50, similarity_boost: 0.85, style: 0.50 },
@@ -167,7 +167,7 @@ const ORCHESTRA_V2_TTS_ENTRIES = [
 
   // ASCENT Fracture — Cool register
   { file: 'voices/v2/20-ascent-shifting.mp3',       text: 'Something is shifting.', voiceId: ADMIRER_VOICE_ID, stability: 0.45, similarity_boost: 0.80, style: 0.30 },
-  { file: 'voices/v2/21-ascent-high-strings.mp3',   text: 'The high strings are going somewhere. Let them.', voiceId: ADMIRER_VOICE_ID, stability: 0.45, similarity_boost: 0.80, style: 0.30 },
+  { file: 'voices/v2/21-ascent-high-strings.mp3',   text: 'The bright side is going somewhere. Let it.', voiceId: ADMIRER_VOICE_ID, stability: 0.45, similarity_boost: 0.80, style: 0.30 },
   { file: 'voices/v2/22-ascent-not-held.mp3',       text: 'Not everything that moves needs to be held.', voiceId: ADMIRER_VOICE_ID, stability: 0.45, similarity_boost: 0.80, style: 0.30 },
 
   // Caretaking — Caretaking register

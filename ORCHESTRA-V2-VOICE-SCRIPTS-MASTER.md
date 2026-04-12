@@ -1,4 +1,28 @@
-# THE ORCHESTRA v2 — Voice Scripts (Final)
+# THE ORCHESTRA v2 — Voice Scripts (Master)
+
+> **This is the canonical reference. Supersedes `ORCHESTRA-V2-VOICE-SCRIPTS-FINAL.md`.**
+>
+> **Changes from FINAL → MASTER (texture-style retargeting — works for any musical genre, not just orchestral):**
+>
+> | # | File | What changed |
+> |---|------|------|
+> | 5 | `05-bloom-baton.mp3` | "low strings" → "low end / weight". Duration 13s → 15s. |
+> | 6 | `06-throne-orchestra-map.mp3` | "violins / cellos / brass / woodwinds" → "heavy / bright / what holds it together". Duration 15s → 17s. |
+> | 8 | `08-throne-cellos.mp3` | "cellos / violins" → "heavy side / bright". |
+> | 9 | `09-throne-lift.mp3` | "whole orchestra" → "whole sound". |
+> | 11 | `11-throne-chest.mp3` | "whole orchestra" → "whole sound". |
+> | 21 | `21-ascent-high-strings.mp3` | "high strings" → "bright side". |
+>
+> **Wiring:** filenames, voice IDs, registers, timestamps, distances, and code paths are unchanged. Only `scripts/generate-assets.js` text strings were updated. To regenerate the 6 audio assets:
+>
+> ```bash
+> rm public/chamber/voices/v2/{05-bloom-baton,06-throne-orchestra-map,08-throne-cellos,09-throne-lift,11-throne-chest,21-ascent-high-strings}.mp3
+> node scripts/generate-assets.js
+> ```
+>
+> The generator skips files that already exist, so deleting forces regeneration.
+
+---
 
 **Total duration:** 16:00 (960 seconds)
 **Voice:** One voice — The Admirer. No Guide, no Witness.
@@ -69,7 +93,7 @@ One ElevenLabs voice across four registers. Same `voice_id` throughout. The shif
 |---|------|------|-------|
 | 3 | 0:36 | "You're standing on a podium. There's an orchestra in front of you. Can you hear the hall opening up behind them?" | 21 words, ~10s. Ends 0:46. DARKFIELD scene construction. Then a **9-second silence** — the hall settles, the user orients in the imagined space. |
 | 4 | 0:55 | "Behind you, the audience is settling in. You can hear them — the rustle, the breathing, the wait." | 18 words, ~8s. Ends 1:03. Names the audience (the murmur in the audio mix at azimuth 180°). User is now spatially oriented: orchestra in front, audience behind, hall around. **5-second silence** — audience presence felt. |
-| 5 | 1:08 | "Feel your feet on the podium. The phone in your hand — that's your baton. Now listen to the low strings. They're breathing. Breathe with them." | 28 words, ~13s. Ends 1:21. **Merged lines** — somatic anchor (feet, baton) and breath integration (low strings) in one continuous instruction. The user's body is placed in the imagined space, then their breath is tied to the music they made. **14-second silence after** — this is the breath. The longest gap in the opening. The user actually breathes with the bass before Throne begins. |
+| 5 | 1:08 | "Feel your feet on the podium. The phone in your hand — that's your baton. Now listen to what's heavy underneath — the low end, the weight of it. It's breathing. Breathe with it." | 34 words, ~15s. Ends 1:23. **Merged lines** — somatic anchor (feet, baton) and breath integration (low end of the mix) in one continuous instruction. "The low end, the weight of it" works for any musical style — ambient, electronic, acoustic. The user maps whatever they hear in the bass register to this description. **12-second silence after** — this is the breath. The user actually breathes with the low end before Throne begins. |
 
 ---
 
@@ -82,12 +106,12 @@ One ElevenLabs voice across four registers. Same `voice_id` throughout. The shif
 
 | # | Time | Text | Notes |
 |---|------|------|-------|
-| 6 | 1:38 | "The violins are on your right. The cellos and basses on your left. The brass behind them, deeper in the hall. The woodwinds in the middle. They're all waiting for you." | 32 words, ~15s. Ends 1:53. Completes the orchestra map. **15-second silence after** — the user imagines the ensemble around them. This long gap is essential — the scene needs to settle before any action. |
+| 6 | 1:38 | "Everything heavy is on your left. Everything bright is on your right. What holds it together sits in the middle. And behind all of it, the hall is waiting. All of it — waiting for you." | 36 words, ~17s. Ends 1:55. Completes the spatial map using *qualities* instead of instrument names — works for any musical style. "Heavy / bright / what holds it together" maps onto the LOW / HIGH / MID frequency bands without presuming violins or cellos exist in the user's song. "Waiting for you" — the ensemble is poised, the user is the conductor who hasn't started yet. **13-second silence after** — the user orients in the imagined space. |
 | 7 | 2:10 | "Tilt the baton. Slowly. Left... and right." | 8 words, ~4s. Ends 2:14. Teaching pan gesture. **13-second silence** — the user actually tilts. Conducting response is exaggerated during this window so the connection is undeniable. |
-| 8 | 2:27 | "Hear that? You pulled the cellos toward you. Now the violins. You're shaping them." | 15 words, ~7s. Ends 2:34. First mirroring (Kohut). Names the actual instruments responding. **14-second silence** — the user keeps tilting, exploring. |
-| 9 | 2:48 | "Now lift the baton. Higher. The whole orchestra rises with you. The hall fills." | 15 words, ~7s. Ends 2:55. Teaching gesture size → dynamics. **12-second silence** — user lifts and feels the swell. |
+| 8 | 2:27 | "Hear that? You pulled the heavy side toward you. Now the bright. You're shaping it." | 16 words, ~7s. Ends 2:34. First mirroring (Kohut). Names the *sides* responding — the heavy (LOW band) and the bright (HIGH band) — instead of specific instruments. "Shaping it" — agency language. Works for any musical style. **14-second silence** — the user keeps tilting, exploring. |
+| 9 | 2:48 | "Now lift the baton. Higher. The whole sound rises with you. The hall fills." | 15 words, ~7s. Ends 2:55. Teaching gesture size → dynamics. "The whole sound" instead of "the whole orchestra" — the metaphor is still orchestral (baton, hall, conducting) but the sonic referent stays neutral. "The hall fills" — the imagined space participates in the response. **12-second silence** — user lifts and feels the swell. |
 | 10 | 3:07 | "Good. Now — breathe in. And bring it down. Sharp." | 10 words, ~5s. Ends 3:12. **Breath moment 2 — conducting technique.** Real conductors breathe before downbeats. The instruction is short because the silence after IS the breath-and-drop sequence. **5-second gap** — the user inhales, then drops the baton on the exhale. Haptic fires on the user's downbeat. |
-| 11 | 3:17 | "That was a downbeat. The whole orchestra felt it. Did you feel it in your chest?" | 17 words, ~8s. Ends 3:25. Confirms what just happened in the user's body. Ericksonian presupposition. **18-second silence** — the praise lands. The user feels powerful for the first time. |
+| 11 | 3:17 | "That was a downbeat. The whole sound felt it. Did you feel it in your chest?" | 17 words, ~8s. Ends 3:25. Confirms what just happened in the user's body. "The whole sound" — the personification stays (sound can "feel") but doesn't presume an ensemble of specific instruments. Haptic vibration fires simultaneously, confirming the bodily claim. Ericksonian presupposition. **18-second silence** — the praise lands. The user feels powerful for the first time. |
 
 ### Praise & escalation (2:30–4:00)
 
@@ -126,7 +150,7 @@ One ElevenLabs voice across four registers. Same `voice_id` throughout. The shif
 | # | Time | Text | Notes |
 |---|------|------|-------|
 | 20 | 6:55 | "Something is shifting." | 3 words, ~2s. Ends 6:57. DARKFIELD: narrate the perceptual change. Distance has moved to 2.0m. **28-second silence** — the user notices the change in their own time. |
-| 21 | 7:25 | "The high strings are going somewhere. Let them." | 9 words, ~4s. Ends 7:29. Names the HIGH band fracture. "Let them" — first hint of the caretaking philosophy. **26-second silence.** |
+| 21 | 7:25 | "The bright side is going somewhere. Let it." | 8 words, ~4s. Ends 7:29. Names the HIGH band fracture using "bright side" — matches the language from Throne 6 and 8. "Let it" — first hint of the caretaking philosophy. **26-second silence.** |
 | 22 | 7:55 | "Not everything that moves needs to be held." | 8 words, ~4s. Ends 7:59. Poetic. Abstract. The register shift beginning. **Track B enters at ~8:10**, muffled. |
 
 ### Track B enters (~7:00)
