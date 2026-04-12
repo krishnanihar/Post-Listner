@@ -41,6 +41,11 @@ export default class VoiceScheduler {
   }
 
   _scheduleVoice(voice, offset, briefingOffset) {
+    // Briefing voices (time < BLOOM) are played directly by BriefingScreen.
+    // Scheduling them here would re-fire them immediately because
+    // AudioBufferSourceNode.start(past) plays now.
+    if (voice.time < briefingOffset) return
+
     const buffer = this.engine.buffers.get(voice.file)
     if (!buffer) {
       console.warn(`VoiceScheduler: missing buffer for ${voice.file}`)

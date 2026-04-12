@@ -10,6 +10,7 @@ import Orchestra from './phases/Orchestra'
 import { avdEngine } from './engine/avd'
 import { audioEngine } from './engine/audio'
 import { useInputMode } from './hooks/useInputMode'
+import { startOrchestraPreload } from './orchestra/preloader'
 
 const PHASES = ['entry', 'spectrum', 'depth', 'textures', 'moment', 'reveal', 'orchestra']
 
@@ -28,6 +29,13 @@ function App() {
       audioEngine.resume()
     }
   }, [])
+
+  // Warm Orchestra asset cache during Reveal so the post-Reveal seam is gapless.
+  useEffect(() => {
+    if (phase === 'reveal' && audioEngine.ctx) {
+      startOrchestraPreload(audioEngine.ctx)
+    }
+  }, [phase])
 
   const musicPromiseRef = useRef(null)
   const revealAudioRef = useRef(null)

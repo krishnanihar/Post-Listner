@@ -5,11 +5,11 @@ import ConductingEngine from '../orchestra/ConductingEngine.js'
 import VoiceScheduler from '../orchestra/VoiceScheduler.js'
 import BriefingScreen from '../orchestra/BriefingScreen.jsx'
 import ReturnScreen from '../orchestra/ReturnScreen.jsx'
-import { getAllPaths } from '../orchestra/scripts.js'
+import { startOrchestraPreload, isPreloadComplete } from '../orchestra/preloader.js'
 import { STARTS, TOTAL_DURATION } from '../orchestra/constants.js'
 
 export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx }) {
-  const [phase, setPhase] = useState('loading') // loading | briefing | experience | return
+  const [phase, setPhase] = useState(() => isPreloadComplete() ? 'briefing' : 'loading') // loading | briefing | experience | return
   const [loadProgress, setLoadProgress] = useState(0)
 
   const engineRef = useRef(null)
@@ -52,13 +52,16 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
       conductingRef.current = conducting
       await conducting.requestPermission()
 
-      // OrchestraEngine — preload and init
+      // OrchestraEngine — reuse shared preloaded buffers (warmed during Reveal)
       const engine = new OrchestraEngine(audioCtx)
       engineRef.current = engine
 
-      await engine.preloadAll(getAllPaths(), (progress) => {
-        if (!cancelled) setLoadProgress(progress)
-      })
+      const preloaded = await startOrchestraPreload(audioCtx)
+      if (cancelled) return
+      for (const [path, buf] of preloaded) {
+        engine.buffers.set(path, buf)
+      }
+      setLoadProgress(1)
 
       engine.init()
 
