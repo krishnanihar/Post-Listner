@@ -4,7 +4,7 @@ import { buildReflectionLines } from '../reflectionLines'
 describe('buildReflectionLines', () => {
   const baseAvd = { a: 0.5, v: 0.5, d: 0.5 }
 
-  it('produces four lines: spectrum, depth, textures, moment', () => {
+  it('produces five lines: spectrum, depth, gems, moment, autobio', () => {
     const phaseData = {
       spectrum: {
         pairs: [
@@ -17,13 +17,19 @@ describe('buildReflectionLines', () => {
       },
       depth: { finalLayer: 5, maxLayer: 6 },
       textures: { preferred: ['strings', 'keys'], rejected: [], neutral: [] },
-      moment: { totalTaps: 14, peakTapRate: 1.6, tapsDuringBuild: 10, tapsDuringRelease: 4 },
+      gems: { excerpts: [{ id: 'sublimity', tilesSelected: ['awed', 'peaceful'] }] },
+      moment: { totalDownbeats: 30, avgGestureGain: 0.4, tactus: [] },
+      autobio: {
+        songs: [{ title: 'A', artist: 'X', year: 2003 }],
+        eraSummary: { median: 2003, span: 0, clustered: false },
+      },
     }
     const lines = buildReflectionLines(baseAvd, phaseData)
     expect(lines.spectrum).toMatchObject({ signal: expect.any(String), interpretation: expect.any(String) })
     expect(lines.depth).toMatchObject({ signal: expect.any(String), interpretation: expect.any(String) })
-    expect(lines.textures).toMatchObject({ signal: expect.any(String), interpretation: expect.any(String) })
+    expect(lines.gems).toMatchObject({ signal: expect.any(String), interpretation: expect.any(String) })
     expect(lines.moment).toMatchObject({ signal: expect.any(String), interpretation: expect.any(String) })
+    expect(lines.autobio).toMatchObject({ signal: expect.any(String), interpretation: expect.any(String) })
   })
 
   it('spectrum line counts the dominant side and references it', () => {
@@ -53,19 +59,6 @@ describe('buildReflectionLines', () => {
     }
     const lines = buildReflectionLines(baseAvd, phaseData)
     expect(lines.depth.signal).toMatch(/7/)
-  })
-
-  it('textures line lists preferred names', () => {
-    const phaseData = {
-      spectrum: { pairs: [], hoveredButNotChosen: [] },
-      depth: { finalLayer: 4 },
-      textures: { preferred: ['strings', 'voice', 'field'], rejected: [], neutral: [] },
-      moment: { totalTaps: 0, peakTapRate: 0 },
-    }
-    const lines = buildReflectionLines(baseAvd, phaseData)
-    expect(lines.textures.signal).toContain('strings')
-    expect(lines.textures.signal).toContain('voice')
-    expect(lines.textures.signal).toContain('field')
   })
 
   it('moment line includes a BPM-like number', () => {
@@ -109,12 +102,81 @@ describe('buildReflectionLines', () => {
       spectrum: { pairs: [], hoveredButNotChosen: [] },
       depth: { finalLayer: 1, maxLayer: 1 },
       textures: { preferred: [], rejected: [], neutral: [] },
-      moment: { totalTaps: 0, peakTapRate: 0, tapsDuringBuild: 0, tapsDuringRelease: 0 },
+      gems: { excerpts: [] },
+      moment: { totalDownbeats: 0, avgGestureGain: 0, tactus: [] },
+      autobio: { songs: [], eraSummary: null },
     }
     const lines = buildReflectionLines(baseAvd, phaseData)
     expect(lines.spectrum.signal).toBeTruthy()
     expect(lines.depth.signal).toBeTruthy()
-    expect(lines.textures.signal).toBeTruthy()
+    expect(lines.gems.signal).toBeTruthy()
     expect(lines.moment.signal).toBeTruthy()
+    expect(lines.autobio.signal).toBeTruthy()
+  })
+
+  it('gems line names the dominant tile', () => {
+    const phaseData = {
+      spectrum: { pairs: [], hoveredButNotChosen: [] },
+      depth: { finalLayer: 4 },
+      textures: { preferred: [], rejected: [], neutral: [] },
+      gems: {
+        excerpts: [
+          { id: 'a', tilesSelected: ['nostalgic', 'tender'] },
+          { id: 'b', tilesSelected: ['nostalgic'] },
+          { id: 'c', tilesSelected: ['defiant'] },
+        ],
+      },
+      moment: { totalDownbeats: 30 },
+      autobio: { songs: [], eraSummary: null },
+    }
+    const lines = buildReflectionLines(baseAvd, phaseData)
+    expect(lines.gems.signal.toLowerCase()).toContain('nostalgic')
+  })
+
+  it('gems line falls back gracefully when no tiles selected', () => {
+    const phaseData = {
+      spectrum: { pairs: [], hoveredButNotChosen: [] },
+      depth: { finalLayer: 1 },
+      textures: { preferred: [], rejected: [], neutral: [] },
+      gems: { excerpts: [] },
+      moment: { totalDownbeats: 0 },
+      autobio: { songs: [], eraSummary: null },
+    }
+    const lines = buildReflectionLines(baseAvd, phaseData)
+    expect(lines.gems.signal).toBeTruthy()
+    expect(lines.gems.interpretation).toBeTruthy()
+  })
+
+  it('autobio line names a year when songs are present', () => {
+    const phaseData = {
+      spectrum: { pairs: [], hoveredButNotChosen: [] },
+      depth: { finalLayer: 4 },
+      textures: { preferred: [], rejected: [], neutral: [] },
+      gems: { excerpts: [] },
+      moment: { totalDownbeats: 30 },
+      autobio: {
+        songs: [
+          { title: 'A', artist: 'X', year: 2001 },
+          { title: 'B', artist: 'Y', year: 2003 },
+          { title: 'C', artist: 'Z', year: 2005 },
+        ],
+        eraSummary: { median: 2003, span: 4, clustered: true },
+      },
+    }
+    const lines = buildReflectionLines(baseAvd, phaseData)
+    expect(lines.autobio.signal).toContain('2003')
+  })
+
+  it('autobio line falls back gracefully when no songs', () => {
+    const phaseData = {
+      spectrum: { pairs: [], hoveredButNotChosen: [] },
+      depth: { finalLayer: 1 },
+      textures: { preferred: [], rejected: [], neutral: [] },
+      gems: { excerpts: [] },
+      moment: { totalDownbeats: 0 },
+      autobio: { songs: [], eraSummary: null },
+    }
+    const lines = buildReflectionLines(baseAvd, phaseData)
+    expect(lines.autobio.signal).toBeTruthy()
   })
 })

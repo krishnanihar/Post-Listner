@@ -3,6 +3,8 @@
 // Designed to be read line-by-line on cream paper, italic serif.
 
 import { computeBpm } from './moment.js'
+import { dominantGemsTag } from './gemsTags.js'
+import { buildEraLine } from './era.js'
 
 function dominantSide(pairs) {
   let left = 0, right = 0
@@ -47,21 +49,47 @@ function buildDepthLine(phaseData) {
   }
 }
 
-function buildTexturesLine(phaseData) {
-  const kept = phaseData.textures?.preferred || []
-  if (kept.length === 0) {
+function buildGemsLine(phaseData) {
+  const dom = dominantGemsTag(phaseData.gems?.excerpts)
+  if (!dom) {
     return {
-      signal: 'no textures kept',
-      interpretation: 'you let everything go — spareness is also a kind of taste',
+      signal: 'no emotion tiles selected',
+      interpretation: 'you held back. some things resist naming.',
     }
   }
-  const list = kept.slice(0, 3).join(', ')
-  const interp = kept.length === 1
-    ? `you only kept ${list} — that means something`
-    : `you kept ${list} — these are the ones you'll come back to`
+  const interp = {
+    nostalgic:   'you let nostalgia land — most people skip past it',
+    awed:        'you stayed open to wonder — that\'s harder than it sounds',
+    tender:      'tenderness reached you — you let it',
+    melancholic: 'you let the sad ones in. you weren\'t looking away',
+    defiant:     'you found something to push against',
+    peaceful:    'you let the room be quiet',
+  }[dom] || 'something landed'
   return {
-    signal: `kept: ${list}`,
+    signal: `${dom} kept showing up`,
     interpretation: interp,
+  }
+}
+
+function buildAutobioLine(phaseData) {
+  const songs = phaseData.autobio?.songs || []
+  if (songs.length === 0) {
+    return {
+      signal: 'no songs named',
+      interpretation: 'sometimes the song comes later',
+    }
+  }
+  const eraLine = buildEraLine(phaseData.autobio?.eraSummary)
+  if (eraLine) {
+    return {
+      signal: eraLine,
+      interpretation: 'a body remembers the music it grew up beside',
+    }
+  }
+  const first = songs[0]
+  return {
+    signal: `you started with ${first.title}`,
+    interpretation: 'the first song matters more than you think',
   }
 }
 
@@ -89,7 +117,8 @@ export function buildReflectionLines(avd, phaseData) {
   return {
     spectrum: buildSpectrumLine(phaseData),
     depth: buildDepthLine(phaseData),
-    textures: buildTexturesLine(phaseData),
+    gems: buildGemsLine(phaseData),
     moment: buildMomentLine(phaseData),
+    autobio: buildAutobioLine(phaseData),
   }
 }
