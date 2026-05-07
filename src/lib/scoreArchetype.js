@@ -41,15 +41,22 @@ function selectVariation(archetype, phaseData, rand = Math.random) {
     return archetype.variations[idx]
   }
 
-  // Otherwise: prefer the variation whose era and density best matches signals.
-  // Heuristic: depth (finalLayer / 8) signals density preference, mapped to
-  // a per-variation density score that combines era recency + label keywords.
+  // Prefer the autobio era median when present — the user's named songs are
+  // a stronger era signal than the depth-density heuristic.
+  const autobioMedian = phaseData.autobio?.eraSummary?.median
+  if (typeof autobioMedian === 'number' && autobioMedian > 0) {
+    const ranked = archetype.variations
+      .map(v => ({ variation: v, score: -Math.abs(v.era - autobioMedian) }))
+      .sort((a, b) => b.score - a.score)
+    return ranked[0].variation
+  }
+
+  // Fall back to the depth-density heuristic from Phase 1.
   const depthNorm = Math.min(1, (phaseData.depth?.finalLayer || 1) / 8)
   const texCount = (phaseData.textures?.preferred || []).length
 
-  // Score each variation by an arbitrary fit signal: more depth → newer/denser.
   const variationScores = archetype.variations.map(v => {
-    const eraNorm = (v.era - 1960) / 70  // 1960 → 0, 2030 → 1
+    const eraNorm = (v.era - 1960) / 70
     const eraFit = 1 - Math.abs(depthNorm - eraNorm)
     const textureFit = texCount / 8
     return { variation: v, score: eraFit * 0.7 + textureFit * 0.3 }

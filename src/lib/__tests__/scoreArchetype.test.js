@@ -58,4 +58,29 @@ describe('scoreArchetype', () => {
     ]
     expect(validIds).toContain(result.variationId)
   })
+
+  it('prefers autobio era median over depth heuristic for variation pick', () => {
+    // The Late-Night Architect has variations spanning eras 1975, 1985, 2015, 2022.
+    // With autobio.eraSummary.median = 1985, the closest variation should be picked
+    // over what the depth heuristic alone would suggest.
+    const phaseData = {
+      spectrum: { pairs: [], hoveredButNotChosen: [] },
+      depth: { finalLayer: 8, maxLayer: 8 },  // depth would normally push toward 2020s
+      textures: { preferred: [], rejected: [], neutral: [] },
+      gems: { excerpts: [] },
+      moment: { totalDownbeats: 30 },
+      autobio: {
+        songs: [
+          { title: 'A', artist: 'X', year: 1985 },
+          { title: 'B', artist: 'Y', year: 1986 },
+          { title: 'C', artist: 'Z', year: 1984 },
+        ],
+        eraSummary: { median: 1985, span: 2, clustered: true },
+      },
+    }
+    // Use a deterministic rand that never triggers ε-greedy (always returns >= 0.5).
+    const result = scoreArchetype({ a: 0.3, v: 0.4, d: 0.85 }, phaseData, () => 0.99)
+    expect(result.archetypeId).toBe('late-night-architect')
+    expect(result.variationId).toBe('synth-melancholy-1980s')
+  })
 })
