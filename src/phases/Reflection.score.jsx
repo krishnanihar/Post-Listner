@@ -6,7 +6,7 @@ import { buildReflectionLines } from '../lib/reflectionLines'
 
 const LINE_FADE_MS = 1200
 const LINE_HOLD_MS = 1700  // time between line appearances
-const LINES_TOTAL = 4
+const LINES_TOTAL = 5
 const HOLD_AFTER_LAST_MS = 2200
 
 export default function Reflection({ onNext, avd }) {
@@ -17,8 +17,9 @@ export default function Reflection({ onNext, avd }) {
     return [
       built.spectrum,
       built.depth,
-      built.textures,
+      built.gems,
       built.moment,
+      built.autobio,
     ]
   })
   const [visibleCount, setVisibleCount] = useState(0)
