@@ -37,6 +37,35 @@ describe('buildBecauseLine', () => {
     const joined = fragments.join(' ').toLowerCase()
     expect(joined).toContain('warmth')
   })
+
+  it('uses score-flow totalDownbeats to pick a tempo descriptor', () => {
+    // 60 downbeats over 30s = 120 BPM → "tapped with momentum" (>= 100, < 130).
+    const phaseData = {
+      spectrum: {
+        pairs: [{ choice: 'right', label: 'warmth', reactionMs: 2000 }],
+        hoveredButNotChosen: [],
+      },
+      depth: { finalLayer: 4 },
+      textures: { preferred: [], rejected: [], neutral: [] },
+      moment: { totalDownbeats: 60, avgGestureGain: 0.5, tactus: [] },
+    }
+    const fragments = buildBecauseLine(phaseData)
+    expect(fragments[2].toLowerCase()).toContain('momentum')
+  })
+
+  it('falls back to "held still" when no tempo is recorded', () => {
+    const phaseData = {
+      spectrum: {
+        pairs: [{ choice: 'right', label: 'warmth' }],
+        hoveredButNotChosen: [],
+      },
+      depth: { finalLayer: 4 },
+      textures: { preferred: [], rejected: [], neutral: [] },
+      moment: { totalDownbeats: 0, avgGestureGain: 0, tactus: [] },
+    }
+    const fragments = buildBecauseLine(phaseData)
+    expect(fragments[2].toLowerCase()).toContain('held still')
+  })
 })
 
 describe('buildMemoryCallback', () => {

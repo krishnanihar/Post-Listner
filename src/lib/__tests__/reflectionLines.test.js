@@ -79,6 +79,31 @@ describe('buildReflectionLines', () => {
     expect(lines.moment.signal).toMatch(/\d+\s*BPM/i)
   })
 
+  it('derives BPM from totalDownbeats when peakTapRate absent (score flow)', () => {
+    // Moment.score.jsx writes { totalDownbeats, avgGestureGain, tactus } over a 30s phase.
+    // 30 downbeats over 30s = 60 BPM.
+    const phaseData = {
+      spectrum: { pairs: [], hoveredButNotChosen: [] },
+      depth: { finalLayer: 4 },
+      textures: { preferred: [], rejected: [], neutral: [] },
+      moment: { totalDownbeats: 30, avgGestureGain: 0.4, tactus: [] },
+    }
+    const lines = buildReflectionLines(baseAvd, phaseData)
+    expect(lines.moment.signal).toMatch(/60\s*BPM/i)
+  })
+
+  it('reports stillness when no tempo data is recorded', () => {
+    const phaseData = {
+      spectrum: { pairs: [], hoveredButNotChosen: [] },
+      depth: { finalLayer: 4 },
+      textures: { preferred: [], rejected: [], neutral: [] },
+      moment: { totalDownbeats: 0, avgGestureGain: 0, tactus: [] },
+    }
+    const lines = buildReflectionLines(baseAvd, phaseData)
+    expect(lines.moment.signal.toLowerCase()).toContain('no tempo')
+    expect(lines.moment.interpretation.toLowerCase()).toContain('stillness')
+  })
+
   it('handles missing/zero data gracefully', () => {
     const phaseData = {
       spectrum: { pairs: [], hoveredButNotChosen: [] },

@@ -10,9 +10,7 @@ const VOICE_PATHS = [
   '/chamber/voices/score/reveal-06.mp3',  // "Made by an algorithm. Read by you. Held by you."
 ]
 
-const SUB_AUDIBLE_FADE_MS = 9000   // gradual fade-up from ~0 → 0.05 during Forer
-const FULL_VOLUME_FADE_MS = 1800   // jump from sub-audible → 0.8 when listening begins
-const SUB_AUDIBLE_TARGET = 0.05
+const FULL_VOLUME_FADE_MS = 1800   // fade-in from silence → 0.8 when listening begins
 const FULL_VOLUME_TARGET = 0.8
 
 export default function Reveal({ onNext, avd, sessionData, revealAudioRef }) {
@@ -58,10 +56,6 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef }) {
     fadeRafRef.current = requestAnimationFrame(loop)
   }, [])
 
-  const handleSubAudibleStart = useCallback(() => {
-    fadeAudio(SUB_AUDIBLE_TARGET, SUB_AUDIBLE_FADE_MS)
-  }, [fadeAudio])
-
   const finishReveal = useCallback(() => {
     if (advancedRef.current) return
     advancedRef.current = true
@@ -89,6 +83,12 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef }) {
 
   const handleMirrorComplete = useCallback(() => {
     setStage('listening')
+    // Mirror has been visual-only; the audio is loaded but paused at t=0.
+    // Reset defensively in case any future code starts playback early —
+    // the user must hear the track from the beginning at full volume.
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0
+    }
     fadeAudio(FULL_VOLUME_TARGET, FULL_VOLUME_FADE_MS)
     setTimeout(() => playVoice(VOICE_PATHS[0]), 1500)  // "Listen to what it sounds like."
 
@@ -145,7 +145,6 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef }) {
       {stage === 'mirror' && (
         <Mirror
           avd={avd}
-          onSubAudibleStart={handleSubAudibleStart}
           onComplete={handleMirrorComplete}
         />
       )}

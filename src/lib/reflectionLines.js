@@ -2,6 +2,8 @@
 //   { signal: <what we observed>, interpretation: <what it points to> }.
 // Designed to be read line-by-line on cream paper, italic serif.
 
+import { computeBpm } from './moment.js'
+
 function dominantSide(pairs) {
   let left = 0, right = 0
   const labels = { left: [], right: [] }
@@ -64,9 +66,13 @@ function buildTexturesLine(phaseData) {
 }
 
 function buildMomentLine(phaseData) {
-  const peak = phaseData.moment?.peakTapRate || 0
-  // peakTapRate is taps/sec → BPM
-  const bpm = Math.max(40, Math.round(peak * 60))
+  const bpm = computeBpm(phaseData.moment)
+  if (bpm === null) {
+    return {
+      signal: 'no tempo recorded',
+      interpretation: 'you held a stillness — that is also a tempo',
+    }
+  }
   let interp
   if (bpm < 70) interp = 'a contemplative pace — the tempo of a long thought'
   else if (bpm < 100) interp = 'a walking pace — measured, deliberate'

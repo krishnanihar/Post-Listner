@@ -1,6 +1,8 @@
 // Mirror copy generators. All functions take phaseData (and optionally `now` Date)
 // and return strings rendered during the Mirror beat in Reveal.
 
+import { computeBpm } from './moment.js'
+
 function dominantSpectrumLabel(pairs) {
   if (!pairs?.length) return null
   const counts = {}
@@ -15,8 +17,9 @@ function dominantSpectrumLabel(pairs) {
   return topLabel
 }
 
-function tempoDescriptor(peakTapRate) {
-  const bpm = Math.max(40, Math.round((peakTapRate || 0) * 60))
+function tempoDescriptor(moment) {
+  const bpm = computeBpm(moment)
+  if (bpm === null) return 'held still'
   if (bpm < 70) return 'tapped slow'
   if (bpm < 100) return 'kept a walking pulse'
   if (bpm < 130) return 'tapped with momentum'
@@ -32,12 +35,11 @@ function depthDescriptor(layer) {
 export function buildBecauseLine(phaseData) {
   const label = dominantSpectrumLabel(phaseData.spectrum?.pairs) || 'a word'
   const layer = phaseData.depth?.finalLayer || 1
-  const peak = phaseData.moment?.peakTapRate || 0
 
   return [
     `because you chose ${label}`,
     `because you ${depthDescriptor(layer)}`,
-    `because you ${tempoDescriptor(peak)}`,
+    `because you ${tempoDescriptor(phaseData.moment)}`,
   ]
 }
 
