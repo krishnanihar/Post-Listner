@@ -9,7 +9,9 @@ class AVDEngine {
       spectrum: { pairs: [], hoveredButNotChosen: [] },
       depth: { finalLayer: 1, maxLayer: 1, reEngaged: false },
       textures: { preferred: [], rejected: [], neutral: [] },
+      gems: { excerpts: [] },
       moment: { totalTaps: 0, tapsDuringBuild: 0, preDropSilence: false, tapsDuringRelease: 0, peakTapRate: 0 },
+      autobio: { songs: [], eraSummary: null },
     }
   }
 
@@ -220,7 +222,9 @@ class AVDEngine {
       spectrum: { pairs: [], hoveredButNotChosen: [] },
       depth: { finalLayer: 1, maxLayer: 1, reEngaged: false },
       textures: { preferred: [], rejected: [], neutral: [] },
+      gems: { excerpts: [] },
       moment: { totalTaps: 0, tapsDuringBuild: 0, preDropSilence: false, tapsDuringRelease: 0, peakTapRate: 0 },
+      autobio: { songs: [], eraSummary: null },
     }
     this._emit()
   }
