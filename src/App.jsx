@@ -5,6 +5,7 @@ import Spectrum from './phases/Spectrum.score'
 import Depth from './phases/Depth.score'
 import Textures from './phases/Textures.score'
 import Moment from './phases/Moment.score'
+import Reflection from './phases/Reflection.score'
 import Reveal from './phases/Reveal.score'
 import Orchestra from './phases/Orchestra'
 import { avdEngine } from './engine/avd'
@@ -12,7 +13,7 @@ import { audioEngine } from './engine/audio'
 import { useInputMode } from './hooks/useInputMode'
 import { startOrchestraPreload } from './orchestra/preloader'
 
-const PHASES = ['entry', 'spectrum', 'depth', 'textures', 'moment', 'reveal', 'orchestra']
+const PHASES = ['entry', 'spectrum', 'depth', 'textures', 'moment', 'reflection', 'reveal', 'orchestra']
 
 const _params = new URLSearchParams(window.location.search)
 const _startPhase = _params.get('phase')
@@ -61,6 +62,7 @@ function App() {
     depth: <Depth onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
     textures: <Textures onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
     moment: <Moment onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
+    reflection: <Reflection onNext={nextPhase} avd={avdEngine} />,
     reveal: <Reveal onNext={nextPhase} avd={avdEngine} sessionData={{ ...sessionData, musicPromise: musicPromiseRef.current }} revealAudioRef={revealAudioRef} />,
     orchestra: <Orchestra avd={avdEngine} revealAudioRef={revealAudioRef} goToPhase={goToPhase} getAudioCtx={getAudioCtx} />,
   }
