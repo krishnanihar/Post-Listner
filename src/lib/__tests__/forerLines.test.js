@@ -84,6 +84,53 @@ describe('buildMemoryCallback', () => {
     })
     expect(line).toBeNull()
   })
+
+  it('prefers autobio songs over textures when present', () => {
+    const phaseData = {
+      spectrum: { pairs: [{ choice: 'right', label: 'warmth' }], hoveredButNotChosen: [] },
+      depth: { finalLayer: 4 },
+      textures: { preferred: ['strings'], rejected: [], neutral: [] },
+      moment: { totalDownbeats: 30 },
+      autobio: {
+        songs: [
+          { title: 'Karma Police', artist: 'Radiohead', year: 1997, prompt: 'became_someone' },
+        ],
+        eraSummary: { median: 1997, span: 0, clustered: false },
+      },
+    }
+    const line = buildMemoryCallback(phaseData)
+    expect(line).toContain('Karma Police')
+    expect(line).toContain('1997')
+  })
+
+  it('falls back to textures when autobio.songs is empty', () => {
+    const phaseData = {
+      spectrum: { pairs: [], hoveredButNotChosen: [] },
+      depth: { finalLayer: 4 },
+      textures: { preferred: ['strings'], rejected: [], neutral: [] },
+      moment: { totalDownbeats: 30 },
+      autobio: { songs: [], eraSummary: null },
+    }
+    const line = buildMemoryCallback(phaseData)
+    expect(line).toContain('strings')
+  })
+
+  it('handles autobio song without year', () => {
+    const phaseData = {
+      spectrum: { pairs: [], hoveredButNotChosen: [] },
+      depth: { finalLayer: 1 },
+      textures: { preferred: [], rejected: [], neutral: [] },
+      moment: { totalDownbeats: 0 },
+      autobio: {
+        songs: [{ title: 'Some Song', artist: '', year: null, prompt: 'first_yours' }],
+        eraSummary: { median: null, span: 0, clustered: false },
+      },
+    }
+    const line = buildMemoryCallback(phaseData)
+    expect(line).toContain('Some Song')
+    // No year should mean no year-specific phrasing crash
+    expect(line).not.toContain('null')
+  })
 })
 
 describe('buildTimeOfDayLine', () => {

@@ -44,6 +44,14 @@ export function buildBecauseLine(phaseData) {
 }
 
 export function buildMemoryCallback(phaseData) {
+  const songs = phaseData.autobio?.songs || []
+  if (songs.length > 0) {
+    const first = songs[0]
+    if (first.year) {
+      return `when you said ${first.title} from ${first.year}, i knew`
+    }
+    return `when you said ${first.title}, i knew`
+  }
   const kept = phaseData.textures?.preferred || []
   if (kept.length > 0) {
     const t = kept[0]
