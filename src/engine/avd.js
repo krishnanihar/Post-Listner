@@ -6,7 +6,7 @@ class AVDEngine {
     this.history = [{ ...this.state, t: Date.now() }]
     this.listeners = new Set()
     this.phaseData = {
-      spectrum: { pairs: [] },
+      spectrum: { pairs: [], hoveredButNotChosen: [] },
       depth: { finalLayer: 1, maxLayer: 1, reEngaged: false },
       textures: { preferred: [], rejected: [], neutral: [] },
       moment: { totalTaps: 0, tapsDuringBuild: 0, preDropSilence: false, tapsDuringRelease: 0, peakTapRate: 0 },
@@ -217,7 +217,7 @@ class AVDEngine {
     this.state = { a: 0.5, v: 0.5, d: 0.5 }
     this.history = [{ ...this.state, t: Date.now() }]
     this.phaseData = {
-      spectrum: { pairs: [] },
+      spectrum: { pairs: [], hoveredButNotChosen: [] },
       depth: { finalLayer: 1, maxLayer: 1, reEngaged: false },
       textures: { preferred: [], rejected: [], neutral: [] },
       moment: { totalTaps: 0, tapsDuringBuild: 0, preDropSilence: false, tapsDuringRelease: 0, peakTapRate: 0 },
