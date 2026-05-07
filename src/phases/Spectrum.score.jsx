@@ -51,6 +51,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
   const motionRef = useRef(true) // ref mirror for rAF closure
   const [commitProgress, setCommitProgress] = useState(0) // 0-1, visible fill under chosen word
   const [commitSide, setCommitSide] = useState(null) // 'left' | 'right' | null
+  const [transparencyComment, setTransparencyComment] = useState(null)
 
   const conductingRef = useRef(null)
   const calibratingRef = useRef(false)
@@ -63,6 +64,8 @@ export default function Spectrum({ onNext, avd, inputMode }) {
   const reversalCount = useRef(0)
   const lastSide = useRef(null)
   const firstHovered = useRef(null)
+  const hoveredButNotChosen = useRef([])
+  const hoverEnterTime = useRef(null)
   const switched = useRef(false)
   const results = useRef([])
   const isMouse = inputMode === 'mouse'
@@ -178,6 +181,20 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     setMarks(prev => [...prev, { x: markX, dip }])
 
     const completedPair = pairIdx + 1
+
+    // Operational-transparency comment after pair 4 commits.
+    // Computes a directional tally (warm/dense/sung axes) and surfaces one Forer-y line.
+    if (completedPair === 4) {
+      // Tally V deltas to figure out warm vs cold lean
+      const warmCount = results.current.filter(r => r.coord.v > 0.5).length
+      const coldCount = results.current.filter(r => r.coord.v < 0.5).length
+      let comment = null
+      if (warmCount >= 3) comment = 'you\'re choosing the warmer ones — interesting'
+      else if (coldCount >= 3) comment = 'you\'re leaning into shadow — i see it'
+      else comment = 'you\'re holding the middle. that\'s also a choice.'
+      setTransparencyComment(comment)
+      setTimeout(() => setTransparencyComment(null), 3500)
+    }
     if (completedPair === 2) playVoice(VOICE_PATHS[0])
     if (completedPair === 4) playVoice(VOICE_PATHS[1])
     if (completedPair === 6) playVoice(VOICE_PATHS[2])
@@ -195,7 +212,10 @@ export default function Spectrum({ onNext, avd, inputMode }) {
         setTransitioning(false)
       } else {
         playVoice(VOICE_PATHS[3])
-        avd.setPhaseData('spectrum', { pairs: results.current })
+        avd.setPhaseData('spectrum', {
+          pairs: results.current,
+          hoveredButNotChosen: hoveredButNotChosen.current,
+        })
         setTimeout(() => onNext({ spectrum: results.current }), 1500)
       }
     }, 600)
@@ -241,6 +261,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
           if (leanSideRef.current !== side) {
             leanSideRef.current = side
             leanStartRef.current = Date.now()
+            hoverEnterTime.current = Date.now()
           }
           const elapsed = Date.now() - leanStartRef.current
           const progress = Math.min(1, elapsed / COMMIT_DURATION)
@@ -253,8 +274,22 @@ export default function Spectrum({ onNext, avd, inputMode }) {
             leanStartRef.current = null
           }
         } else {
+          // If the user was leaning past threshold and then released without locking,
+          // record a hover-without-commit event.
+          if (leanSideRef.current && leanStartRef.current && hoverEnterTime.current) {
+            const dwellMs = Date.now() - hoverEnterTime.current
+            if (dwellMs > 400) {
+              hoveredButNotChosen.current.push({
+                pair: pairIdx + 1,
+                side: leanSideRef.current,
+                label: leanSideRef.current === 'left' ? pair.left : pair.right,
+                dwellMs,
+              })
+            }
+          }
           leanSideRef.current = null
           leanStartRef.current = null
+          hoverEnterTime.current = null
           setCommitProgress(0)
           setCommitSide(null)
         }
@@ -426,6 +461,30 @@ export default function Spectrum({ onNext, avd, inputMode }) {
           {motionAvailable
             ? 'lean toward a word and hold'
             : 'drag toward a word and hold'}
+        </motion.div>
+      )}
+
+      {/* Operational-transparency comment after pair 4 */}
+      {transparencyComment && (
+        <motion.div
+          style={{
+            position: 'absolute',
+            top: '60%',
+            left: 24,
+            right: 24,
+            textAlign: 'center',
+            fontFamily: FONTS.serif,
+            fontStyle: 'italic',
+            fontSize: 13,
+            color: COLORS.scoreAmber,
+            lineHeight: 1.7,
+          }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.85 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.6 }}
+        >
+          {transparencyComment}
         </motion.div>
       )}
     </div>
