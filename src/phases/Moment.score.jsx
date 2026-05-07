@@ -47,6 +47,10 @@ export default function Moment({ onNext, avd, inputMode }) {
   const lastVoice03Time = useRef(0)
   const tactusPoints = useRef([])
   const finishedRef = useRef(false)
+  const [hurleyVisible, setHurleyVisible] = useState(false)
+  const hurleyTimeoutRef = useRef(null)
+  const hedonicRef = useRef(null)
+  const finishPhaseRef = useRef(null)
 
   useEffect(() => {
     preloadVoices(VOICE_PATHS)
@@ -79,6 +83,7 @@ export default function Moment({ onNext, avd, inputMode }) {
       timers.forEach(clearTimeout)
       if (trackRef.current) trackRef.current.stop()
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      clearTimeout(hurleyTimeoutRef.current)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -86,13 +91,12 @@ export default function Moment({ onNext, avd, inputMode }) {
     setPhase('playing')
     startTimeRef.current = Date.now()
     trackRef.current = audioEngine.playBuildAndDrop(DURATION)
-    setTimeout(() => finishPhase(), DURATION * 1000)
+    setTimeout(() => finishPhaseRef.current?.(), DURATION * 1000)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const finishPhase = useCallback(() => {
+  const completeAndAdvance = useCallback(() => {
     if (finishedRef.current) return
     finishedRef.current = true
-    setPhase('done')
 
     const avgGesture = sampleCount.current > 0 ? gestureSum.current / sampleCount.current : 0
     const dbCount = downbeatCount.current
@@ -104,6 +108,7 @@ export default function Moment({ onNext, avd, inputMode }) {
       totalDownbeats: dbCount,
       avgGestureGain: Math.round(avgGesture * 100) / 100,
       tactus: tactusPoints.current.slice(),
+      hedonic: hedonicRef.current,
     })
 
     const musicPromise = Promise.resolve('/chamber/tracks/track-a.mp3')
@@ -111,11 +116,29 @@ export default function Moment({ onNext, avd, inputMode }) {
     playVoice(VOICE_PATHS[3])
     setTimeout(() => {
       onNext({
-        moment: { totalDownbeats: dbCount, avgGestureGain: avgGesture },
+        moment: { totalDownbeats: dbCount, avgGestureGain: avgGesture, hedonic: hedonicRef.current },
         musicPromise,
       })
     }, 1500)
   }, [avd, onNext])
+
+  const handleHurleyAnswer = useCallback((liked) => {
+    hedonicRef.current = liked
+    clearTimeout(hurleyTimeoutRef.current)
+    setHurleyVisible(false)
+    completeAndAdvance()
+  }, [completeAndAdvance])
+
+  const finishPhase = useCallback(() => {
+    setPhase('done')
+    setHurleyVisible(true)
+    // Auto-advance with hedonic = null after 4s
+    hurleyTimeoutRef.current = setTimeout(() => {
+      setHurleyVisible(false)
+      completeAndAdvance()
+    }, 4000)
+  }, [completeAndAdvance])
+  finishPhaseRef.current = finishPhase
 
   // rAF loop
   useEffect(() => {
@@ -344,6 +367,69 @@ export default function Moment({ onNext, avd, inputMode }) {
             transition={{ duration: 0.5 }}
           >
             {motionAvailable ? 'move your hand' : 'tap to the beat'}
+          </motion.div>
+        )}
+        {hurleyVisible && (
+          <motion.div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: COLORS.paperDark,
+              gap: 24,
+            }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.6 }}
+          >
+            <div style={{
+              fontFamily: FONTS.serif,
+              fontStyle: 'italic',
+              fontSize: 22,
+              color: COLORS.inkDark,
+              textAlign: 'center',
+              padding: '0 32px',
+            }}>
+              did that feel good?
+            </div>
+            <div style={{ display: 'flex', gap: 32 }}>
+              <button
+                onClick={() => handleHurleyAnswer(true)}
+                style={{
+                  background: 'transparent',
+                  border: `1px solid ${COLORS.inkDarkSecondary}`,
+                  color: COLORS.inkDark,
+                  padding: '12px 32px',
+                  fontFamily: FONTS.serif,
+                  fontStyle: 'italic',
+                  fontSize: 16,
+                  cursor: 'pointer',
+                  borderRadius: 4,
+                }}
+              >
+                yes
+              </button>
+              <button
+                onClick={() => handleHurleyAnswer(false)}
+                style={{
+                  background: 'transparent',
+                  border: `1px solid ${COLORS.inkDarkSecondary}`,
+                  color: COLORS.inkDarkSecondary,
+                  padding: '12px 32px',
+                  fontFamily: FONTS.serif,
+                  fontStyle: 'italic',
+                  fontSize: 16,
+                  cursor: 'pointer',
+                  borderRadius: 4,
+                }}
+              >
+                no
+              </button>
+            </div>
           </motion.div>
         )}
       </Paper>
