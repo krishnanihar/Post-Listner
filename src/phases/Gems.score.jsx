@@ -105,7 +105,8 @@ export default function Gems({ onNext, avd }) {
   const toggleTile = useCallback((id) => {
     setSelectedTiles(prev => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id) else next.add(id)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
   }, [])
