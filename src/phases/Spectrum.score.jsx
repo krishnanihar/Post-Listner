@@ -6,25 +6,7 @@ import Score from '../score/Score'
 import { Linea } from '../score/marks'
 import { COLORS, FONTS } from '../score/tokens'
 import { playVoice, preloadVoices } from '../score/voice'
-
-const PAIRS = [
-  { left: 'shadow',  right: 'warmth',
-    coordL: { a: 0.30, v: 0.10, d: 0.50 }, coordR: { a: 0.30, v: 0.85, d: 0.50 } },
-  { left: 'pulse',   right: 'shimmer',
-    coordL: { a: 0.55, v: 0.20, d: 0.35 }, coordR: { a: 0.55, v: 0.80, d: 0.35 } },
-  { left: 'weight',  right: 'air',
-    coordL: { a: 0.20, v: 0.15, d: 0.60 }, coordR: { a: 0.20, v: 0.70, d: 0.60 } },
-  { left: 'ache',    right: 'bloom',
-    coordL: { a: 0.25, v: 0.10, d: 0.75 }, coordR: { a: 0.25, v: 0.90, d: 0.75 } },
-  { left: 'machine', right: 'earth',
-    coordL: { a: 0.50, v: 0.20, d: 0.40 }, coordR: { a: 0.50, v: 0.65, d: 0.40 } },
-  { left: 'tension', right: 'resolve',
-    coordL: { a: 0.60, v: 0.05, d: 0.55 }, coordR: { a: 0.60, v: 0.85, d: 0.55 } },
-  { left: 'fog',     right: 'glass',
-    coordL: { a: 0.15, v: 0.20, d: 0.65 }, coordR: { a: 0.15, v: 0.75, d: 0.65 } },
-  { left: 'gravity', right: 'drift',
-    coordL: { a: 0.65, v: 0.30, d: 0.30 }, coordR: { a: 0.15, v: 0.60, d: 0.70 } },
-]
+import { ACTIVE_PAIRS as PAIRS } from '../lib/spectrumPairs'
 
 const VOICE_PATHS = [
   '/chamber/voices/score/spectrum-01.mp3',
