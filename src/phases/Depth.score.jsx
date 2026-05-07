@@ -197,7 +197,7 @@ export default function Depth({ onNext, avd, inputMode }) {
           animate={{ opacity: 0.7 }}
           transition={{ delay: 2 }}
         >
-          tap anywhere
+          hold this until the room has the right amount of you in it
         </motion.div>
       )}
     </div>
