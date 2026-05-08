@@ -8,6 +8,9 @@ import { playVoice, preloadVoices } from '../score/voice'
 import { clamp } from '../chamber/utils/math'
 import { useAdmirer } from '../hooks/useAdmirer'
 import { ADMIRER_LINES } from '../lib/admirerScripts'
+import { buildCompositionPlan } from '../lib/compositionPlan'
+import { scoreArchetype } from '../lib/scoreArchetype'
+import { dominantGemsTag } from '../lib/gemsTags'
 
 const VOICE_PATHS = [
   '/chamber/voices/score/moment-01.mp3',
@@ -116,7 +119,32 @@ export default function Moment({ onNext, avd, inputMode }) {
       hedonic: hedonicRef.current,
     })
 
-    const musicPromise = Promise.resolve('/chamber/tracks/track-a.mp3')
+    // Derive a composition plan from session signals and POST it to the
+    // server proxy. On any failure, fall back to the static track so the
+    // experience still completes (degrade gracefully).
+    const phaseData = avd.getPhaseData()
+    const avdValues = avd.getAVD()
+    const scored = scoreArchetype(avdValues, phaseData)
+    const plan = buildCompositionPlan({
+      archetypeId: scored.archetypeId,
+      variationId: scored.variationId,
+      eraMedian: phaseData.autobio?.eraSummary?.median,
+      dominantGemsTag: dominantGemsTag(phaseData.gems?.excerpts),
+      hedonic: hedonicRef.current,
+    })
+    const musicPromise = plan
+      ? fetch('/api/compose', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ composition_plan: plan }),
+        })
+          .then(async (res) => {
+            if (!res.ok) throw new Error(`compose failed: ${res.status}`)
+            const blob = await res.blob()
+            return URL.createObjectURL(blob)
+          })
+          .catch(() => '/chamber/tracks/track-a.mp3')
+      : Promise.resolve('/chamber/tracks/track-a.mp3')
 
     playVoice(VOICE_PATHS[3])
     setTimeout(() => {
