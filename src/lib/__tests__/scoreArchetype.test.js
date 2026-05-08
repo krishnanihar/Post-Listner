@@ -59,6 +59,28 @@ describe('scoreArchetype', () => {
     expect(validIds).toContain(result.variationId)
   })
 
+  it('hedonic === false shifts choice from Sky-Seeker to a low-V archetype', () => {
+    // High AVD that would normally pick Sky-Seeker (a:0.78, v:0.75, d:0.78).
+    const phaseDataPositive = {
+      spectrum: { pairs: [], hoveredButNotChosen: [] },
+      depth: { finalLayer: 4 },
+      textures: { preferred: [], rejected: [], neutral: [] },
+      gems: { excerpts: [] },
+      moment: { totalDownbeats: 30, hedonic: true },
+      autobio: { songs: [], eraSummary: null },
+    }
+    const phaseDataNegative = { ...phaseDataPositive, moment: { ...phaseDataPositive.moment, hedonic: false } }
+
+    const positive = scoreArchetype({ a: 0.78, v: 0.75, d: 0.78 }, phaseDataPositive, () => 0.99)
+    const negative = scoreArchetype({ a: 0.78, v: 0.75, d: 0.78 }, phaseDataNegative, () => 0.99)
+
+    expect(positive.archetypeId).toBe('sky-seeker')
+    // With hedonic=false, Sky-Seeker drops by 0.5× and Quiet Insurgent gains 1.6×;
+    // for this pinned AVD the new top can be either Quiet Insurgent or Slow Glow,
+    // but it MUST NOT be Sky-Seeker.
+    expect(negative.archetypeId).not.toBe('sky-seeker')
+  })
+
   it('prefers autobio era median over depth heuristic for variation pick', () => {
     // The Late-Night Architect has variations spanning eras 1975, 1985, 2015, 2022.
     // With autobio.eraSummary.median = 1985, the closest variation should be picked

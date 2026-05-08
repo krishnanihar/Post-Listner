@@ -3,6 +3,7 @@
 // Step 2: variation via era / texture density tie-breaking + ε-greedy (ε=0.12) for surprise.
 
 import { ARCHETYPES } from './archetypes.js'
+import { applyHedonicBias } from './hedonicBias.js'
 
 const TEMPERATURE = 0.18  // softmax temperature — lower = sharper confidence
 const EPSILON_VARIATION = 0.12
@@ -67,7 +68,8 @@ function selectVariation(archetype, phaseData, rand = Math.random) {
 }
 
 export function scoreArchetype(avd, phaseData, rand = Math.random) {
-  const scores = _archetypeScores(avd)
+  const rawScores = _archetypeScores(avd)
+  const scores = applyHedonicBias(rawScores, phaseData?.moment?.hedonic ?? null)
   let topId = null
   let topScore = -Infinity
   for (const [id, score] of Object.entries(scores)) {
