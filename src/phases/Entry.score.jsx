@@ -1,93 +1,123 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Paper from '../score/Paper'
 import { COLORS, FONTS } from '../score/tokens'
-import { playVoice, preloadVoices } from '../score/voice'
 import { audioEngine } from '../engine/audio'
+import { useAdmirer } from '../hooks/useAdmirer'
+import { ADMIRER_LINES } from '../lib/admirerScripts'
 
-const VOICES = [
-  '/chamber/voices/score/entry-01.mp3',
-  '/chamber/voices/score/entry-02.mp3',
-  '/chamber/voices/score/entry-03.mp3',
-  '/chamber/voices/score/entry-04.mp3',
-]
+const HOLD_DURATION_MS = 6000   // hand-on-chest held tap
+const EXHALE_DURATION_MS = 6000 // single guided exhale
+const EXHALE_COUNT = 2
 
 export default function Entry({ onNext }) {
-  // Stage 1: headphones prompt → tap to begin
-  // Stage 2: "PostListener" title reveal
-  // Stage 3: voice + score intro → advance
   const [stage, setStage] = useState('headphones')
-  const [lineDrawn, setLineDrawn] = useState(false)
-  const [showLine1, setShowLine1] = useState(false)
-  const [showLine2, setShowLine2] = useState(false)
-  const [tapReady, setTapReady] = useState(false)
-  const timersRef = useRef([])
+  const [name, setName] = useState('')
+  const [holdProgress, setHoldProgress] = useState(0)
+  const [exhaleIdx, setExhaleIdx] = useState(0)
+  const [exhaleActive, setExhaleActive] = useState(false)
 
-  useEffect(() => {
-    preloadVoices(VOICES)
-    return () => timersRef.current.forEach(clearTimeout)
-  }, [])
+  const holdStartRef = useRef(null)
+  const holdRafRef = useRef(null)
+  const exhaleTimerRef = useRef(null)
 
-  const handleFirstTap = () => {
-    if (stage !== 'headphones') return
-    // Initialize audio on first user gesture — unlocks browser autoplay
+  const admirer = useAdmirer()
+
+  const beginAudio = useCallback(() => {
     audioEngine.init()
     audioEngine.resume()
-    setStage('title')
+  }, [])
 
-    // Show title for 2.5s, then enter voice flow
-    const t1 = setTimeout(() => {
-      setStage('voice')
-      startVoiceFlow()
-    }, 2500)
-    timersRef.current.push(t1)
+  const handleHeadphonesTap = () => {
+    if (stage !== 'headphones') return
+    beginAudio()
+    setStage('name')
   }
 
-  const startVoiceFlow = () => {
-    const t = (ms, fn) => {
-      const id = setTimeout(fn, ms)
-      timersRef.current.push(id)
+  const handleNameSubmit = () => {
+    if (!name.trim()) return
+    try {
+      localStorage.setItem('postlistener_name', name.trim())
+    } catch { /* storage unavailable */ }
+    setStage('hold')
+  }
+
+  // Hand-on-chest held tap: 6s sustained press fills a ring.
+  const handleHoldStart = () => {
+    if (stage !== 'hold') return
+    holdStartRef.current = Date.now()
+    const tick = () => {
+      const elapsed = Date.now() - (holdStartRef.current || Date.now())
+      const p = Math.min(1, elapsed / HOLD_DURATION_MS)
+      setHoldProgress(p)
+      if (p >= 1) {
+        holdStartRef.current = null
+        setStage('breath')
+        return
+      }
+      holdRafRef.current = requestAnimationFrame(tick)
     }
-
-    // Now audio context is unlocked — voices will play
-    // entry-01: 1.3s, entry-03: 3.7s, entry-04: 2.9s
-    t(0, () => playVoice(VOICES[0]))        // "There you are." (1.3s)
-    t(1800, () => setLineDrawn(true))
-    t(2000, () => playVoice(VOICES[2]))      // "I am going to ask you to listen, and to lean." (3.7s)
-    t(4000, () => setShowLine1(true))
-    t(6200, () => playVoice(VOICES[3]))      // "Do not decide. Just lean." (2.9s)
-    t(7500, () => setShowLine2(true))
-    t(9500, () => setTapReady(true))
+    holdRafRef.current = requestAnimationFrame(tick)
   }
 
-  const handleAdvance = () => {
-    if (!tapReady) return
-    onNext()
+  const handleHoldEnd = () => {
+    if (holdStartRef.current && holdProgress < 1) {
+      // Released too early — reset.
+      holdStartRef.current = null
+      setHoldProgress(0)
+      if (holdRafRef.current) cancelAnimationFrame(holdRafRef.current)
+    }
+  }
+
+  // Two guided exhales at 6s each (resonance frequency ≈ 5–6 bpm).
+  useEffect(() => {
+    if (stage !== 'breath') return
+    admirer.play(ADMIRER_LINES.entry.breathe.text, ADMIRER_LINES.entry.breathe.register)
+    const startExhale = (i) => {
+      setExhaleIdx(i)
+      setExhaleActive(true)
+      exhaleTimerRef.current = setTimeout(() => {
+        setExhaleActive(false)
+        if (i + 1 < EXHALE_COUNT) {
+          exhaleTimerRef.current = setTimeout(() => startExhale(i + 1), 1200)
+        } else {
+          exhaleTimerRef.current = setTimeout(() => setStage('threshold'), 1500)
+        }
+      }, EXHALE_DURATION_MS)
+    }
+    startExhale(0)
+    return () => clearTimeout(exhaleTimerRef.current)
+  }, [stage]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Threshold statement voiced + button appears.
+  useEffect(() => {
+    if (stage !== 'threshold') return
+    admirer.play(ADMIRER_LINES.entry.threshold.text, ADMIRER_LINES.entry.threshold.register)
+  }, [stage]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const advance = () => {
+    if (holdRafRef.current) cancelAnimationFrame(holdRafRef.current)
+    clearTimeout(exhaleTimerRef.current)
+    onNext({ name: name.trim() })
   }
 
   return (
-    <div
-      onClick={stage === 'headphones' ? handleFirstTap : handleAdvance}
-      style={{ position: 'absolute', inset: 0, cursor: 'pointer' }}
-    >
+    <div style={{ position: 'absolute', inset: 0 }}>
       <Paper variant="cream">
         <AnimatePresence mode="wait">
-          {/* Stage 1: Headphones prompt */}
           {stage === 'headphones' && (
             <motion.div
               key="headphones"
+              onClick={handleHeadphonesTap}
               style={{
                 position: 'absolute', inset: 0,
                 display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center',
-                gap: 32,
+                gap: 32, cursor: 'pointer',
               }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.8 }}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              transition={{ duration: 0.6 }}
             >
-              {/* Headphones icon */}
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
                 stroke={COLORS.inkCreamSecondary} strokeWidth="1.2"
                 strokeLinecap="round" strokeLinejoin="round">
@@ -97,15 +127,13 @@ export default function Entry({ onNext }) {
               <span style={{
                 fontFamily: FONTS.serif, fontStyle: 'italic',
                 fontSize: 14, color: COLORS.inkCreamSecondary,
-                letterSpacing: '0.03em',
               }}>
                 wear headphones
               </span>
               <motion.span
                 style={{
                   fontFamily: FONTS.serif, fontStyle: 'italic',
-                  fontSize: 14, color: COLORS.scoreAmber,
-                  marginTop: 24,
+                  fontSize: 14, color: COLORS.scoreAmber, marginTop: 24,
                 }}
                 animate={{ opacity: [0, 0.8, 0.5, 0.8] }}
                 transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
@@ -115,114 +143,154 @@ export default function Entry({ onNext }) {
             </motion.div>
           )}
 
-          {/* Stage 2: Title reveal */}
-          {stage === 'title' && (
+          {stage === 'name' && (
             <motion.div
-              key="title"
+              key="name"
               style={{
                 position: 'absolute', inset: 0,
                 display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center',
+                gap: 28, padding: '0 32px',
               }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.8 }}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              transition={{ duration: 0.6 }}
             >
-              <h1 style={{
-                fontFamily: FONTS.serif,
-                fontSize: 'clamp(32px, 9vw, 48px)',
-                letterSpacing: '0.18em',
-                color: COLORS.inkCream,
-                textAlign: 'center',
-                lineHeight: 1.2,
+              <div style={{
+                fontFamily: FONTS.serif, fontStyle: 'italic',
+                fontSize: 18, color: COLORS.inkCream, textAlign: 'center',
               }}>
-                POST<br />LISTENER
-              </h1>
-              <p style={{
-                fontFamily: FONTS.mono,
-                fontSize: 10,
-                color: COLORS.inkCreamSecondary,
-                letterSpacing: '0.08em',
-                marginTop: 16,
-              }}>
-                a musical identity instrument
-              </p>
+                what should i call you?
+              </div>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleNameSubmit() }}
+                placeholder="your name"
+                autoFocus
+                style={{
+                  width: 220,
+                  padding: '12px 16px',
+                  border: `1px solid ${COLORS.inkCreamSecondary}`,
+                  background: 'transparent',
+                  color: COLORS.inkCream,
+                  fontFamily: FONTS.serif,
+                  fontSize: 16,
+                  outline: 'none',
+                  borderRadius: 4,
+                  textAlign: 'center',
+                }}
+              />
+              <button
+                onClick={handleNameSubmit}
+                disabled={!name.trim()}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: name.trim() ? COLORS.scoreAmber : COLORS.inkCreamSecondary,
+                  fontFamily: FONTS.serif, fontStyle: 'italic',
+                  fontSize: 14,
+                  cursor: name.trim() ? 'pointer' : 'default',
+                }}
+              >
+                continue
+              </button>
             </motion.div>
           )}
 
-          {/* Stage 3: Voice + score intro */}
-          {stage === 'voice' && (
+          {stage === 'hold' && (
             <motion.div
-              key="voice"
-              style={{ position: 'absolute', inset: 0 }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 1 }}
+              key="hold"
+              onPointerDown={handleHoldStart}
+              onPointerUp={handleHoldEnd}
+              onPointerCancel={handleHoldEnd}
+              style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                gap: 32, touchAction: 'none', cursor: 'pointer',
+              }}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              transition={{ duration: 0.6 }}
             >
-              {/* Ink line */}
-              <svg viewBox="0 0 360 600" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-                <motion.path
-                  d="M120 280 Q170 250 220 270 Q260 286 280 260"
-                  stroke={COLORS.inkCream}
-                  strokeWidth="1.4"
-                  fill="none"
-                  strokeLinecap="round"
-                  initial={{ pathLength: 0 }}
-                  animate={{ pathLength: lineDrawn ? 1 : 0 }}
-                  transition={{ duration: 4, ease: 'easeInOut' }}
-                />
-                {lineDrawn && (
-                  <motion.circle
-                    cx="280" cy="260" r="2.5"
-                    fill={COLORS.inkCream}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 4 }}
-                  />
-                )}
-              </svg>
-
-              {/* Text lines */}
               <div style={{
-                position: 'absolute', bottom: '32%', left: 24, right: 24,
-                textAlign: 'center',
                 fontFamily: FONTS.serif, fontStyle: 'italic',
-                fontSize: 17, color: COLORS.inkCream, lineHeight: 2,
+                fontSize: 16, color: COLORS.inkCream, textAlign: 'center',
+                padding: '0 40px', lineHeight: 1.6,
               }}>
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: showLine1 ? 0.9 : 0 }}
-                  transition={{ duration: 1.5 }}
-                >
-                  listen, and lean
-                </motion.div>
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: showLine2 ? 0.6 : 0 }}
-                  transition={{ duration: 1.5 }}
-                  style={{ fontSize: 14, color: COLORS.inkCreamSecondary }}
-                >
-                  do not decide
-                </motion.div>
+                place a hand on your chest.<br />press here and hold.
               </div>
+              <svg width="120" height="120" viewBox="0 0 120 120">
+                <circle cx="60" cy="60" r="50" fill="none" stroke={COLORS.inkCreamSecondary}
+                        strokeWidth="2" strokeOpacity="0.3" />
+                <motion.circle
+                  cx="60" cy="60" r="50" fill="none" stroke={COLORS.scoreAmber}
+                  strokeWidth="2" strokeDasharray={`${holdProgress * 314} 314`}
+                  strokeDashoffset="0" transform="rotate(-90 60 60)"
+                />
+              </svg>
+            </motion.div>
+          )}
 
-              {/* Begin button */}
-              {tapReady && (
-                <motion.div
-                  style={{
-                    position: 'absolute', bottom: '15%', left: 0, right: 0,
-                    textAlign: 'center',
-                    fontFamily: FONTS.serif, fontStyle: 'italic',
-                    fontSize: 14, color: COLORS.scoreAmber,
-                  }}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: [0, 0.8, 0.5, 0.8] }}
-                  transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
-                >
-                  begin
-                </motion.div>
-              )}
+          {stage === 'breath' && (
+            <motion.div
+              key="breath"
+              style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                gap: 24,
+              }}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              transition={{ duration: 0.6 }}
+            >
+              <motion.div
+                style={{
+                  width: 140, height: 140, borderRadius: '50%',
+                  border: `2px solid ${COLORS.scoreAmber}`,
+                }}
+                animate={exhaleActive ? { scale: [1, 0.5] } : { scale: 1 }}
+                transition={{ duration: EXHALE_DURATION_MS / 1000, ease: 'easeInOut' }}
+              />
+              <div style={{
+                fontFamily: FONTS.serif, fontStyle: 'italic',
+                fontSize: 14, color: COLORS.inkCreamSecondary,
+              }}>
+                {exhaleActive ? 'exhale' : 'rest'} · {exhaleIdx + 1} of {EXHALE_COUNT}
+              </div>
+            </motion.div>
+          )}
+
+          {stage === 'threshold' && (
+            <motion.div
+              key="threshold"
+              onClick={advance}
+              style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                gap: 36, padding: '0 32px', cursor: 'pointer',
+              }}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              transition={{ duration: 1.2 }}
+            >
+              <div style={{
+                fontFamily: FONTS.serif, fontStyle: 'italic',
+                fontSize: 17, color: COLORS.inkCream, textAlign: 'center',
+                lineHeight: 1.7, maxWidth: 320,
+              }}>
+                for the next sixteen minutes<br />you are not your inbox.
+              </div>
+              <motion.div
+                style={{
+                  fontFamily: FONTS.serif, fontStyle: 'italic',
+                  fontSize: 14, color: COLORS.scoreAmber,
+                }}
+                animate={{ opacity: [0.4, 0.9, 0.4] }}
+                transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut', delay: 1.5 }}
+              >
+                begin
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
