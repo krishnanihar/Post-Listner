@@ -88,4 +88,21 @@ describe('searchTracks', () => {
     const calledUrl = global.fetch.mock.calls[0][0]
     expect(calledUrl).toContain('term=radiohead%20%26%20friends')
   })
+
+  it('rejects with AbortError when signal is pre-aborted', async () => {
+    global.fetch = vi.fn((_url, opts) => {
+      // Simulate the browser's behavior: if the signal is already aborted,
+      // fetch rejects with an AbortError.
+      if (opts?.signal?.aborted) {
+        return Promise.reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ results: [] }),
+      })
+    })
+    const controller = new AbortController()
+    controller.abort()
+    await expect(searchTracks('radiohead', controller.signal)).rejects.toThrow(/abort/i)
+  })
 })
