@@ -11,6 +11,10 @@ const EXCERPTS = [
 ]
 
 const TILE_FADE_MS = 6000
+// When audio.play() fails (assets missing), shrink the silent listening window
+// so users don't sit through 15s of nothing. Keeps the rite intact when assets
+// land later — at full duration the silent fallback never triggers.
+const SILENT_FALLBACK_MS = 4000
 
 export default function Gems({ onNext, avd }) {
   const [excerptIdx, setExcerptIdx] = useState(0)
@@ -22,6 +26,19 @@ export default function Gems({ onNext, avd }) {
   const stageStartRef = useRef(Date.now())
   const resultsRef = useRef([])
   const advancedRef = useRef(false)
+  // All scheduled timers go through this ref so cleanup can clear them
+  // (StrictMode mounts effects twice in dev — without tracked clears, the
+  // first chain keeps firing and double-records excerpts / double-advances).
+  const timersRef = useRef([])
+  const scheduleTimer = useCallback((fn, ms) => {
+    const id = setTimeout(fn, ms)
+    timersRef.current.push(id)
+    return id
+  }, [])
+  const clearAllTimers = useCallback(() => {
+    timersRef.current.forEach(clearTimeout)
+    timersRef.current = []
+  }, [])
 
   // Refs to avoid stale closures inside the timeout
   const selectedTilesRef = useRef(new Set())
@@ -54,8 +71,8 @@ export default function Gems({ onNext, avd }) {
     avd.updateValence(nudge.v, 1.0)
     avd.updateDepth(nudge.d, 1.0)
 
-    setTimeout(() => onNext({ gems: resultsRef.current }), 800)
-  }, [avd, onNext])
+    scheduleTimer(() => onNext({ gems: resultsRef.current }), 800)
+  }, [avd, onNext, scheduleTimer])
 
   const playExcerpt = useCallback((idx) => {
     if (idx >= EXCERPTS.length) {
@@ -68,37 +85,57 @@ export default function Gems({ onNext, avd }) {
     setTilesVisible(false)
     stageStartRef.current = Date.now()
 
-    // Start audio (fails silently if asset missing — placeholder paths)
+    // Stop the previous excerpt's audio if any.
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current = null
     }
+
+    // Try to play the excerpt. If the asset is missing (placeholder paths
+    // until ElevenLabs Music API generates real GEMS clips), shrink the
+    // silent listening window from 15s → 4s so users don't sit in nothing.
     const audio = new Audio(EXCERPTS[idx].path)
     audio.volume = 0.7
     audioRef.current = audio
-    audio.play().catch(() => { /* asset missing, continue */ })
 
-    // After 15s, fade audio and show tiles
-    setTimeout(() => {
-      if (audioRef.current) {
-        audioRef.current.pause()
-      }
-      setStage('tiles')
-      setTilesVisible(true)
-      stageStartRef.current = Date.now()
+    // Default to the silent fallback; bump up to full duration only after
+    // play() resolves successfully. Assignment via ref so the closure below
+    // reads the latest value when the timer is scheduled.
+    const listenDurationRef = { current: SILENT_FALLBACK_MS }
+    audio.play().then(() => {
+      listenDurationRef.current = EXCERPTS[idx].durationMs
+    }).catch(() => { /* asset missing, keep fallback */ })
 
-      // Tiles fade after 6s, then auto-advance
-      setTimeout(() => {
-        recordSelection(idx, Array.from(selectedTilesRef.current))
-        playExcerpt(idx + 1)
-      }, TILE_FADE_MS)
-    }, EXCERPTS[idx].durationMs)
-  }, [finishPhase, recordSelection]) // eslint-disable-line react-hooks/exhaustive-deps
+    // Schedule the listening→tiles transition. Wait one tick so the audio.play()
+    // promise has a chance to resolve and update listenDurationRef before we
+    // commit a duration.
+    scheduleTimer(() => {
+      const duration = listenDurationRef.current
+      scheduleTimer(() => {
+        if (audioRef.current) {
+          audioRef.current.pause()
+        }
+        setStage('tiles')
+        setTilesVisible(true)
+        stageStartRef.current = Date.now()
+
+        // Tiles fade after 6s, then auto-advance
+        scheduleTimer(() => {
+          recordSelection(idx, Array.from(selectedTilesRef.current))
+          playExcerpt(idx + 1)
+        }, TILE_FADE_MS)
+      }, duration)
+    }, 200)
+  }, [finishPhase, recordSelection, scheduleTimer])
 
   useEffect(() => {
     playExcerpt(0)
     return () => {
-      if (audioRef.current) audioRef.current.pause()
+      clearAllTimers()
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current = null
+      }
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
