@@ -7,6 +7,8 @@ import { Linea } from '../score/marks'
 import { COLORS, FONTS } from '../score/tokens'
 import { playVoice, preloadVoices } from '../score/voice'
 import { ACTIVE_PAIRS as PAIRS } from '../lib/spectrumPairs'
+import { useAdmirer } from '../hooks/useAdmirer'
+import { ADMIRER_LINES } from '../lib/admirerScripts'
 
 const VOICE_PATHS = [
   '/chamber/voices/score/spectrum-01.mp3',
@@ -35,6 +37,8 @@ export default function Spectrum({ onNext, avd, inputMode }) {
   const [commitSide, setCommitSide] = useState(null) // 'left' | 'right' | null
   const [transparencyComment, setTransparencyComment] = useState(null)
 
+  const admirer = useAdmirer()
+
   const conductingRef = useRef(null)
   const calibratingRef = useRef(false)
   const pairRef = useRef(null)
@@ -56,6 +60,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
 
   useEffect(() => {
     preloadVoices(VOICE_PATHS)
+    admirer.play(ADMIRER_LINES.spectrum.intro.text, ADMIRER_LINES.spectrum.intro.register)
     const engine = new ConductingEngine()
     conductingRef.current = engine
     engine.requestPermission().then((granted) => {
@@ -72,7 +77,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
       }
     })
     return () => engine.stop()
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const stopAudio = useCallback(() => {
     if (pairRef.current) {

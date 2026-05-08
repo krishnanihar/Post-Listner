@@ -5,6 +5,8 @@ import Score from '../score/Score'
 import { Vox } from '../score/marks'
 import { COLORS, FONTS } from '../score/tokens'
 import { playVoice, preloadVoices } from '../score/voice'
+import { useAdmirer } from '../hooks/useAdmirer'
+import { ADMIRER_LINES } from '../lib/admirerScripts'
 
 const ROMAN = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii']
 
@@ -23,6 +25,8 @@ export default function Depth({ onNext, avd, inputMode }) {
   const [layers, setLayers] = useState(0)
   const [committed, setCommitted] = useState(false)
 
+  const admirer = useAdmirer()
+
   const layerControl = useRef(null)
   const inactivityTimer = useRef(null)
   const longPressTimer = useRef(null)
@@ -35,6 +39,7 @@ export default function Depth({ onNext, avd, inputMode }) {
 
   useEffect(() => {
     preloadVoices(VOICE_PATHS)
+    admirer.play(ADMIRER_LINES.depth.intro.text, ADMIRER_LINES.depth.intro.register)
     // Start audio engine layered build
     layerControl.current = audioEngine.playLayeredBuild(8)
     layerControl.current.setActiveCount(0)
@@ -48,7 +53,7 @@ export default function Depth({ onNext, avd, inputMode }) {
       clearTimeout(inactivityTimer.current)
       clearTimeout(longPressTimer.current)
     }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const finish = useCallback(() => {
     if (finishedRef.current) return

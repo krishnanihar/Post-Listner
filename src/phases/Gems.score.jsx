@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Score from '../score/Score'
 import { COLORS, FONTS } from '../score/tokens'
 import { GEMS_TAGS, gemsExcerptsToAvdNudge } from '../lib/gemsTags'
+import { useAdmirer } from '../hooks/useAdmirer'
+import { ADMIRER_LINES } from '../lib/admirerScripts'
 
 const EXCERPTS = [
   { id: 'sublimity',  path: '/gems/sublimity.mp3',  durationMs: 15000 },
@@ -21,6 +23,8 @@ export default function Gems({ onNext, avd }) {
   const [stage, setStage] = useState('listening') // listening | tiles | done
   const [selectedTiles, setSelectedTiles] = useState(new Set())
   const [tilesVisible, setTilesVisible] = useState(false)
+
+  const admirer = useAdmirer()
 
   const audioRef = useRef(null)
   const stageStartRef = useRef(Date.now())
@@ -51,7 +55,10 @@ export default function Gems({ onNext, avd }) {
       tilesSelected: tiles,
       reactionMs,
     })
-  }, [])
+    if (tiles.includes('melancholic')) {
+      admirer.play(ADMIRER_LINES.gems.pivot.text, ADMIRER_LINES.gems.pivot.register)
+    }
+  }, [admirer])
 
   const finishPhase = useCallback(() => {
     if (advancedRef.current) return
@@ -132,6 +139,7 @@ export default function Gems({ onNext, avd }) {
   }, [finishPhase, recordSelection, scheduleTimer])
 
   useEffect(() => {
+    admirer.play(ADMIRER_LINES.gems.intro.text, ADMIRER_LINES.gems.intro.register)
     playExcerpt(0)
     return () => {
       clearAllTimers()

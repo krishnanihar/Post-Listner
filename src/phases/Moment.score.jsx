@@ -6,6 +6,8 @@ import Paper from '../score/Paper'
 import { COLORS, FONTS } from '../score/tokens'
 import { playVoice, preloadVoices } from '../score/voice'
 import { clamp } from '../chamber/utils/math'
+import { useAdmirer } from '../hooks/useAdmirer'
+import { ADMIRER_LINES } from '../lib/admirerScripts'
 
 const VOICE_PATHS = [
   '/chamber/voices/score/moment-01.mp3',
@@ -37,6 +39,8 @@ export default function Moment({ onNext, avd, inputMode }) {
   const [elapsed, setElapsed] = useState(0)
   const [gestureIntensity, setGestureIntensity] = useState(0) // 0-1 for visual feedback
 
+  const admirer = useAdmirer()
+
   const conductingRef = useRef(null)
   const rafRef = useRef(null)
   const trackRef = useRef(null)
@@ -54,6 +58,7 @@ export default function Moment({ onNext, avd, inputMode }) {
 
   useEffect(() => {
     preloadVoices(VOICE_PATHS)
+    admirer.play(ADMIRER_LINES.moment.intro.text, ADMIRER_LINES.moment.intro.register)
     audioEngine.stopAll()
 
     const engine = new ConductingEngine()
