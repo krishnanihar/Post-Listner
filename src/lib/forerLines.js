@@ -52,11 +52,6 @@ export function buildMemoryCallback(phaseData) {
     }
     return `when you said ${first.title}, i knew`
   }
-  const kept = phaseData.textures?.preferred || []
-  if (kept.length > 0) {
-    const t = kept[0]
-    return `the way you held onto ${t} — i made sure it stayed`
-  }
   const label = dominantSpectrumLabel(phaseData.spectrum?.pairs)
   if (label) {
     return `you said ${label} more than once. i listened.`

@@ -85,7 +85,7 @@ describe('buildMemoryCallback', () => {
     expect(line).toBeNull()
   })
 
-  it('prefers autobio songs over textures when present', () => {
+  it('prefers autobio songs over spectrum label when present', () => {
     const phaseData = {
       spectrum: { pairs: [{ choice: 'right', label: 'warmth' }], hoveredButNotChosen: [] },
       depth: { finalLayer: 4 },
@@ -103,16 +103,21 @@ describe('buildMemoryCallback', () => {
     expect(line).toContain('1997')
   })
 
-  it('falls back to textures when autobio.songs is empty', () => {
+  it('falls back to spectrum label when autobio.songs is empty', () => {
     const phaseData = {
-      spectrum: { pairs: [], hoveredButNotChosen: [] },
+      spectrum: {
+        pairs: [{ choice: 'right', label: 'shimmer' }],
+        hoveredButNotChosen: [],
+      },
       depth: { finalLayer: 4 },
       textures: { preferred: ['strings'], rejected: [], neutral: [] },
       moment: { totalDownbeats: 30 },
       autobio: { songs: [], eraSummary: null },
     }
     const line = buildMemoryCallback(phaseData)
-    expect(line).toContain('strings')
+    expect(line).toContain('shimmer')
+    // textures.preferred must be ignored even if present
+    expect(line).not.toContain('strings')
   })
 
   it('handles autobio song without year', () => {
@@ -130,6 +135,19 @@ describe('buildMemoryCallback', () => {
     expect(line).toContain('Some Song')
     // No year should mean no year-specific phrasing crash
     expect(line).not.toContain('null')
+  })
+
+  it('buildMemoryCallback ignores phaseData.textures (removed in Phase 2)', () => {
+    // Even if a stale textures.preferred is passed in, it must not be used.
+    const phaseData = {
+      textures: { preferred: ['velvet', 'sandpaper'] },
+      spectrum: { pairs: [{ choice: 'left', label: 'warmth' }] },
+    }
+    const line = buildMemoryCallback(phaseData)
+    expect(line).not.toContain('velvet')
+    expect(line).not.toContain('sandpaper')
+    // Should fall through to the dominant-spectrum-label branch
+    expect(line).toContain('warmth')
   })
 })
 
