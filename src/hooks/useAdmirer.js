@@ -37,10 +37,15 @@ function ensureCached(lineId) {
 
 export function useAdmirer() {
   const audiosRef = useRef([])
+  // Mount guard — if the fetch resolves after the phase unmounts, don't
+  // create an Audio element. Without this, an intro line from the previous
+  // phase can start playing inside the next one when /api/admirer is slow.
+  const mountedRef = useRef(true)
 
-  // Stop any audio elements this hook started, on unmount.
   useEffect(() => {
+    mountedRef.current = true
     return () => {
+      mountedRef.current = false
       for (const a of audiosRef.current) {
         try { a.pause() } catch { /* ignore */ }
       }
@@ -55,6 +60,7 @@ export function useAdmirer() {
   const play = useCallback(async (lineId) => {
     try {
       const url = await ensureCached(lineId)
+      if (!mountedRef.current) return null  // stale resolution from a prior phase
       const audio = new Audio(url)
       audio.volume = 0.85
       audiosRef.current.push(audio)

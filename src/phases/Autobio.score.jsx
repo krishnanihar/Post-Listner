@@ -5,6 +5,9 @@ import { COLORS, FONTS } from '../score/tokens'
 import { searchTracks } from '../lib/itunesSearch'
 import { summarizeAutobio } from '../lib/autobio'
 import { useAdmirer } from '../hooks/useAdmirer'
+import { buildCompositionPlan } from '../lib/compositionPlan'
+import { scoreArchetype } from '../lib/scoreArchetype'
+import { dominantGemsTag } from '../lib/gemsTags'
 
 const PROMPTS = [
   { id: 'became_someone', text: 'A song from when you became someone.' },
@@ -73,10 +76,38 @@ export default function Autobio({ onNext, avd }) {
     setResults([])
 
     if (promptIdx + 1 >= PROMPTS.length) {
-      // Summarize and advance
+      // Summarize, persist, and kick off Music API generation now that we
+      // have ALL the inputs (autobio era median was unavailable in Moment).
+      // App.jsx stores musicPromise in a ref so it survives Reflection +
+      // Mirror; the ~30s Music API latency overlaps those phases.
       const summary = summarizeAutobio(songsRef.current)
       avd.setPhaseData('autobio', summary)
-      setTimeout(() => onNext({ autobio: summary }), 800)
+
+      const phaseData = avd.getPhaseData()
+      const avdValues = avd.getAVD()
+      const scored = scoreArchetype(avdValues, phaseData)
+      const plan = buildCompositionPlan({
+        archetypeId: scored.archetypeId,
+        variationId: scored.variationId,
+        eraMedian: phaseData.autobio?.eraSummary?.median,
+        dominantGemsTag: dominantGemsTag(phaseData.gems?.excerpts),
+        hedonic: phaseData.moment?.hedonic ?? null,
+      })
+      const musicPromise = plan
+        ? fetch('/api/compose', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ composition_plan: plan }),
+          })
+            .then(async (res) => {
+              if (!res.ok) throw new Error(`compose failed: ${res.status}`)
+              const blob = await res.blob()
+              return URL.createObjectURL(blob)
+            })
+            .catch(() => '/chamber/tracks/track-a.mp3')
+        : Promise.resolve('/chamber/tracks/track-a.mp3')
+
+      setTimeout(() => onNext({ autobio: summary, musicPromise }), 800)
     } else {
       setPromptIdx(promptIdx + 1)
     }
