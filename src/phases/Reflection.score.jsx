@@ -8,7 +8,11 @@ import { useAdmirer } from '../hooks/useAdmirer'
 const LINE_FADE_MS = 1200
 const LINE_HOLD_MS = 1700  // time between line appearances
 const LINES_TOTAL = 5
-const HOLD_AFTER_LAST_MS = 2200
+// Hold the final reflection line on screen for ~3.5s past its fade-in,
+// then a further ~2s of quiet before advancing to Reveal/Mirror.
+// This is "Phase 3 — The Silence" of the 5-phase reveal architecture
+// (Huron's Imagination + Tension responses peak in this window).
+const HOLD_AFTER_LAST_MS = 5500
 
 export default function Reflection({ onNext, avd }) {
   const [lines] = useState(() => {
