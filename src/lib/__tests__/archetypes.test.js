@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, test, expect } from 'vitest'
 import { ARCHETYPES, getArchetype, getVariation } from '../archetypes'
 
 describe('archetypes', () => {
@@ -12,9 +12,9 @@ describe('archetypes', () => {
     }
   })
 
-  it('each archetype has a 3-sentence Forer template', () => {
+  it('each archetype has a 4-sentence Forer template', () => {
     for (const a of ARCHETYPES) {
-      expect(a.forerTemplate).toHaveLength(3)
+      expect(a.forerTemplate).toHaveLength(4)
       for (const sentence of a.forerTemplate) {
         expect(typeof sentence).toBe('string')
         expect(sentence.length).toBeGreaterThan(20)
@@ -43,6 +43,13 @@ describe('archetypes', () => {
     for (const a of ARCHETYPES) {
       const ids = a.variations.map(v => v.id)
       expect(new Set(ids).size).toBe(ids.length)
+    }
+  })
+
+  test('every archetype has a 4th forerTemplate sentence with a self-projection ___ glyph', () => {
+    for (const a of ARCHETYPES) {
+      expect(a.forerTemplate.length).toBe(4)
+      expect(a.forerTemplate[3]).toMatch(/_{3,}/)  // at least 3 underscores
     }
   })
 })

@@ -16,22 +16,23 @@ import {
 //   t=0      : archetype name fades in
 //   t=3000   : variation/microgenre line fades in
 //   t=4500   : because-you band fades in (3 fragments)
-//   t=8000   : Forer paragraph begins (3 sentences fading in over ~10s)
+//   t=8000   : Forer paragraph begins (4 sentences over ~9s)
 //   t=8000   : trigger sub-audible track fade-up
-//   t=18000  : memory callback fades in
-//   t=20500  : time-of-day OR latency line fades in
-//   t=22500  : temporal frame fades in (small, mono)
-//   t=25000  : onComplete()
+//   t=17000  : 4th Forer sentence (audience-sized hole, smaller)
+//   t=21000  : memory callback fades in
+//   t=23500  : time-of-day OR latency line fades in
+//   t=25000  : temporal frame fades in (small, mono)
+//   t=28000  : onComplete()
 const T = {
   variation: 3000,
   because: 4500,
   forer: 8000,
-  forerSentences: [8000, 11200, 14400],
+  forerSentences: [8000, 11200, 14400, 17000],  // 4th is the audience-sized hole
   subAudibleStart: 8000,
-  memory: 18000,
-  passive: 20500,
-  temporal: 22500,
-  complete: 25000,
+  memory: 21000,                                // 4s gap after the hole — reading room
+  passive: 23500,
+  temporal: 25000,
+  complete: 28000,
 }
 
 export default function Mirror({ avd, onComplete, onSubAudibleStart }) {
@@ -62,7 +63,7 @@ export default function Mirror({ avd, onComplete, onSubAudibleStart }) {
     archetype: false,
     variation: false,
     because: false,
-    forerSentences: [false, false, false],
+    forerSentences: [false, false, false, false],
     memory: false,
     passive: false,
     temporal: false,
@@ -159,18 +160,18 @@ export default function Mirror({ avd, onComplete, onSubAudibleStart }) {
           ))}
         </motion.div>
 
-        {/* Forer paragraph — 3 sentences staggered */}
+        {/* Forer paragraph — 4 sentences staggered (4th is the audience-sized hole) */}
         <div style={{ marginTop: 20 }}>
           {forerSentences.map((s, i) => (
             <motion.p
               key={i}
               style={{
                 fontFamily: FONTS.serif,
-                fontSize: 17,
+                fontSize: i === 3 ? 14 : 17,             // 4th sentence smaller
                 fontStyle: 'italic',
-                color: COLORS.inkCream,
+                color: i === 3 ? COLORS.inkCreamSecondary : COLORS.inkCream,
                 lineHeight: 1.5,
-                marginBottom: 14,
+                marginBottom: i === 3 ? 6 : 14,
               }}
               initial={{ opacity: 0, y: 4 }}
               animate={{

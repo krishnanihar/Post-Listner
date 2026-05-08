@@ -14,6 +14,7 @@ export const ARCHETYPES = [
       'You appreciate music that rewards a second listen — the kind with hidden depth.',
       'You give an entire night to a song that earns it, but you resist anything that demands attention up front.',
       'You keep your saddest songs for cab rides home.',
+      'There is a song you only listen to alone, and you don\'t know why. ___',
     ],
     variations: [
       { id: 'lo-fi-piano-2010s', microgenreLabel: '2010s · lo-fi piano for cab rides home', era: 2015 },
@@ -32,6 +33,7 @@ export const ARCHETYPES = [
       'You are drawn to music that arrives like a person sitting down beside you.',
       'You trust warmth more than spectacle, and you can tell the difference.',
       "There's a song you only play when no one else is in the house.",
+      'There is a song that belongs to a person you no longer speak to. ___',
     ],
     variations: [
       { id: 'folk-2010s', microgenreLabel: '2010s · folk for the long drive back', era: 2014 },
@@ -50,6 +52,7 @@ export const ARCHETYPES = [
       'You hear architecture in music — height, light, the way a room holds sound.',
       "You're moved by what other people find too quiet.",
       'You collect songs the way other people collect rooms.',
+      'There is a song you have never told anyone you love. ___',
     ],
     variations: [
       { id: 'chamber-strings-2020s', microgenreLabel: '2020s · chamber-strings for the ceremony', era: 2021 },
@@ -68,6 +71,7 @@ export const ARCHETYPES = [
       "You're loyal to music that holds tension without resolving it — the kind that ends the way a question ends.",
       'You prefer the half-spoken thing to the chorus.',
       "You have a song you've never put on a playlist for anyone.",
+      'There is a song you keep at the back of the queue on purpose. ___',
     ],
     variations: [
       { id: 'post-rock-2000s', microgenreLabel: '2000s · post-rock for the slow burn', era: 2003 },
@@ -86,6 +90,7 @@ export const ARCHETYPES = [
       'You like music that takes its time and assumes you will too.',
       'You hear groove as a kind of patience, not a kind of speed.',
       'You play certain songs only after the room has gone warm.',
+      'There is a song that only sounds right after midnight. ___',
     ],
     variations: [
       { id: 'downtempo-soul-2020s', microgenreLabel: '2020s · downtempo soul for steam and tile', era: 2022 },
@@ -104,6 +109,7 @@ export const ARCHETYPES = [
       "You're drawn to music that makes the ceiling feel higher.",
       'You give yourself permission to be moved — most people don\'t.',
       "There's a moment you keep waiting for in songs, and you know it when it arrives.",
+      "There is a song you have never listened to without something arriving in you. ___",
     ],
     variations: [
       { id: 'cinematic-ambient-2010s', microgenreLabel: '2010s · cinematic ambient for the long climb', era: 2015 },
