@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run --passWithNoTests",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "gen:phase2": "node scripts/generate-phase2-assets.js"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.1",
