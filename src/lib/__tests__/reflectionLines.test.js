@@ -160,11 +160,42 @@ describe('buildReflectionLines', () => {
           { title: 'B', artist: 'Y', year: 2003 },
           { title: 'C', artist: 'Z', year: 2005 },
         ],
-        eraSummary: { median: 2003, span: 4, clustered: true },
+        eraSummary: { median: 2003, span: 4, clustered: true, tightCluster: true },
       },
     }
     const lines = buildReflectionLines(baseAvd, phaseData)
     expect(lines.autobio.signal).toContain('2003')
+  })
+
+  it('autobio surfaces formative-window language for tightCluster', () => {
+    const phaseData = {
+      autobio: {
+        songs: [
+          { title: 'Karma Police', artist: 'Radiohead', year: 1997 },
+          { title: 'Paranoid Android', artist: 'Radiohead', year: 1997 },
+          { title: 'No Surprises', artist: 'Radiohead', year: 1998 },
+        ],
+        eraSummary: { median: 1997, span: 1, clustered: true, tightCluster: true },
+      },
+    }
+    const lines = buildReflectionLines(baseAvd, phaseData)
+    expect(lines.autobio.interpretation).toMatch(/formative window/i)
+    expect(lines.autobio.signal).toMatch(/bump period|1997/i)
+  })
+
+  it('autobio surfaces decade language when clustered but not tight', () => {
+    const phaseData = {
+      autobio: {
+        songs: [
+          { title: 'Song A', artist: 'X', year: 1992 },
+          { title: 'Song B', artist: 'Y', year: 1998 },
+          { title: 'Song C', artist: 'Z', year: 2001 },
+        ],
+        eraSummary: { median: 1998, span: 9, clustered: true, tightCluster: false },
+      },
+    }
+    const lines = buildReflectionLines(baseAvd, phaseData)
+    expect(lines.autobio.interpretation).toMatch(/centre of gravity|decade/i)
   })
 
   it('autobio line falls back gracefully when no songs', () => {

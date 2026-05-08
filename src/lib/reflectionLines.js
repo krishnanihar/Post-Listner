@@ -79,12 +79,17 @@ function buildAutobioLine(phaseData) {
       interpretation: 'sometimes the song comes later',
     }
   }
-  const eraLine = buildEraLine(phaseData.autobio?.eraSummary)
+  const cluster = phaseData.autobio?.eraSummary
+  const eraLine = buildEraLine(cluster)
   if (eraLine) {
-    return {
-      signal: eraLine,
-      interpretation: 'a body remembers the music it grew up beside',
-    }
+    // Strong interpretation when bump-period clustering detected
+    // (Krumhansl & Zupnick 2013: ages 14–22 leave the deepest musical imprint).
+    const interpretation = cluster?.tightCluster
+      ? 'this is the music your body remembers — your formative window'
+      : cluster?.clustered
+        ? 'your taste has a centre of gravity — that decade is part of you'
+        : 'a body remembers the music it grew up beside'
+    return { signal: eraLine, interpretation }
   }
   const first = songs[0]
   return {

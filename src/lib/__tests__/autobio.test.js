@@ -30,7 +30,7 @@ describe('summarizeAutobio', () => {
   it('returns empty summary for no songs', () => {
     const result = summarizeAutobio([])
     expect(result.songs).toEqual([])
-    expect(result.eraSummary).toEqual({ median: null, span: 0, clustered: false })
+    expect(result.eraSummary).toEqual({ median: null, span: 0, clustered: false, tightCluster: false })
   })
 
   it('extracts years and computes era cluster', () => {
