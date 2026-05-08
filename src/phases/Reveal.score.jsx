@@ -12,6 +12,8 @@ const VOICE_PATHS = [
 
 const FULL_VOLUME_FADE_MS = 1800   // fade-in from silence → 0.8 when listening begins
 const FULL_VOLUME_TARGET = 0.8
+const SUB_AUDIBLE_TARGET = 0.12       // barely-perceptible fade-up during Forer
+const SUB_AUDIBLE_FADE_MS = 6000      // 6s ramp from silence → 0.12
 
 export default function Reveal({ onNext, avd, sessionData, revealAudioRef }) {
   const [stage, setStage] = useState('computing')
@@ -56,6 +58,14 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef }) {
     fadeRafRef.current = requestAnimationFrame(loop)
   }, [])
 
+  const handleSubAudibleStart = useCallback(() => {
+    if (!audioRef.current) return
+    // Mirror is at the t=8s mark of the Forer paragraph. Begin a long, gentle
+    // ramp from silence to ~0.12 — under most listeners' detection threshold
+    // until they consciously notice the music has been forming beneath them.
+    fadeAudio(SUB_AUDIBLE_TARGET, SUB_AUDIBLE_FADE_MS)
+  }, [fadeAudio])
+
   const finishReveal = useCallback(() => {
     if (advancedRef.current) return
     advancedRef.current = true
@@ -83,16 +93,17 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef }) {
 
   const handleMirrorComplete = useCallback(() => {
     setStage('listening')
-    // Mirror has been visual-only; the audio is loaded but paused at t=0.
-    // Reset defensively in case any future code starts playback early —
-    // the user must hear the track from the beginning at full volume.
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0
-    }
+    // Audio has been playing sub-audibly since t=8s of Mirror. Do NOT reset
+    // currentTime — that would cut the now-running track back to 0
+    // and break the seamless "the music was always under you" beat.
     fadeAudio(FULL_VOLUME_TARGET, FULL_VOLUME_FADE_MS)
     setTimeout(() => playVoice(VOICE_PATHS[0]), 1500)  // "Listen to what it sounds like."
 
     // Detect first play-through completion or safety ceiling.
+    const listenStart = Date.now()
+    const MIN_LISTEN_MS = 25000  // ensure ~25s of full-volume listening per the
+                                  // 5-phase reveal architecture (Research/recognition-problem-reveal-moment.md)
+                                  // before advancing to Orchestra
     if (audioRef.current) {
       let revealTriggered = false
       let maxTime = 0
@@ -100,6 +111,10 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef }) {
         if (revealTriggered || !audioRef.current) return
         const a = audioRef.current
         if (a.currentTime > maxTime) maxTime = a.currentTime
+        if (Date.now() - listenStart < MIN_LISTEN_MS) {
+          requestAnimationFrame(checkLoop)
+          return
+        }
         if (a.duration && a.currentTime >= a.duration - 0.5) {
           revealTriggered = true
           finishReveal()
@@ -146,6 +161,7 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef }) {
         <Mirror
           avd={avd}
           onComplete={handleMirrorComplete}
+          onSubAudibleStart={handleSubAudibleStart}
         />
       )}
 
