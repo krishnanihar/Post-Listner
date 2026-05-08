@@ -67,6 +67,15 @@ export default function Autobio({ onNext, avd }) {
     }
   }, [query])
 
+  // Abort any in-flight fetch when the component unmounts (e.g., user
+  // advances to the final prompt and the debounced search is still pending).
+  useEffect(() => {
+    return () => {
+      clearTimeout(debounceRef.current)
+      if (abortRef.current) abortRef.current.abort()
+    }
+  }, [])
+
   const recordSong = useCallback((song) => {
     songsRef.current.push({
       ...song,
