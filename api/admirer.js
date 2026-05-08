@@ -1,4 +1,5 @@
 import { getApiKey, readJsonBody, sendError } from './_elevenlabs.js'
+import { resolveLine } from './_admirerLines.js'
 
 // Inline copy of the canonical register settings — kept in sync with
 // src/lib/voiceRegister.js. The server can't import from src/ in Vercel
@@ -18,13 +19,21 @@ export default async function handler(req, res) {
   try { body = await readJsonBody(req) } catch (e) {
     return sendError(res, 400, 'invalid JSON body')
   }
-  const text = (body.text || '').trim()
-  const register = body.register || 'present'
-  if (!text) {
-    return sendError(res, 400, 'text is required')
+
+  // Lookup-by-id contract: client sends a lineId like "entry.threshold";
+  // server resolves the actual text from its own copy of the script.
+  // This prevents an attacker from spending ElevenLabs credits on
+  // arbitrary text by hitting the deployed endpoint.
+  const lineId = (body.lineId || '').trim()
+  if (!lineId) {
+    return sendError(res, 400, 'lineId is required')
+  }
+  const line = resolveLine(lineId)
+  if (!line) {
+    return sendError(res, 400, `unknown lineId: ${lineId}`)
   }
 
-  const settings = REGISTER_SETTINGS[register] || REGISTER_SETTINGS.present
+  const settings = REGISTER_SETTINGS[line.register] || REGISTER_SETTINGS.present
   let apiKey
   try { apiKey = getApiKey() } catch (e) {
     return sendError(res, 500, e.message)
@@ -39,7 +48,7 @@ export default async function handler(req, res) {
       'Accept': 'audio/mpeg',
     },
     body: JSON.stringify({
-      text,
+      text: line.text,
       model_id: 'eleven_v3',
       voice_settings: settings,
     }),

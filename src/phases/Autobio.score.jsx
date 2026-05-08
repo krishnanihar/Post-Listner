@@ -5,7 +5,6 @@ import { COLORS, FONTS } from '../score/tokens'
 import { searchTracks } from '../lib/itunesSearch'
 import { summarizeAutobio } from '../lib/autobio'
 import { useAdmirer } from '../hooks/useAdmirer'
-import { ADMIRER_LINES } from '../lib/admirerScripts'
 
 const PROMPTS = [
   { id: 'became_someone', text: 'A song from when you became someone.' },
@@ -27,7 +26,7 @@ export default function Autobio({ onNext, avd }) {
   const admirer = useAdmirer()
 
   useEffect(() => {
-    admirer.play(ADMIRER_LINES.autobio.intro.text, ADMIRER_LINES.autobio.intro.register)
+    admirer.play('autobio.intro')
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced iTunes search

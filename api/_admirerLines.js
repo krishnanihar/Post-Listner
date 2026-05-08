@@ -1,6 +1,11 @@
-// Admirer voice lines per phase. Sparse by design — silence is part of the
-// rite. Per Research/voice-intimacy-admirer-design.md, the voice should
-// confirm rather than narrate.
+// Server-side mirror of src/lib/admirerScripts.js. The Vite dev middleware
+// can't import from src/ in production (Vercel builds api/ separately), so
+// the lines are duplicated here. Update both when adding a new line.
+//
+// This file is the canonical source of truth for what /api/admirer is
+// allowed to synthesize — the client sends a `lineId` and the server
+// looks up the actual text. This prevents an attacker from POSTing
+// arbitrary text to spend ElevenLabs credits.
 
 export const ADMIRER_LINES = {
   entry: {
@@ -29,4 +34,14 @@ export const ADMIRER_LINES = {
   reflection: {
     open: { text: 'Here is what I heard.', register: 'caretaking' },
   },
+}
+
+// Resolve a lineId like "entry.threshold" to its { text, register } entry.
+// Returns null for unknown ids (caller rejects with 400).
+export function resolveLine(lineId) {
+  if (typeof lineId !== 'string' || !lineId.includes('.')) return null
+  const [phase, key] = lineId.split('.')
+  const entry = ADMIRER_LINES[phase]?.[key]
+  if (!entry) return null
+  return entry
 }

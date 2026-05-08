@@ -4,7 +4,6 @@ import Paper from '../score/Paper'
 import { COLORS, FONTS } from '../score/tokens'
 import { audioEngine } from '../engine/audio'
 import { useAdmirer } from '../hooks/useAdmirer'
-import { ADMIRER_LINES } from '../lib/admirerScripts'
 
 const HOLD_DURATION_MS = 6000   // hand-on-chest held tap
 const EXHALE_DURATION_MS = 6000 // single guided exhale
@@ -72,7 +71,7 @@ export default function Entry({ onNext }) {
   // Two guided exhales at 6s each (resonance frequency ≈ 5–6 bpm).
   useEffect(() => {
     if (stage !== 'breath') return
-    admirer.play(ADMIRER_LINES.entry.breathe.text, ADMIRER_LINES.entry.breathe.register)
+    admirer.play('entry.breathe')
     const startExhale = (i) => {
       setExhaleIdx(i)
       setExhaleActive(true)
@@ -92,7 +91,7 @@ export default function Entry({ onNext }) {
   // Threshold statement voiced + button appears.
   useEffect(() => {
     if (stage !== 'threshold') return
-    admirer.play(ADMIRER_LINES.entry.threshold.text, ADMIRER_LINES.entry.threshold.register)
+    admirer.play('entry.threshold')
   }, [stage]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const advance = () => {

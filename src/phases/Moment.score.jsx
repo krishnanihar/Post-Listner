@@ -7,7 +7,6 @@ import { COLORS, FONTS } from '../score/tokens'
 import { playVoice, preloadVoices } from '../score/voice'
 import { clamp } from '../chamber/utils/math'
 import { useAdmirer } from '../hooks/useAdmirer'
-import { ADMIRER_LINES } from '../lib/admirerScripts'
 import { buildCompositionPlan } from '../lib/compositionPlan'
 import { scoreArchetype } from '../lib/scoreArchetype'
 import { dominantGemsTag } from '../lib/gemsTags'
@@ -61,7 +60,7 @@ export default function Moment({ onNext, avd, inputMode }) {
 
   useEffect(() => {
     preloadVoices(VOICE_PATHS)
-    admirer.play(ADMIRER_LINES.moment.intro.text, ADMIRER_LINES.moment.intro.register)
+    admirer.play('moment.intro')
     audioEngine.stopAll()
 
     const engine = new ConductingEngine()

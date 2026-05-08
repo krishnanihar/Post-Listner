@@ -6,7 +6,6 @@ import { Vox } from '../score/marks'
 import { COLORS, FONTS } from '../score/tokens'
 import { playVoice, preloadVoices } from '../score/voice'
 import { useAdmirer } from '../hooks/useAdmirer'
-import { ADMIRER_LINES } from '../lib/admirerScripts'
 
 const ROMAN = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii']
 
@@ -39,7 +38,7 @@ export default function Depth({ onNext, avd, inputMode }) {
 
   useEffect(() => {
     preloadVoices(VOICE_PATHS)
-    admirer.play(ADMIRER_LINES.depth.intro.text, ADMIRER_LINES.depth.intro.register)
+    admirer.play('depth.intro')
     // Start audio engine layered build
     layerControl.current = audioEngine.playLayeredBuild(8)
     layerControl.current.setActiveCount(0)

@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { hashText } from '../lib/textHash'
 
 // In-memory cache shared across all useAdmirer instances. Once a line is
 // fetched, the same Blob URL is reused for the rest of the session.
-const cache = new Map() // hash → { url: string, promise: Promise<string> }
+// Key is the lineId itself — text + register are resolved server-side
+// from a fixed allowlist, so the lineId fully identifies the audio.
+const cache = new Map() // lineId → { url: string, promise: Promise<string> }
 
-async function fetchLine(text, register) {
+async function fetchLine(lineId) {
   const res = await fetch('/api/admirer', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, register }),
+    body: JSON.stringify({ lineId }),
   })
   if (!res.ok) {
     throw new Error(`admirer fetch failed: ${res.status}`)
@@ -18,20 +19,19 @@ async function fetchLine(text, register) {
   return URL.createObjectURL(blob)
 }
 
-function ensureCached(text, register) {
-  const key = hashText(`${register}:${text}`)
-  let entry = cache.get(key)
+function ensureCached(lineId) {
+  let entry = cache.get(lineId)
   if (entry) return entry.promise
-  const promise = fetchLine(text, register)
+  const promise = fetchLine(lineId)
     .then(url => {
-      cache.set(key, { url, promise: Promise.resolve(url) })
+      cache.set(lineId, { url, promise: Promise.resolve(url) })
       return url
     })
     .catch(err => {
-      cache.delete(key)
+      cache.delete(lineId)
       throw err
     })
-  cache.set(key, { url: null, promise })
+  cache.set(lineId, { url: null, promise })
   return promise
 }
 
@@ -48,13 +48,13 @@ export function useAdmirer() {
     }
   }, [])
 
-  const preload = useCallback((text, register = 'present') => {
-    return ensureCached(text, register).catch(() => { /* swallow — preload is best-effort */ })
+  const preload = useCallback((lineId) => {
+    return ensureCached(lineId).catch(() => { /* swallow — preload is best-effort */ })
   }, [])
 
-  const play = useCallback(async (text, register = 'present') => {
+  const play = useCallback(async (lineId) => {
     try {
-      const url = await ensureCached(text, register)
+      const url = await ensureCached(lineId)
       const audio = new Audio(url)
       audio.volume = 0.85
       audiosRef.current.push(audio)

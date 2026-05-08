@@ -8,7 +8,6 @@ import { COLORS, FONTS } from '../score/tokens'
 import { playVoice, preloadVoices } from '../score/voice'
 import { ACTIVE_PAIRS as PAIRS } from '../lib/spectrumPairs'
 import { useAdmirer } from '../hooks/useAdmirer'
-import { ADMIRER_LINES } from '../lib/admirerScripts'
 
 const VOICE_PATHS = [
   '/chamber/voices/score/spectrum-01.mp3',
@@ -60,7 +59,7 @@ export default function Spectrum({ onNext, avd, inputMode }) {
 
   useEffect(() => {
     preloadVoices(VOICE_PATHS)
-    admirer.play(ADMIRER_LINES.spectrum.intro.text, ADMIRER_LINES.spectrum.intro.register)
+    admirer.play('spectrum.intro')
     const engine = new ConductingEngine()
     conductingRef.current = engine
     engine.requestPermission().then((granted) => {

@@ -4,7 +4,6 @@ import Score from '../score/Score'
 import { COLORS, FONTS } from '../score/tokens'
 import { GEMS_TAGS, gemsExcerptsToAvdNudge } from '../lib/gemsTags'
 import { useAdmirer } from '../hooks/useAdmirer'
-import { ADMIRER_LINES } from '../lib/admirerScripts'
 
 const EXCERPTS = [
   { id: 'sublimity',  path: '/gems/sublimity.mp3',  durationMs: 15000 },
@@ -56,7 +55,7 @@ export default function Gems({ onNext, avd }) {
       reactionMs,
     })
     if (tiles.includes('melancholic')) {
-      admirer.play(ADMIRER_LINES.gems.pivot.text, ADMIRER_LINES.gems.pivot.register)
+      admirer.play('gems.pivot')
     }
   }, [admirer])
 
@@ -139,7 +138,7 @@ export default function Gems({ onNext, avd }) {
   }, [finishPhase, recordSelection, scheduleTimer])
 
   useEffect(() => {
-    admirer.play(ADMIRER_LINES.gems.intro.text, ADMIRER_LINES.gems.intro.register)
+    admirer.play('gems.intro')
     playExcerpt(0)
     return () => {
       clearAllTimers()
