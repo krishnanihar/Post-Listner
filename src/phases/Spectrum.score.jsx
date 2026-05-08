@@ -87,8 +87,8 @@ export default function Spectrum({ onNext, avd, inputMode }) {
 
   const startPair = useCallback(() => {
     stopAudio()
-    const urlL = `/spectrum/${pair.left}.mp3`
-    const urlR = `/spectrum/${pair.right}.mp3`
+    const urlL = `/spectrum/v2/${pair.left}.mp3`
+    const urlR = `/spectrum/v2/${pair.right}.mp3`
     pairRef.current = audioEngine.playMp3Pair(urlL, urlR, 10)
     pairStartTime.current = Date.now()
     firstHovered.current = null

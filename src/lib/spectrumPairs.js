@@ -50,4 +50,4 @@ export const PAIRS_V2 = [
 
 // Active set used by Spectrum.score.jsx. Toggle to PAIRS_V2 when the v2 audio
 // assets are landed under public/spectrum/v2/.
-export const ACTIVE_PAIRS = PAIRS_LEGACY
+export const ACTIVE_PAIRS = PAIRS_V2

@@ -30,7 +30,8 @@ describe('spectrumPairs', () => {
     }
   })
 
-  it('ACTIVE_PAIRS defaults to PAIRS_LEGACY (until v2 audio assets land)', () => {
-    expect(ACTIVE_PAIRS).toBe(PAIRS_LEGACY)
+  it('ACTIVE_PAIRS is PAIRS_V2 (Phase 4 — Spectrum v2 activated)', () => {
+    expect(ACTIVE_PAIRS).toBe(PAIRS_V2)
+    expect(ACTIVE_PAIRS.length).toBe(9)
   })
 })
