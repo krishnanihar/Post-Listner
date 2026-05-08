@@ -19,12 +19,18 @@ export default function Entry({ onNext }) {
   const holdStartRef = useRef(null)
   const holdRafRef = useRef(null)
   const exhaleTimerRef = useRef(null)
+  const droneStopRef = useRef(null)
 
   const admirer = useAdmirer()
 
   const beginAudio = useCallback(() => {
     audioEngine.init()
     audioEngine.resume()
+    // Phase 0 threshold drone — 60 Hz felt anchor under the entire rite.
+    // Stops on advance() to leave Spectrum a clean palette.
+    if (!droneStopRef.current) {
+      droneStopRef.current = audioEngine.playDrone(60, 0.04)
+    }
   }, [])
 
   const handleHeadphonesTap = () => {
@@ -94,9 +100,24 @@ export default function Entry({ onNext }) {
     admirer.play('entry.threshold')
   }, [stage]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Unmount cleanup — make sure the drone doesn't outlive the phase
+  // (e.g., on deep-link skip or unexpected unmount).
+  useEffect(() => {
+    return () => {
+      if (droneStopRef.current) {
+        droneStopRef.current()
+        droneStopRef.current = null
+      }
+    }
+  }, [])
+
   const advance = () => {
     if (holdRafRef.current) cancelAnimationFrame(holdRafRef.current)
     clearTimeout(exhaleTimerRef.current)
+    if (droneStopRef.current) {
+      droneStopRef.current()
+      droneStopRef.current = null
+    }
     onNext({ name: name.trim() })
   }
 

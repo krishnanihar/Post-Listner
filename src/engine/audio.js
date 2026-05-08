@@ -965,6 +965,44 @@ class AudioEngine {
     }
   }
 
+  /**
+   * Plays a sustained sine drone at the given frequency until the returned
+   * stop function is called. Used for the Phase 0 threshold rite (60 Hz —
+   * felt rather than heard, provides a body-anchor without engaging musical
+   * schemas per Bernardi 2006 and Research/ 5-minute-taste-extraction redesign.md).
+   *
+   * @param {number} freq Frequency in Hz (e.g., 60 for the threshold drone).
+   * @param {number} gain Linear gain (default 0.04 — sub-audible felt anchor).
+   * @returns {() => void} Stop function. Idempotent — safe to call multiple times.
+   */
+  playDrone(freq = 60, gain = 0.04) {
+    if (!this.ctx) return () => {}
+    const osc = this.ctx.createOscillator()
+    const g = this.ctx.createGain()
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(freq, this.ctx.currentTime)
+    // Fade in over 800ms to avoid a click.
+    g.gain.setValueAtTime(0, this.ctx.currentTime)
+    g.gain.linearRampToValueAtTime(gain, this.ctx.currentTime + 0.8)
+    osc.connect(g)
+    g.connect(this.ctx.destination)
+    osc.start()
+    let stopped = false
+    return () => {
+      if (stopped) return
+      stopped = true
+      try {
+        // Fade out over 400ms.
+        g.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.4)
+        osc.stop(this.ctx.currentTime + 0.5)
+      } catch { /* osc may already be stopped */ }
+      setTimeout(() => {
+        try { osc.disconnect() } catch {}
+        try { g.disconnect() } catch {}
+      }, 600)
+    }
+  }
+
   // --- Stop everything ---
 
   stopAll() {
