@@ -61,7 +61,7 @@ export default function Reflection({ onNext, avd }) {
           animate={{ opacity: 0.6 }}
           transition={{ duration: 0.8 }}
         >
-          v. what i heard
+          vii. what i heard
         </motion.div>
 
         {lines.map((line, i) => (

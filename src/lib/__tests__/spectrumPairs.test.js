@@ -12,6 +12,7 @@ describe('spectrumPairs', () => {
     expect(axes).toContain('warm/cold')
     expect(axes).toContain('dense/spare')
     expect(axes).toContain('sung/instrumental')
+    expect(axes).toContain('slow/fast')
   })
 
   it('every pair has left, right, coordL, coordR with a/v/d numeric fields', () => {

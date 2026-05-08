@@ -121,7 +121,7 @@ export default function Autobio({ onNext, avd }) {
           animate={{ opacity: 0.6 }}
           transition={{ duration: 0.6 }}
         >
-          v. three songs you carry · {promptIdx + 1} / {PROMPTS.length}
+          vi. three songs you carry · {promptIdx + 1} / {PROMPTS.length}
         </motion.div>
 
         <AnimatePresence mode="wait">
