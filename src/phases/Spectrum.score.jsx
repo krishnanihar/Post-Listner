@@ -135,6 +135,17 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     const sliderPos = Math.min(1, Math.abs(cursorHistoryRef.current[cursorHistoryRef.current.length - 1] || 0))
     const slideCommitmentWeight = getSlideCommitmentWeight(sliderPos)
 
+    // Tier 2 #6: hover-without-commit indicates conflict (Stillman 2018).
+    // If the user already released the lean for THIS pair earlier without
+    // locking — regardless of which side — dampen the eventual commit's
+    // AVD delta. This is separate from `switched` (which only catches
+    // hover-side-A then commit-side-B); hesitation can also be hover-side-A,
+    // release, hover-side-A again, lock-A.
+    const priorHesitations = hoveredButNotChosen.current.filter(
+      h => h.pair === pairIdx + 1
+    ).length
+    const hesitationPenalty = priorHesitations > 0 ? 0.7 : 1.0
+
     if (firstHovered.current && firstHovered.current !== side) {
       switched.current = true
     }
@@ -149,12 +160,14 @@ export default function Spectrum({ onNext, avd, inputMode }) {
       reactionMs: Date.now() - pairStartTime.current,
       switched: switched.current,
       reversals: reversalCount.current,
+      priorHesitations,
+      hesitationPenalty,
       coord: chosenCoord,
     })
 
-    const vDelta = (chosenCoord.v - 0.5) * confidence * slideCommitmentWeight
-    const aDelta = (chosenCoord.a - 0.5) * confidence * slideCommitmentWeight * 0.5
-    const dDelta = (chosenCoord.d - 0.5) * confidence * slideCommitmentWeight * 0.5
+    const vDelta = (chosenCoord.v - 0.5) * confidence * slideCommitmentWeight * hesitationPenalty
+    const aDelta = (chosenCoord.a - 0.5) * confidence * slideCommitmentWeight * hesitationPenalty * 0.5
+    const dDelta = (chosenCoord.d - 0.5) * confidence * slideCommitmentWeight * hesitationPenalty * 0.5
     const switchWeight = switched.current ? 0.6 : 1.0
     avd.updateValence(vDelta * switchWeight, 1.0)
     avd.updateArousal(aDelta * switchWeight, 1.0)
