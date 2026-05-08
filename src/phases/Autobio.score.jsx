@@ -39,15 +39,22 @@ export default function Autobio({ onNext, avd }) {
       abortRef.current = controller
       try {
         const tracks = await searchTracks(query, controller.signal)
-        setResults(tracks.slice(0, 5))
+        // Only commit results if this controller is still the active one.
+        if (abortRef.current === controller) setResults(tracks.slice(0, 5))
       } catch (e) {
-        if (e.name !== 'AbortError') setResults([])
+        if (e.name !== 'AbortError' && abortRef.current === controller) setResults([])
       } finally {
-        setSearching(false)
+        // Only clear the loading state if no fresher request has displaced
+        // this one — otherwise we'd briefly flash the free-text fallback for
+        // a query that's still pending.
+        if (abortRef.current === controller) setSearching(false)
       }
     }, SEARCH_DEBOUNCE_MS)
 
-    return () => clearTimeout(debounceRef.current)
+    return () => {
+      clearTimeout(debounceRef.current)
+      if (abortRef.current) abortRef.current.abort()
+    }
   }, [query])
 
   const recordSong = useCallback((song) => {

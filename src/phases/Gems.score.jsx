@@ -98,34 +98,37 @@ export default function Gems({ onNext, avd }) {
     audio.volume = 0.7
     audioRef.current = audio
 
-    // Default to the silent fallback; bump up to full duration only after
-    // play() resolves successfully. Assignment via ref so the closure below
-    // reads the latest value when the timer is scheduled.
-    const listenDurationRef = { current: SILENT_FALLBACK_MS }
-    audio.play().then(() => {
-      listenDurationRef.current = EXCERPTS[idx].durationMs
-    }).catch(() => { /* asset missing, keep fallback */ })
-
-    // Schedule the listening→tiles transition. Wait one tick so the audio.play()
-    // promise has a chance to resolve and update listenDurationRef before we
-    // commit a duration.
-    scheduleTimer(() => {
-      const duration = listenDurationRef.current
+    const advanceToTiles = (listenDurationMs) => {
+      // Guard against stale resolutions from a prior excerpt: if the audio
+      // element this branch was scheduled from has been replaced, drop out.
+      if (audioRef.current !== audio) return
       scheduleTimer(() => {
-        if (audioRef.current) {
-          audioRef.current.pause()
-        }
+        if (audioRef.current === audio) audio.pause()
         setStage('tiles')
         setTilesVisible(true)
         stageStartRef.current = Date.now()
-
         // Tiles fade after 6s, then auto-advance
         scheduleTimer(() => {
           recordSelection(idx, Array.from(selectedTilesRef.current))
           playExcerpt(idx + 1)
         }, TILE_FADE_MS)
-      }, duration)
-    }, 200)
+      }, listenDurationMs)
+    }
+
+    // Schedule the listening→tiles transition from the play() resolution
+    // itself, not a fixed tick — on slow networks audio.play() can take
+    // longer than any heuristic delay, and we don't want to truncate a
+    // successfully-loaded excerpt to the fallback window.
+    let scheduled = false
+    audio.play().then(() => {
+      if (scheduled) return
+      scheduled = true
+      advanceToTiles(EXCERPTS[idx].durationMs)
+    }).catch(() => {
+      if (scheduled) return
+      scheduled = true
+      advanceToTiles(SILENT_FALLBACK_MS)
+    })
   }, [finishPhase, recordSelection, scheduleTimer])
 
   useEffect(() => {
