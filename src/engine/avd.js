@@ -132,20 +132,41 @@ class AVDEngine {
     const valence = this._getValenceStyles()
     const depth = this._getDepthStyles()
     const { bpm, key } = this._getBpmAndKey()
-    const textures = this.phaseData.textures
 
-    // Build global styles from AVD + texture preferences
+    // Textures phase was removed in Phase 2; derive style hints from the
+    // gems phase's dominant emotion tag instead.
+    const gemsExcerpts = this.phaseData.gems?.excerpts || []
+    const gemsKeywordsByTag = {
+      nostalgic:   ['nostalgic', 'warm memory'],
+      awed:        ['sublime', 'cinematic'],
+      tender:      ['intimate', 'soft'],
+      melancholic: ['melancholy minor', 'pensive'],
+      defiant:     ['urgent', 'driving'],
+      peaceful:    ['calm sustained', 'still'],
+    }
+    let gemsKeywords = []
+    {
+      const counts = {}
+      for (const ex of gemsExcerpts) {
+        for (const t of ex.tilesSelected || []) counts[t] = (counts[t] || 0) + 1
+      }
+      let topTag = null, topCount = 0
+      for (const [k, v] of Object.entries(counts)) {
+        if (v > topCount) { topCount = v; topTag = k }
+      }
+      if (topTag && gemsKeywordsByTag[topTag]) gemsKeywords = gemsKeywordsByTag[topTag]
+    }
+
     const positiveGlobalStyles = [
       ...arousal.positive,
       ...valence.positive,
       `${bpm} BPM`,
       `key of ${key}`,
-      ...textures.preferred,
+      ...gemsKeywords,
     ]
     const negativeGlobalStyles = [
       ...arousal.negative,
       ...valence.negative,
-      ...textures.rejected,
     ]
 
     // Build sections based on depth
