@@ -215,7 +215,7 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef, getAu
               color: COLORS.inkCreamSecondary,
               letterSpacing: '0.1em',
             }}>
-              viii. reveal
+              vii. reveal
             </div>
           </motion.div>
         </Paper>

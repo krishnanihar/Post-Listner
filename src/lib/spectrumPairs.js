@@ -34,16 +34,20 @@ export const PAIRS_V2 = [
     coordL: { a: 0.50, v: 0.50, d: 0.85 }, coordR: { a: 0.50, v: 0.50, d: 0.15 } },
   { left: 'sung',        right: 'instrumental',
     coordL: { a: 0.45, v: 0.65, d: 0.55 }, coordR: { a: 0.45, v: 0.50, d: 0.55 } },
-  { left: 'analog',      right: 'digital',
-    coordL: { a: 0.45, v: 0.65, d: 0.55 }, coordR: { a: 0.55, v: 0.40, d: 0.45 } },
+  // chamber vs programmed — pure D axis. Replaces analog/digital
+  // (which was multi-axis weak). Both mid-A, mid-V; large ΔD.
+  { left: 'chamber',     right: 'programmed',
+    coordL: { a: 0.50, v: 0.50, d: 0.85 }, coordR: { a: 0.50, v: 0.50, d: 0.15 } },
   { left: 'major',       right: 'modal',
     coordL: { a: 0.50, v: 0.85, d: 0.50 }, coordR: { a: 0.50, v: 0.30, d: 0.55 } },
   { left: 'slow',        right: 'fast',
     coordL: { a: 0.20, v: 0.50, d: 0.55 }, coordR: { a: 0.80, v: 0.50, d: 0.50 } },
   { left: 'driving',     right: 'floating',
     coordL: { a: 0.80, v: 0.55, d: 0.45 }, coordR: { a: 0.20, v: 0.55, d: 0.65 } },
-  { left: 'low',         right: 'high',
-    coordL: { a: 0.50, v: 0.40, d: 0.65 }, coordR: { a: 0.50, v: 0.60, d: 0.40 } },
+  // hi-fi vs lo-fi — pure D axis. Replaces low/high (which was multi-axis
+  // weak). Both mid-A, mid-V; large ΔD via production aesthetic, not register.
+  { left: 'hi-fi',       right: 'lo-fi',
+    coordL: { a: 0.50, v: 0.50, d: 0.80 }, coordR: { a: 0.50, v: 0.50, d: 0.20 } },
   { left: 'reverberant', right: 'dry',
     coordL: { a: 0.40, v: 0.55, d: 0.75 }, coordR: { a: 0.55, v: 0.50, d: 0.30 } },
 ]

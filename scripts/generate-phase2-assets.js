@@ -79,11 +79,12 @@ const ASSETS = [
   { file: 'spectrum/v2/instrumental.mp3', durationMs: 20000, prompt:
     'Chamber instrumental in F major, 70 BPM. Felt piano carrying the lead melody, acoustic bass holding the foundation, soft cello sustaining beneath. The piano is melodic and forward — it occupies the space a vocal would. No vocals, no humming, no choir, no human voice of any kind. Pure instrumental focus. Instrumental. Twenty seconds.' },
 
-  // analog/digital — production-aesthetic axis. ~75 BPM, G major-ish.
-  { file: 'spectrum/v2/analog.mp3', durationMs: 20000, prompt:
-    'Lo-fi indie ballad in G major, 75 BPM. Tube-saturated electric guitar fingerpicking a warm progression, upright bass walking underneath, brushed snare softly. 1960s tape character: audible tape hum, tape hiss, occasional wow-and-flutter. No digital reverb, no quantization, performance feels human and slightly imperfect. Instrumental. Twenty seconds.' },
-  { file: 'spectrum/v2/digital.mp3', durationMs: 20000, prompt:
-    'Clean electronic piece in G major, 80 BPM. FM synth lead playing a precise pattern, sub-bass tightly locked to the beat, programmed hi-hat in 16ths. Pristine digital production, surgical reverb tails, perfect quantization. No analog warmth, no tape, no acoustic instruments — every note is digitally precise. Instrumental. Twenty seconds.' },
+  // chamber/programmed — Depth axis (arrangement complexity). Both 70 BPM,
+  // F major (mid V), same energy. Differ on number of voices + organic vs grid.
+  { file: 'spectrum/v2/chamber.mp3', durationMs: 20000, prompt:
+    'Chamber ensemble in F major, 70 BPM, instrumental. Six independent voices weaving in counterpoint: violin, viola, cello, oboe, clarinet, felt piano — all played by humans, each carrying distinct melodic material. Wide-stereo audiophile mix. Modal interchange, complex polyphonic texture. The arrangement breathes with human tempo and dynamic variation. Twenty seconds.' },
+  { file: 'spectrum/v2/programmed.mp3', durationMs: 20000, prompt:
+    'Electronic minimal in F major, 70 BPM, instrumental. Three-element arrangement: programmed kick on every quarter, sub-bass holding the root, sustained synth pad on the chord. No counterpoint, no melodic development, no live instruments. Every note quantized to the grid. Dry-room production, minimal reverb. Twenty seconds.' },
 
   // major/modal — Valence axis. Both 75 BPM, acoustic, similar density.
   { file: 'spectrum/v2/major.mp3', durationMs: 20000, prompt:
@@ -103,11 +104,12 @@ const ASSETS = [
   { file: 'spectrum/v2/floating.mp3', durationMs: 20000, prompt:
     'Ambient post-rock, 55 BPM. Reversed guitar swells washing in and out, sustained string drones underneath, no clear pulse or downbeat. Weightless, suspended, time-dilated. The listener can\'t tell where the beat is — there isn\'t one. Long reverb tails, dreamy and unanchored. Instrumental. Twenty seconds.' },
 
-  // low/high — register axis (Depth + slight Valence). Same 70 BPM.
-  { file: 'spectrum/v2/low.mp3', durationMs: 20000, prompt:
-    'Chamber, 70 BPM. Double bass + bass clarinet + low felt piano (lowest octave), all in deep register. Dark sustained low frequencies, woody resonant overtones. The melody lives below middle C throughout — never crosses into the treble. Sophisticated harmonic complexity in the bass voices. Instrumental. Twenty seconds.' },
-  { file: 'spectrum/v2/high.mp3', durationMs: 20000, prompt:
-    'Chamber, 70 BPM. Glockenspiel + violin harmonics + flute, all in bright high register. Sparkling crystalline upper frequencies, simple melodic line. The melody lives above the treble staff throughout — never drops into the bass. Accessible, simple harmonic structure. Instrumental. Twenty seconds.' },
+  // hi-fi/lo-fi — Depth axis (production aesthetic). Same instrumentation,
+  // same 70 BPM, same F major; differ ONLY on production polish.
+  { file: 'spectrum/v2/hi-fi.mp3', durationMs: 20000, prompt:
+    'Acoustic chamber in F major, 70 BPM, instrumental. Felt piano, cello, and soft brushed snare. Pristine high-resolution recording, wide-stereo audiophile mix, every detail audible — string resonance, hammer felt, performer breath. Reference-grade mastering with extended dynamic range. Production polish is the focus. Twenty seconds.' },
+  { file: 'spectrum/v2/lo-fi.mp3', durationMs: 20000, prompt:
+    'Lo-fi bedroom recording in F major, 70 BPM, instrumental. Felt piano, cello, and soft brushed snare. Heavy tape hiss, degraded fidelity, audible noise floor and tape hum. Casual room-tone recording, no mastering polish. Performance feels intimate and slightly imperfect. Production is intentionally raw. Twenty seconds.' },
 
   // reverberant/dry — production-space axis. Same 70 BPM, same instruments.
   { file: 'spectrum/v2/reverberant.mp3', durationMs: 20000, prompt:

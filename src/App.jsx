@@ -2,7 +2,6 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import Entry from './phases/Entry.score'
 import Spectrum from './phases/Spectrum.score'
-import Depth from './phases/Depth.score'
 import Gems from './phases/Gems.score'
 import Moment from './phases/Moment.score'
 import Autobio from './phases/Autobio.score'
@@ -14,7 +13,7 @@ import { audioEngine } from './engine/audio'
 import { useInputMode } from './hooks/useInputMode'
 import { startOrchestraPreload } from './orchestra/preloader'
 
-const PHASES = ['entry', 'spectrum', 'depth', 'gems', 'moment', 'autobio', 'reflection', 'reveal', 'orchestra']
+const PHASES = ['entry', 'spectrum', 'gems', 'moment', 'autobio', 'reflection', 'reveal', 'orchestra']
 
 const _params = new URLSearchParams(window.location.search)
 const _startPhase = _params.get('phase')
@@ -60,7 +59,6 @@ function App() {
   const phaseComponent = {
     entry: <Entry onNext={nextPhase} />,
     spectrum: <Spectrum onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
-    depth: <Depth onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
     gems: <Gems onNext={nextPhase} avd={avdEngine} />,
     moment: <Moment onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
     autobio: <Autobio onNext={nextPhase} avd={avdEngine} />,

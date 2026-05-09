@@ -152,7 +152,7 @@ export default function Gems({ onNext, avd }) {
   }, [])
 
   return (
-    <Score variant="cream" pageTitle="iv. tell me what you heard" pageNumber={`${excerptIdx + 1} / ${EXCERPTS.length}`}>
+    <Score variant="cream" pageTitle="iii. tell me what you heard" pageNumber={`${excerptIdx + 1} / ${EXCERPTS.length}`}>
       {/* Listening stage */}
       <AnimatePresence>
         {stage === 'listening' && (

@@ -220,7 +220,7 @@ export default function Moment({ onNext, avd, inputMode }) {
           fontFamily: FONTS.serif, fontStyle: 'italic',
           fontSize: 11, color: COLORS.inkDarkSecondary,
         }}>
-          v. moment
+          iv. moment
         </div>
 
         {/* Progress bar — 2px amber, more visible */}
