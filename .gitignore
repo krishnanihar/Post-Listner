@@ -27,3 +27,6 @@ dist-ssr
 public/stems/
 public/music/
 tmp/
+
+# Local backup of pre-regen Spectrum clips (kept locally as fallback)
+public/spectrum/v2/_old/

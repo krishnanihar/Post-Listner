@@ -55,28 +55,68 @@ const ASSETS = [
     prompt: 'post-rock instrumental, 80 BPM, distorted electric guitar with palm-muted restraint, brushed drums, low pulsing analog synth, instrumental, simmering defiance withheld, 2000s dry-room production with no compression on transients, crescendo never resolves, ends on a held minor-second cluster',
   },
 
-  // Spectrum v2 — 8s instrumental clips
-  { file: 'spectrum/v2/warm.mp3',         durationMs: 8000, prompt: 'acoustic chamber, 70 BPM, felt piano + cello, instrumental, body-warmth, 1970s tape saturation, no synthesizer, no electric instruments' },
-  { file: 'spectrum/v2/cold.mp3',         durationMs: 8000, prompt: 'synth ambient, 70 BPM, sine pad + glassy bell, instrumental, cool sterile beauty, 1980s digital reverb, no acoustic instruments' },
-  { file: 'spectrum/v2/dense.mp3',        durationMs: 8000, prompt: 'orchestral chamber, 70 BPM, layered strings + woodwinds + harp + felt piano, instrumental, complex polyphonic texture, full ensemble production' },
-  { file: 'spectrum/v2/spare.mp3',        durationMs: 8000, prompt: 'solo piano, 70 BPM, single sustained note line, instrumental, radically minimal, dry-room close-mic, long silences between phrases' },
-  { file: 'spectrum/v2/sung.mp3',         durationMs: 8000, prompt: 'chamber pop, 70 BPM, soft humming melody + felt piano + acoustic bass, breathy lead vocal melody, intimate vocal-forward production' },
-  { file: 'spectrum/v2/instrumental.mp3', durationMs: 8000, prompt: 'chamber instrumental, 70 BPM, felt piano + acoustic bass + soft cello, instrumental, no vocals, melodic instrumental focus' },
-  { file: 'spectrum/v2/analog.mp3',       durationMs: 8000, prompt: 'lo-fi indie, 70 BPM, tube-saturated electric guitar + upright bass, instrumental, 1960s tape warmth, hum + tape hiss audible, no digital reverb' },
-  { file: 'spectrum/v2/digital.mp3',      durationMs: 8000, prompt: 'clean electronic, 70 BPM, FM synth lead + sub bass, instrumental, pristine digital production, surgical reverb tails, no analog warmth' },
-  { file: 'spectrum/v2/major.mp3',        durationMs: 8000, prompt: 'acoustic folk, 70 BPM, fingerpicked guitar in C major, instrumental, bright open chords, uplifting harmonic motion' },
-  { file: 'spectrum/v2/modal.mp3',        durationMs: 8000, prompt: 'chamber ambient, 70 BPM, felt piano in dorian mode, instrumental, neither happy nor sad, suspended ambiguous quality' },
-  { file: 'spectrum/v2/slow.mp3',         durationMs: 8000, prompt: 'ambient drone, 50 BPM, sustained string pad + felt piano, instrumental, contemplative meditative pace, no rhythmic pulse' },
-  { file: 'spectrum/v2/fast.mp3',         durationMs: 8000, prompt: 'walking groove, 110 BPM, felt piano + brushed snare + upright bass, instrumental, steady forward pulse, deliberate motion' },
-  { file: 'spectrum/v2/driving.mp3',      durationMs: 8000, prompt: 'kraut rock, 130 BPM, motorik drums + repeating bass arpeggio, instrumental, locked-in propulsive forward motion, urgent energy' },
-  { file: 'spectrum/v2/floating.mp3',     durationMs: 8000, prompt: 'ambient post-rock, 50 BPM, reversed guitar swells + sustained strings, instrumental, weightless suspended quality, no clear pulse' },
-  { file: 'spectrum/v2/low.mp3',          durationMs: 8000, prompt: 'chamber, 70 BPM, double bass + bass clarinet + low felt piano, instrumental, deep register focus, dark sustained low frequencies' },
-  { file: 'spectrum/v2/high.mp3',         durationMs: 8000, prompt: 'chamber, 70 BPM, glockenspiel + violin harmonics + flute, instrumental, bright high register focus, sparkling upper frequencies' },
-  { file: 'spectrum/v2/reverberant.mp3',  durationMs: 8000, prompt: 'chamber, 70 BPM, felt piano + cello, instrumental, cathedral-sized hall reverb, long decaying tail, distant intimate playing' },
-  { file: 'spectrum/v2/dry.mp3',          durationMs: 8000, prompt: 'chamber, 70 BPM, felt piano + cello, instrumental, dead-room close-mic\'d, no reverb, intimate fingertip detail audible' },
+  // Spectrum v2 — 20s instrumental clips, polar pairs.
+  // Each pair shares fixed-axis values (BPM, voice count, mood) and varies
+  // ONLY on the active AVD axis to avoid corrupting the orthogonal scoring
+  // design in src/lib/spectrumPairs.js.
+
+  // warm/cold — Valence axis only. Both 80 BPM, 2-3 voices, contemplative.
+  { file: 'spectrum/v2/warm.mp3', durationMs: 20000, prompt:
+    'Acoustic chamber piece in C major, 80 BPM. Felt piano playing a tender unhurried melody, soft cello holding consonant suspended chords underneath. 1970s tape-saturated production with warm vinyl character. Close-mic\'d intimate dynamics, gentle acoustic reverb. Major-key, no dissonance, no synths, no electronic instruments. The piano breathes between phrases. Instrumental. Twenty seconds.' },
+  { file: 'spectrum/v2/cold.mp3', durationMs: 20000, prompt:
+    'Synthetic ambient piece in A minor, 80 BPM. FM sine pad sustaining a cold drone, glassy bell tones playing dissonant intervals over the top. 1980s digital production — sterile, clinical, metallic. Long cold digital reverb tail. Minor-key, suspended unresolved harmony, no acoustic instruments at all. The bell rings out into emptiness. Instrumental. Twenty seconds.' },
+
+  // dense/spare — Depth axis only. Both 70 BPM, dorian, contemplative.
+  { file: 'spectrum/v2/dense.mp3', durationMs: 20000, prompt:
+    'Chamber orchestra in D dorian, 70 BPM. Six independent voices weaving in modal counterpoint: first violin, viola, cello, oboe, clarinet, harp, felt piano. Voices enter sequentially and overlap, building a complex polyphonic texture. Wide-stereo audiophile mix. Modal interchange, no clear lead instrument — every voice carries melody. Instrumental. Twenty seconds.' },
+  { file: 'spectrum/v2/spare.mp3', durationMs: 20000, prompt:
+    'Solo felt piano in D dorian, 70 BPM. A single sustained melodic line, three or four notes per phrase, with long breathing silences between phrases. Dry close-mic\'d room tone, you can hear the hammer felt and string resonance. No accompaniment, no chords beyond an occasional single sustained low note. Radically minimal. Instrumental. Twenty seconds.' },
+
+  // sung/instrumental — vocal presence axis. Both 70 BPM, F major.
+  // sung.mp3 needs vocals — forceInstrumental override below.
+  { file: 'spectrum/v2/sung.mp3', durationMs: 20000, forceInstrumental: false, prompt:
+    'Soft chamber pop in F major, 70 BPM. Breathy female lead vocal humming a wordless melodic line — no lyrics, just intimate vocal tone. Felt piano and acoustic bass underneath. Vocal-forward production, close-mic\'d, room-tone breath audible between phrases. The voice is the focus throughout. Has vocals. Twenty seconds.' },
+  { file: 'spectrum/v2/instrumental.mp3', durationMs: 20000, prompt:
+    'Chamber instrumental in F major, 70 BPM. Felt piano carrying the lead melody, acoustic bass holding the foundation, soft cello sustaining beneath. The piano is melodic and forward — it occupies the space a vocal would. No vocals, no humming, no choir, no human voice of any kind. Pure instrumental focus. Instrumental. Twenty seconds.' },
+
+  // analog/digital — production-aesthetic axis. ~75 BPM, G major-ish.
+  { file: 'spectrum/v2/analog.mp3', durationMs: 20000, prompt:
+    'Lo-fi indie ballad in G major, 75 BPM. Tube-saturated electric guitar fingerpicking a warm progression, upright bass walking underneath, brushed snare softly. 1960s tape character: audible tape hum, tape hiss, occasional wow-and-flutter. No digital reverb, no quantization, performance feels human and slightly imperfect. Instrumental. Twenty seconds.' },
+  { file: 'spectrum/v2/digital.mp3', durationMs: 20000, prompt:
+    'Clean electronic piece in G major, 80 BPM. FM synth lead playing a precise pattern, sub-bass tightly locked to the beat, programmed hi-hat in 16ths. Pristine digital production, surgical reverb tails, perfect quantization. No analog warmth, no tape, no acoustic instruments — every note is digitally precise. Instrumental. Twenty seconds.' },
+
+  // major/modal — Valence axis. Both 75 BPM, acoustic, similar density.
+  { file: 'spectrum/v2/major.mp3', durationMs: 20000, prompt:
+    'Acoustic folk in C major, 75 BPM. Fingerpicked steel-string guitar playing bright open chords (C, F, G, Am — major-key cadence) with uplifting harmonic motion. Sun-warmed and resolved. Each chord change feels like a release rather than a question. Soft brushed snare on backbeat. Instrumental. Twenty seconds.' },
+  { file: 'spectrum/v2/modal.mp3', durationMs: 20000, prompt:
+    'Chamber ambient in C phrygian, 75 BPM. Felt piano playing a phrygian melody (flat-2 against the tonic creating ancient unresolved tension), suspended chords that don\'t resolve. Neither happy nor sad — a held ambiguous modal quality, ancient and unsettled. Modal harmonic language throughout, no major-key cadences. Instrumental. Twenty seconds.' },
+
+  // slow/fast — Arousal axis. Same V, similar D.
+  { file: 'spectrum/v2/slow.mp3', durationMs: 20000, prompt:
+    'Ambient drone, 55 BPM. Sustained string pad floating, felt piano playing one note every six seconds, deep contemplative pace. No rhythmic pulse at all — the music breathes rather than counts. Meditative, nearly motionless. Long held tones, gentle dynamics. Instrumental. Twenty seconds.' },
+  { file: 'spectrum/v2/fast.mp3', durationMs: 20000, prompt:
+    'Walking groove, 130 BPM. Felt piano and brushed snare driving forward with deliberate motion, upright bass pulsing on the downbeat, steady forward pulse, locked-in tempo. Energetic but controlled — every beat lands clearly. No drone, no sustained pads — only rhythmic forward movement. Instrumental. Twenty seconds.' },
+
+  // driving/floating — Arousal axis (and a Depth nudge).
+  { file: 'spectrum/v2/driving.mp3', durationMs: 20000, prompt:
+    'Kraut rock, 140 BPM. Motorik drums (insistent 8th-note kick, locked snare on 2 and 4), repeating bass arpeggio cycling, urgent forward propulsion. Locked-in groove, no rubato, no dynamic variation — pure forward motion. Like a train you can\'t stop. Instrumental. Twenty seconds.' },
+  { file: 'spectrum/v2/floating.mp3', durationMs: 20000, prompt:
+    'Ambient post-rock, 55 BPM. Reversed guitar swells washing in and out, sustained string drones underneath, no clear pulse or downbeat. Weightless, suspended, time-dilated. The listener can\'t tell where the beat is — there isn\'t one. Long reverb tails, dreamy and unanchored. Instrumental. Twenty seconds.' },
+
+  // low/high — register axis (Depth + slight Valence). Same 70 BPM.
+  { file: 'spectrum/v2/low.mp3', durationMs: 20000, prompt:
+    'Chamber, 70 BPM. Double bass + bass clarinet + low felt piano (lowest octave), all in deep register. Dark sustained low frequencies, woody resonant overtones. The melody lives below middle C throughout — never crosses into the treble. Sophisticated harmonic complexity in the bass voices. Instrumental. Twenty seconds.' },
+  { file: 'spectrum/v2/high.mp3', durationMs: 20000, prompt:
+    'Chamber, 70 BPM. Glockenspiel + violin harmonics + flute, all in bright high register. Sparkling crystalline upper frequencies, simple melodic line. The melody lives above the treble staff throughout — never drops into the bass. Accessible, simple harmonic structure. Instrumental. Twenty seconds.' },
+
+  // reverberant/dry — production-space axis. Same 70 BPM, same instruments.
+  { file: 'spectrum/v2/reverberant.mp3', durationMs: 20000, prompt:
+    'Chamber, 70 BPM. Felt piano and cello playing a slow contemplative line in a cathedral-sized hall. Long decaying reverb tail (4-6 seconds per note), distant intimate playing — the listener feels they\'re seated across the cathedral from the performers. Each note rings out before settling. Instrumental. Twenty seconds.' },
+  { file: 'spectrum/v2/dry.mp3', durationMs: 20000, prompt:
+    'Chamber, 70 BPM. Felt piano and cello, dead-room close-mic\'d. No reverb whatsoever — anechoic. Intimate fingertip detail audible: hammer felt on strings, bow-on-string friction, performer breath. The performers feel inches from the listener. Instrumental. Twenty seconds.' },
 ]
 
-async function generateMusic(prompt, durationMs) {
+async function generateMusic(prompt, durationMs, forceInstrumental = true) {
   const url = 'https://api.elevenlabs.io/v1/music?output_format=mp3_44100_128'
   const res = await fetch(url, {
     method: 'POST',
@@ -88,7 +128,7 @@ async function generateMusic(prompt, durationMs) {
       prompt,
       music_length_ms: durationMs,
       model_id: 'music_v1',
-      force_instrumental: true,
+      force_instrumental: forceInstrumental,
     }),
   })
   if (!res.ok) {
@@ -112,7 +152,7 @@ async function main() {
     }
     process.stdout.write(`GEN   ${asset.file} ... `)
     try {
-      const buf = await generateMusic(asset.prompt, asset.durationMs)
+      const buf = await generateMusic(asset.prompt, asset.durationMs, asset.forceInstrumental ?? true)
       fs.mkdirSync(path.dirname(outPath), { recursive: true })
       fs.writeFileSync(outPath, buf)
       console.log(`OK (${buf.length} bytes)`)
