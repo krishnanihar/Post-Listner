@@ -5,20 +5,10 @@ import { COLORS, FONTS } from '../score/tokens'
 import { audioEngine } from '../engine/audio'
 import { useAdmirer } from '../hooks/useAdmirer'
 
-const HOLD_DURATION_MS = 6000   // hand-on-chest held tap
-const EXHALE_DURATION_MS = 6000 // single guided exhale
-const EXHALE_COUNT = 2
-
 export default function Entry({ onNext }) {
   const [stage, setStage] = useState('headphones')
   const [name, setName] = useState('')
-  const [holdProgress, setHoldProgress] = useState(0)
-  const [exhaleIdx, setExhaleIdx] = useState(0)
-  const [exhaleActive, setExhaleActive] = useState(false)
 
-  const holdStartRef = useRef(null)
-  const holdRafRef = useRef(null)
-  const exhaleTimerRef = useRef(null)
   const droneStopRef = useRef(null)
 
   const admirer = useAdmirer()
@@ -44,55 +34,8 @@ export default function Entry({ onNext }) {
     try {
       localStorage.setItem('postlistener_name', name.trim())
     } catch { /* storage unavailable */ }
-    setStage('hold')
+    setStage('threshold')
   }
-
-  // Hand-on-chest held tap: 6s sustained press fills a ring.
-  const handleHoldStart = () => {
-    if (stage !== 'hold') return
-    holdStartRef.current = Date.now()
-    const tick = () => {
-      const elapsed = Date.now() - (holdStartRef.current || Date.now())
-      const p = Math.min(1, elapsed / HOLD_DURATION_MS)
-      setHoldProgress(p)
-      if (p >= 1) {
-        holdStartRef.current = null
-        setStage('breath')
-        return
-      }
-      holdRafRef.current = requestAnimationFrame(tick)
-    }
-    holdRafRef.current = requestAnimationFrame(tick)
-  }
-
-  const handleHoldEnd = () => {
-    if (holdStartRef.current && holdProgress < 1) {
-      // Released too early — reset.
-      holdStartRef.current = null
-      setHoldProgress(0)
-      if (holdRafRef.current) cancelAnimationFrame(holdRafRef.current)
-    }
-  }
-
-  // Two guided exhales at 6s each (resonance frequency ≈ 5–6 bpm).
-  useEffect(() => {
-    if (stage !== 'breath') return
-    admirer.play('entry.breathe')
-    const startExhale = (i) => {
-      setExhaleIdx(i)
-      setExhaleActive(true)
-      exhaleTimerRef.current = setTimeout(() => {
-        setExhaleActive(false)
-        if (i + 1 < EXHALE_COUNT) {
-          exhaleTimerRef.current = setTimeout(() => startExhale(i + 1), 1200)
-        } else {
-          exhaleTimerRef.current = setTimeout(() => setStage('threshold'), 1500)
-        }
-      }, EXHALE_DURATION_MS)
-    }
-    startExhale(0)
-    return () => clearTimeout(exhaleTimerRef.current)
-  }, [stage]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Threshold statement voiced + button appears.
   useEffect(() => {
@@ -112,8 +55,6 @@ export default function Entry({ onNext }) {
   }, [])
 
   const advance = () => {
-    if (holdRafRef.current) cancelAnimationFrame(holdRafRef.current)
-    clearTimeout(exhaleTimerRef.current)
     if (droneStopRef.current) {
       droneStopRef.current()
       droneStopRef.current = null
@@ -215,69 +156,6 @@ export default function Entry({ onNext }) {
               >
                 continue
               </button>
-            </motion.div>
-          )}
-
-          {stage === 'hold' && (
-            <motion.div
-              key="hold"
-              onPointerDown={handleHoldStart}
-              onPointerUp={handleHoldEnd}
-              onPointerCancel={handleHoldEnd}
-              style={{
-                position: 'absolute', inset: 0,
-                display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center',
-                gap: 32, touchAction: 'none', cursor: 'pointer',
-              }}
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              transition={{ duration: 0.6 }}
-            >
-              <div style={{
-                fontFamily: FONTS.serif, fontStyle: 'italic',
-                fontSize: 16, color: COLORS.inkCream, textAlign: 'center',
-                padding: '0 40px', lineHeight: 1.6,
-              }}>
-                place a hand on your chest.<br />press here and hold.
-              </div>
-              <svg width="120" height="120" viewBox="0 0 120 120">
-                <circle cx="60" cy="60" r="50" fill="none" stroke={COLORS.inkCreamSecondary}
-                        strokeWidth="2" strokeOpacity="0.3" />
-                <motion.circle
-                  cx="60" cy="60" r="50" fill="none" stroke={COLORS.scoreAmber}
-                  strokeWidth="2" strokeDasharray={`${holdProgress * 314} 314`}
-                  strokeDashoffset="0" transform="rotate(-90 60 60)"
-                />
-              </svg>
-            </motion.div>
-          )}
-
-          {stage === 'breath' && (
-            <motion.div
-              key="breath"
-              style={{
-                position: 'absolute', inset: 0,
-                display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center',
-                gap: 24,
-              }}
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              transition={{ duration: 0.6 }}
-            >
-              <motion.div
-                style={{
-                  width: 140, height: 140, borderRadius: '50%',
-                  border: `2px solid ${COLORS.scoreAmber}`,
-                }}
-                animate={exhaleActive ? { scale: [1, 0.5] } : { scale: 1 }}
-                transition={{ duration: EXHALE_DURATION_MS / 1000, ease: 'easeInOut' }}
-              />
-              <div style={{
-                fontFamily: FONTS.serif, fontStyle: 'italic',
-                fontSize: 14, color: COLORS.inkCreamSecondary,
-              }}>
-                {exhaleActive ? 'exhale' : 'rest'} · {exhaleIdx + 1} of {EXHALE_COUNT}
-              </div>
             </motion.div>
           )}
 
