@@ -197,8 +197,11 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     cursorHistoryRef.current.push(position)
     if (cursorHistoryRef.current.length > 60) cursorHistoryRef.current.shift()
 
-    // Audio crossfade — power curve so isolation kicks in faster.
-    const balance = Math.sign(position) * Math.pow(Math.abs(position), 0.6) * 0.8
+    // Audio crossfade — power curve up to 0.85 lean, then full silence on the
+    // opposite clip from 0.85 → 1.0. Smooth ramp into total isolation before
+    // the absolute corner so the "blocking" feel kicks in earlier than 100%.
+    const stretched = Math.min(1, Math.abs(position) / 0.85)
+    const balance = Math.sign(position) * Math.pow(stretched, 0.6)
     if (pairRef.current) pairRef.current.setBalance(balance)
 
     // Reversal + first-hover tracking past a small dead zone.
