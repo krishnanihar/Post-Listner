@@ -111,6 +111,16 @@ const ASSETS = [
   { file: 'spectrum/v2/lo-fi.mp3', durationMs: 20000, prompt:
     'Lo-fi bedroom recording in F major, 70 BPM, instrumental. Felt piano, cello, and soft brushed snare. Heavy tape hiss, degraded fidelity, audible noise floor and tape hum. Casual room-tone recording, no mastering polish. Performance feels intimate and slightly imperfect. Production is intentionally raw. Twenty seconds.' },
 
+  // Moment triptych — 3 movements rising in arousal. C major + felt piano
+  // throughout for aesthetic continuity; same key / instrument family so the
+  // arc reads as one piece, not three unrelated clips.
+  { file: 'moment/low.mp3', durationMs: 12000, prompt:
+    'Solo felt piano in C major, 60 BPM, instrumental. Soft tender melody, three notes per phrase, with breathing silences between phrases. Intimate close-mic\'d recording, gentle room-tone audible. Contemplative meditative pace, no rhythmic pulse, no other instruments. Tender unhurried character. Twelve seconds.' },
+  { file: 'moment/mid.mp3', durationMs: 12000, prompt:
+    'Felt piano + cello + soft brushed snare in C minor, 95 BPM, instrumental. Tense restless mood, sustained dissonant intervals, urgent forward motion held in restraint. Cello plays a rising chromatic line under the piano\'s anxious figure. Snare pulse adds underlying drive. Indie chamber production. Twelve seconds.' },
+  { file: 'moment/high.mp3', durationMs: 12000, prompt:
+    'Full chamber ensemble in C major, 140 BPM, instrumental. Felt piano leading, soaring strings (violins, viola, cello), driving timpani, bright woodwinds (flute, oboe). Triumphant cinematic crescendo, climactic emotional payoff at peak. Wide-stereo orchestral mix. Major-key resolution. Twelve seconds.' },
+
   // reverberant/dry — production-space axis. Same 70 BPM, same instruments.
   { file: 'spectrum/v2/reverberant.mp3', durationMs: 20000, prompt:
     'Chamber, 70 BPM. Felt piano and cello playing a slow contemplative line in a cathedral-sized hall. Long decaying reverb tail (4-6 seconds per note), distant intimate playing — the listener feels they\'re seated across the cathedral from the performers. Each note rings out before settling. Instrumental. Twenty seconds.' },

@@ -18,6 +18,16 @@ function dominantSpectrumLabel(pairs) {
 }
 
 function tempoDescriptor(moment) {
+  // New shape: crescendo triptych. Render the dominant "yes" zone.
+  const t = moment?.triptych
+  if (t && (t.low || t.mid || t.high)) {
+    if (t.high === 'yes') return 'reached for the cinematic one'
+    if (t.mid === 'yes')  return 'found yourself in the restless one'
+    if (t.low === 'yes')  return 'stayed in the quiet one'
+    return 'kept your distance from all three'
+  }
+
+  // Legacy shape: tap-tempo BPM.
   const bpm = computeBpm(moment)
   if (bpm === null) return 'held still'
   if (bpm < 70) return 'tapped slow'

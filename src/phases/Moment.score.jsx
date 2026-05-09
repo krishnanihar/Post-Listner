@@ -1,422 +1,344 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
-import { motion } from 'framer-motion'
-import { audioEngine } from '../engine/audio'
-import ConductingEngine from '../orchestra/ConductingEngine'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import Paper from '../score/Paper'
 import { COLORS, FONTS } from '../score/tokens'
-import { clamp } from '../chamber/utils/math'
+import { audioEngine } from '../engine/audio'
 
-const DURATION = 30
+// Crescendo triptych: three 12s movements rising in arousal, fixed
+// low → mid → high order. After each: a yes/no "did that feel right?" probe.
+// The arc itself is the climactic experience; the three reads give an
+// archetype-zone hedonic map plus a clean A-axis preference.
+//
+// References for the redesign:
+//   Belfi et al. 2022/2023 — short clips reliably predict full-song liking.
+//   Janata et al. 2012 — graded liking probes; we use binary for simplicity.
+//   Chmiel & Schubert 2017 — inverted-U; rising arc is felt as a single piece.
+const MOVEMENTS = [
+  { id: 'low',  path: '/moment/low.mp3',  romanLabel: 'i',   arousal: 0.20, name: 'the quiet one' },
+  { id: 'mid',  path: '/moment/mid.mp3',  romanLabel: 'ii',  arousal: 0.50, name: 'the restless one' },
+  { id: 'high', path: '/moment/high.mp3', romanLabel: 'iii', arousal: 0.80, name: 'the cinematic one' },
+]
 
-// Drawing area — spans most of the screen width and centered vertically
-const SVG_W = 360
-const SVG_H = 700
-const DRAW_LEFT = 20
-const DRAW_RIGHT = 340
-const DRAW_WIDTH = DRAW_RIGHT - DRAW_LEFT
-const DRAW_CENTER_Y = 350    // vertical center of the drawing area
-const DRAW_AMPLITUDE = 80    // max vertical displacement from gesture
-const STAVE_TOP = 240        // top stave position
-const STAVE_BOTTOM = 460     // bottom stave position
-const STAVE_COUNT = 5        // 5 stave lines spanning the drawing area
+const PROBE_TIMEOUT_MS = 4000   // user has 4s to answer; after that, null
 
-export default function Moment({ onNext, avd, inputMode }) {
-  const [downbeats, setDownbeats] = useState([])
-  const [tactusPath, setTactusPath] = useState('')
-  const [phase, setPhase] = useState('intro')
-  const [motionAvailable, setMotionAvailable] = useState(true)
-  const motionRef = useRef(true)
-  const [elapsed, setElapsed] = useState(0)
-  const [gestureIntensity, setGestureIntensity] = useState(0) // 0-1 for visual feedback
+export default function Moment({ onNext, avd }) {
+  const [stage, setStage] = useState('intro')        // 'intro' | 'playing' | 'probe' | 'done'
+  const [movementIdx, setMovementIdx] = useState(0)
+  const [responses, setResponses] = useState([])      // ['yes' | 'no' | null, ...]
+  const [elapsed, setElapsed] = useState(0)           // 0..1 within current movement
 
-  const conductingRef = useRef(null)
-  const rafRef = useRef(null)
-  const trackRef = useRef(null)
-  const startTimeRef = useRef(null)
-  const gestureSum = useRef(0)
-  const sampleCount = useRef(0)
-  const downbeatCount = useRef(0)
-  const tactusPoints = useRef([])
-  const finishedRef = useRef(false)
-  const [hurleyVisible, setHurleyVisible] = useState(false)
-  const hurleyTimeoutRef = useRef(null)
-  const hedonicRef = useRef(null)
-  const finishPhaseRef = useRef(null)
+  const audioRef = useRef(null)
+  const probeTimerRef = useRef(null)
+  const elapsedRafRef = useRef(null)
+  const advancedRef = useRef(false)
+  const respondedRef = useRef(false)                  // guards double-record per movement
 
-  useEffect(() => {
-    audioEngine.stopAll()
+  const finishPhase = useCallback((finalResponses) => {
+    if (advancedRef.current) return
+    advancedRef.current = true
+    setStage('done')
 
-    const engine = new ConductingEngine()
-    conductingRef.current = engine
-    engine.requestPermission().then((granted) => {
-      if (granted) {
-        engine.start()
-        setTimeout(() => {
-          if (engine._rms < 0.01 && engine._gestureSize < 0.01) {
-            setMotionAvailable(false)
-            motionRef.current = false
-          }
-        }, 1000)
-      } else {
-        setMotionAvailable(false)
-      }
-    })
+    // A axis preference: average of the arousal values of the "yes" zones.
+    // Defaults to neutral (0.5) when no zone got "yes".
+    const yesArousals = finalResponses
+      .map((r, i) => r === 'yes' ? MOVEMENTS[i].arousal : null)
+      .filter(v => v !== null)
+    const A = yesArousals.length > 0
+      ? yesArousals.reduce((s, v) => s + v, 0) / yesArousals.length
+      : 0.5
 
-    const timers = []
-    const t = (ms, fn) => timers.push(setTimeout(fn, ms))
-    t(800, () => startPlaying())
-
-    return () => {
-      engine.stop()
-      timers.forEach(clearTimeout)
-      if (trackRef.current) trackRef.current.stop()
-      if (rafRef.current) cancelAnimationFrame(rafRef.current)
-      clearTimeout(hurleyTimeoutRef.current)
+    // Hedonic for applyHedonicBias compat:
+    // - high "no" + (low or mid "yes") → user explicitly rejected the peak
+    //   in favor of something quieter → hedonic = false (push toward low-V
+    //   archetypes, away from Sky-Seeker).
+    // - high "yes" → enjoyed the peak → hedonic = true.
+    // - everything else → null (don't bias).
+    let hedonic
+    if (finalResponses[2] === 'no' && (finalResponses[0] === 'yes' || finalResponses[1] === 'yes')) {
+      hedonic = false
+    } else if (finalResponses[2] === 'yes') {
+      hedonic = true
+    } else {
+      hedonic = null
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const startPlaying = useCallback(() => {
-    setPhase('playing')
-    startTimeRef.current = Date.now()
-    trackRef.current = audioEngine.playBuildAndDrop(DURATION)
-    setTimeout(() => finishPhaseRef.current?.(), DURATION * 1000)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const completeAndAdvance = useCallback(() => {
-    if (finishedRef.current) return
-    finishedRef.current = true
-
-    const avgGesture = sampleCount.current > 0 ? gestureSum.current / sampleCount.current : 0
-    const dbCount = downbeatCount.current
-    const downbeatBonus = dbCount > 5 ? 0.2 : dbCount * 0.04
-    const A = clamp(avgGesture + downbeatBonus, 0, 1)
 
     avd.setArousal(A)
     avd.setPhaseData('moment', {
-      totalDownbeats: dbCount,
-      avgGestureGain: Math.round(avgGesture * 100) / 100,
-      tactus: tactusPoints.current.slice(),
-      hedonic: hedonicRef.current,
+      triptych: {
+        low:  finalResponses[0] ?? null,
+        mid:  finalResponses[1] ?? null,
+        high: finalResponses[2] ?? null,
+      },
+      hedonic,
+      derivedArousal: A,
     })
-
-    // Static-track fallback. The per-session compose request runs after
-    // Autobio (where eraMedian is finally populated) and overwrites this
-    // via App.jsx's musicPromiseRef. If Autobio is skipped or fails, this
-    // fallback ensures Reveal still has a track to play.
-    const musicPromise = Promise.resolve('/chamber/tracks/track-a.mp3')
 
     setTimeout(() => {
       onNext({
-        moment: { totalDownbeats: dbCount, avgGestureGain: avgGesture, hedonic: hedonicRef.current },
-        musicPromise,
+        moment: {
+          triptych: {
+            low:  finalResponses[0] ?? null,
+            mid:  finalResponses[1] ?? null,
+            high: finalResponses[2] ?? null,
+          },
+          hedonic,
+        },
       })
     }, 1500)
   }, [avd, onNext])
 
-  const handleHurleyAnswer = useCallback((liked) => {
-    hedonicRef.current = liked
-    clearTimeout(hurleyTimeoutRef.current)
-    setHurleyVisible(false)
-    completeAndAdvance()
-  }, [completeAndAdvance])
+  const playMovement = useCallback((idx) => {
+    if (idx >= MOVEMENTS.length) return
+    setMovementIdx(idx)
+    setStage('playing')
+    setElapsed(0)
+    respondedRef.current = false
 
-  const finishPhase = useCallback(() => {
-    setPhase('done')
-    setHurleyVisible(true)
-    // Auto-advance with hedonic = null after 4s
-    hurleyTimeoutRef.current = setTimeout(() => {
-      setHurleyVisible(false)
-      completeAndAdvance()
-    }, 4000)
-  }, [completeAndAdvance])
-  finishPhaseRef.current = finishPhase
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current = null
+    }
 
-  // rAF loop
-  useEffect(() => {
-    let running = true
-    const loop = () => {
-      if (!running) return
-      const engine = conductingRef.current
-      if (engine && phase === 'playing' && startTimeRef.current) {
-        const data = engine.getData()
-        const sec = (Date.now() - startTimeRef.current) / 1000
-        const progress = clamp(sec / DURATION, 0, 1)
-        setElapsed(progress)
+    const audio = new Audio(MOVEMENTS[idx].path)
+    audioRef.current = audio
+    const startTime = Date.now()
+    const tick = () => {
+      if (!audioRef.current) return
+      const dur = (audio.duration && isFinite(audio.duration)) ? audio.duration * 1000 : 12000
+      setElapsed(Math.min(1, (Date.now() - startTime) / dur))
+      elapsedRafRef.current = requestAnimationFrame(tick)
+    }
+    elapsedRafRef.current = requestAnimationFrame(tick)
 
-        const gain = data.gestureGain
-        gestureSum.current += gain
-        sampleCount.current++
-        setGestureIntensity(gain)
+    audio.play().catch(() => { /* autoplay blocked: probe will still work */ })
+    audio.onended = () => {
+      cancelAnimationFrame(elapsedRafRef.current)
+      setElapsed(1)
+      setStage('probe')
+      probeTimerRef.current = setTimeout(() => {
+        if (respondedRef.current) return
+        respondedRef.current = true
+        recordResponse(null)
+      }, PROBE_TIMEOUT_MS)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-        // X: left to right across the full drawing width
-        const x = DRAW_LEFT + progress * DRAW_WIDTH
-        // Y: gesture maps to vertical displacement — bigger gesture = bigger wave
-        const y = DRAW_CENTER_Y + (gain - 0.3) * DRAW_AMPLITUDE * 2
-        tactusPoints.current.push({ x, y })
-
-        // Keep ALL points (don't shift) — the full line is the score
-        // But limit to prevent memory issues
-        if (tactusPoints.current.length > 2000) {
-          // Downsample: keep every other point from the first half
-          const half = Math.floor(tactusPoints.current.length / 2)
-          const thinned = []
-          for (let i = 0; i < half; i += 2) thinned.push(tactusPoints.current[i])
-          thinned.push(...tactusPoints.current.slice(half))
-          tactusPoints.current = thinned
-        }
-
-        if (tactusPoints.current.length > 1) {
-          const pts = tactusPoints.current
-          let d = `M${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`
-          for (let i = 1; i < pts.length; i++) {
-            d += ` L${pts[i].x.toFixed(1)} ${pts[i].y.toFixed(1)}`
-          }
-          setTactusPath(d)
-        }
-
-        if (data.downbeat.fired) {
-          downbeatCount.current++
-          setDownbeats(prev => [...prev, { x, y }])
-          if (navigator.vibrate) navigator.vibrate(15)
-        }
+  const recordResponse = useCallback((response) => {
+    if (respondedRef.current && response !== null) return
+    respondedRef.current = true
+    clearTimeout(probeTimerRef.current)
+    setResponses(prev => {
+      const next = [...prev, response]
+      if (next.length >= MOVEMENTS.length) {
+        finishPhase(next)
+      } else {
+        // Brief breath, then play the next movement.
+        setTimeout(() => playMovement(next.length), 600)
       }
-      rafRef.current = requestAnimationFrame(loop)
-    }
-    rafRef.current = requestAnimationFrame(loop)
+      return next
+    })
+  }, [finishPhase, playMovement])
+
+  useEffect(() => {
+    audioEngine.stopAll()
+    const t = setTimeout(() => playMovement(0), 800)
     return () => {
-      running = false
-      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      clearTimeout(t)
+      clearTimeout(probeTimerRef.current)
+      cancelAnimationFrame(elapsedRafRef.current)
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current = null
+      }
     }
-  }, [phase])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Touch fallback: tap for beats
-  const handleTap = useCallback(() => {
-    if (phase !== 'playing') return
-    const engine = conductingRef.current
-    if (engine) {
-      engine.updateTouch(0.5, 0.5, true)
-      setTimeout(() => engine.updateTouch(0.5, 0.5, false), 100)
-    }
-    if (navigator.vibrate) navigator.vibrate(5)
-    audioEngine.playTapSound()
-  }, [phase])
-
-  // Stave lines spanning the drawing area
-  const staveSpacing = (STAVE_BOTTOM - STAVE_TOP) / (STAVE_COUNT - 1)
-
-  // Line thickness responds to gesture intensity
-  const lineWidth = 1.5 + gestureIntensity * 2.5 // 1.5 to 4
-  const lineOpacity = 0.5 + gestureIntensity * 0.5 // 0.5 to 1.0
+  const currentMovement = MOVEMENTS[movementIdx]
 
   return (
-    <div
-      style={{ position: 'absolute', inset: 0, touchAction: 'none' }}
-      onClick={handleTap}
-    >
-      <Paper variant="dark">
-        {/* Header */}
+    <div style={{ position: 'absolute', inset: 0 }}>
+      <Paper variant="cream">
+        {/* Page label */}
         <div style={{
-          position: 'absolute', top: 32, left: 24,
-          fontFamily: FONTS.serif, fontStyle: 'italic',
-          fontSize: 11, color: COLORS.inkDarkSecondary,
+          position: 'absolute',
+          top: 32,
+          left: 24,
+          right: 24,
+          fontFamily: FONTS.mono,
+          fontSize: 10,
+          color: COLORS.inkCreamSecondary,
+          letterSpacing: '0.18em',
+          opacity: 0.6,
         }}>
           iv. moment
         </div>
 
-        {/* Progress bar — 2px amber, more visible */}
-        {phase === 'playing' && (
-          <div style={{
-            position: 'absolute',
-            top: 52,
-            left: 24,
-            right: 24,
-            height: 1,
-            background: COLORS.inkDarkSecondary,
-            opacity: 0.2,
-          }}>
-            <div style={{
-              height: '100%',
-              width: `${elapsed * 100}%`,
-              background: COLORS.scoreAmber,
-              opacity: 0.6,
-              transition: 'width 0.3s linear',
-            }} />
-          </div>
-        )}
+        {/* Three vertical marks — one per movement. Active one glows. */}
+        <div style={{
+          position: 'absolute',
+          top: '38%',
+          left: 0,
+          right: 0,
+          display: 'flex',
+          justifyContent: 'center',
+          gap: 56,
+        }}>
+          {MOVEMENTS.map((m, i) => {
+            const response = responses[i]
+            const isActive = i === movementIdx && (stage === 'playing' || stage === 'probe')
+            const isComplete = i < responses.length
 
-        {/* SVG canvas */}
-        <svg
-          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-          preserveAspectRatio="xMidYMid meet"
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
-        >
-          {/* Stave lines — faint horizontal guides across drawing area */}
-          {Array.from({ length: STAVE_COUNT }, (_, i) => (
-            <line
-              key={i}
-              x1={DRAW_LEFT}
-              y1={STAVE_TOP + i * staveSpacing}
-              x2={DRAW_RIGHT}
-              y2={STAVE_TOP + i * staveSpacing}
-              stroke={COLORS.inkDarkSecondary}
-              strokeWidth="0.3"
-              opacity="0.25"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
+            // Mark style by state:
+            //  - upcoming  (not yet played) — faint dotted line
+            //  - active    — bright filled bar with playing animation
+            //  - yes       — solid filled bar
+            //  - no        — hollow bar
+            //  - null      — faint dotted bar
+            const opacity = isActive ? 1 : isComplete ? 0.85 : 0.25
+            const fill = isComplete && response === 'yes'
+              ? COLORS.inkCream
+              : isActive
+                ? COLORS.scoreAmber
+                : 'transparent'
+            const strokeColor = isComplete && response === 'no'
+              ? COLORS.inkCream
+              : COLORS.inkCreamSecondary
 
-          {/* Tactus line — the live drawing */}
-          {tactusPath && (
-            <path
-              d={tactusPath}
-              stroke={COLORS.inkDark}
-              strokeWidth={lineWidth}
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              vectorEffect="non-scaling-stroke"
-              opacity={lineOpacity}
-            />
-          )}
+            return (
+              <motion.div
+                key={m.id}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 14,
+                  opacity,
+                }}
+                animate={{ opacity }}
+                transition={{ duration: 0.4 }}
+              >
+                {/* Roman numeral */}
+                <div style={{
+                  fontFamily: FONTS.serif,
+                  fontStyle: 'italic',
+                  fontSize: 13,
+                  color: COLORS.inkCreamSecondary,
+                }}>
+                  {m.romanLabel}.
+                </div>
 
-          {/* Downbeat dots — bigger and more visible */}
-          {downbeats.map((db, i) => (
-            <motion.circle
-              key={i}
-              cx={db.x}
-              cy={db.y}
-              r="5"
-              fill={COLORS.scoreAmber}
-              initial={{ opacity: 0, scale: 0 }}
-              animate={{ opacity: 0.9, scale: 1 }}
-              transition={{ duration: 0.3, ease: 'easeOut' }}
-            />
-          ))}
+                {/* Vertical mark */}
+                <svg width="14" height="92">
+                  <rect
+                    x="5" y="0"
+                    width="4" height="92"
+                    fill={fill}
+                    stroke={strokeColor}
+                    strokeWidth="1.2"
+                    strokeDasharray={(!isComplete && !isActive) || response === null ? '3 3' : ''}
+                  />
+                  {/* Active progress overlay */}
+                  {isActive && stage === 'playing' && (
+                    <rect
+                      x="5"
+                      y={92 - elapsed * 92}
+                      width="4"
+                      height={elapsed * 92}
+                      fill={COLORS.scoreAmber}
+                    />
+                  )}
+                </svg>
+              </motion.div>
+            )
+          })}
+        </div>
 
-          {/* Leading point — amber dot at the drawing edge */}
-          {phase === 'playing' && tactusPoints.current.length > 0 && (
-            <circle
-              cx={DRAW_LEFT + elapsed * DRAW_WIDTH}
-              cy={DRAW_CENTER_Y + (gestureIntensity - 0.3) * DRAW_AMPLITUDE * 2}
-              r="4"
-              fill={COLORS.scoreAmber}
-              opacity="0.7"
-            />
-          )}
-        </svg>
-
-        {/* Intro text */}
-        {phase === 'intro' && (
-          <div style={{
-            position: 'absolute',
-            top: '38%',
-            left: 24, right: 24,
-            textAlign: 'center',
-            fontFamily: FONTS.serif,
-            fontStyle: 'italic',
-            color: COLORS.inkDarkSecondary,
-            lineHeight: 2.2,
-          }}>
+        {/* Probe: yes / no buttons */}
+        <AnimatePresence mode="wait">
+          {stage === 'probe' && currentMovement && (
             <motion.div
-              style={{ fontSize: 16, color: COLORS.inkDark }}
-              animate={{ opacity: [0.4, 0.8, 0.4] }}
-              transition={{ duration: 2, repeat: Infinity }}
+              key={`probe-${movementIdx}`}
+              style={{
+                position: 'absolute',
+                bottom: '18%',
+                left: 0,
+                right: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 28,
+              }}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.4 }}
             >
-              a track will play
+              <div style={{
+                fontFamily: FONTS.serif,
+                fontStyle: 'italic',
+                fontSize: 16,
+                color: COLORS.inkCream,
+                textAlign: 'center',
+              }}>
+                did that feel right?
+              </div>
+              <div style={{ display: 'flex', gap: 48 }}>
+                <button
+                  onClick={() => recordResponse('yes')}
+                  style={{
+                    background: 'transparent',
+                    border: `1px solid ${COLORS.inkCreamSecondary}`,
+                    color: COLORS.inkCream,
+                    fontFamily: FONTS.serif,
+                    fontStyle: 'italic',
+                    fontSize: 16,
+                    padding: '10px 26px',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                  }}
+                >
+                  yes
+                </button>
+                <button
+                  onClick={() => recordResponse('no')}
+                  style={{
+                    background: 'transparent',
+                    border: `1px solid ${COLORS.inkCreamSecondary}`,
+                    color: COLORS.inkCream,
+                    fontFamily: FONTS.serif,
+                    fontStyle: 'italic',
+                    fontSize: 16,
+                    padding: '10px 26px',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                  }}
+                >
+                  no
+                </button>
+              </div>
             </motion.div>
-            <motion.div
-              style={{ fontSize: 13 }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.6 }}
-              transition={{ delay: 1 }}
-            >
-              {motionAvailable
-                ? 'move the phone to conduct it'
-                : 'tap the screen to the beat'}
-            </motion.div>
-          </div>
-        )}
+          )}
+        </AnimatePresence>
 
-        {/* Persistent hint during play — fades when gesture detected */}
-        {phase === 'playing' && (
+        {/* Listening hint while playing */}
+        {stage === 'playing' && (
           <motion.div
             style={{
               position: 'absolute',
-              bottom: '10%',
-              left: 0, right: 0,
+              bottom: '20%',
+              left: 0,
+              right: 0,
               textAlign: 'center',
               fontFamily: FONTS.serif,
               fontStyle: 'italic',
-              fontSize: 12,
-              color: COLORS.inkDarkSecondary,
-            }}
-            animate={{ opacity: gestureIntensity > 0.15 ? 0 : 0.4 }}
-            transition={{ duration: 0.5 }}
-          >
-            {motionAvailable ? 'move your hand' : 'tap to the beat'}
-          </motion.div>
-        )}
-        {hurleyVisible && (
-          <motion.div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: COLORS.paperDark,
-              gap: 24,
+              fontSize: 13,
+              color: COLORS.inkCreamSecondary,
             }}
             initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            animate={{ opacity: 0.55 }}
             transition={{ duration: 0.6 }}
           >
-            <div style={{
-              fontFamily: FONTS.serif,
-              fontStyle: 'italic',
-              fontSize: 22,
-              color: COLORS.inkDark,
-              textAlign: 'center',
-              padding: '0 32px',
-            }}>
-              did that feel good?
-            </div>
-            <div style={{ display: 'flex', gap: 32 }}>
-              <button
-                onClick={() => handleHurleyAnswer(true)}
-                style={{
-                  background: 'transparent',
-                  border: `1px solid ${COLORS.inkDarkSecondary}`,
-                  color: COLORS.inkDark,
-                  padding: '12px 32px',
-                  fontFamily: FONTS.serif,
-                  fontStyle: 'italic',
-                  fontSize: 16,
-                  cursor: 'pointer',
-                  borderRadius: 4,
-                }}
-              >
-                yes
-              </button>
-              <button
-                onClick={() => handleHurleyAnswer(false)}
-                style={{
-                  background: 'transparent',
-                  border: `1px solid ${COLORS.inkDarkSecondary}`,
-                  color: COLORS.inkDarkSecondary,
-                  padding: '12px 32px',
-                  fontFamily: FONTS.serif,
-                  fontStyle: 'italic',
-                  fontSize: 16,
-                  cursor: 'pointer',
-                  borderRadius: 4,
-                }}
-              >
-                no
-              </button>
-            </div>
+            listen
           </motion.div>
         )}
       </Paper>

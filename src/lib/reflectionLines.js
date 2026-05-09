@@ -100,6 +100,47 @@ function buildAutobioLine(phaseData) {
 }
 
 function buildMomentLine(phaseData) {
+  // New shape: crescendo triptych (3 yes/no responses across rising A zones).
+  const triptych = phaseData.moment?.triptych
+  if (triptych && (triptych.low || triptych.mid || triptych.high)) {
+    const yesZones = []
+    if (triptych.low === 'yes')  yesZones.push('the quiet one')
+    if (triptych.mid === 'yes')  yesZones.push('the restless one')
+    if (triptych.high === 'yes') yesZones.push('the cinematic one')
+
+    if (yesZones.length === 0) {
+      return {
+        signal: 'none of the three landed',
+        interpretation: 'you stayed at a distance — that is also a kind of answer',
+        causal: false,
+      }
+    }
+    if (yesZones.length === 1) {
+      const zone = yesZones[0]
+      const interp = zone === 'the quiet one'
+        ? 'you stayed where it was still'
+        : zone === 'the restless one'
+          ? 'you found yourself in the tension'
+          : 'you climbed all the way to the peak'
+      return {
+        signal: `you said yes to ${zone}`,
+        interpretation: interp,
+      }
+    }
+    if (yesZones.length === 2) {
+      return {
+        signal: `you said yes to ${yesZones[0]} and ${yesZones[1]}`,
+        interpretation: 'you moved through it without picking one home',
+      }
+    }
+    return {
+      signal: 'you said yes to all three',
+      interpretation: 'you gave yourself to each one — that is a kind of openness',
+    }
+  }
+
+  // Legacy shape: tap-tempo BPM. Kept for tests + back-compat with old
+  // session data; the live runtime no longer writes this.
   const bpm = computeBpm(phaseData.moment)
   if (bpm === null) {
     return {
