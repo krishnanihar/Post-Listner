@@ -100,23 +100,25 @@ function buildAutobioLine(phaseData) {
 }
 
 function buildMomentLine(phaseData) {
-  // New shape: crescendo triptych (3 yes/no responses across rising A zones).
+  // New shape: crescendo triptych — three 1-5 ratings across rising A zones.
+  // Threshold ratings ≥4 as "yes" (resonated) for narrative copy.
   const triptych = phaseData.moment?.triptych
-  if (triptych && (triptych.low || triptych.mid || triptych.high)) {
-    const yesZones = []
-    if (triptych.low === 'yes')  yesZones.push('the quiet one')
-    if (triptych.mid === 'yes')  yesZones.push('the restless one')
-    if (triptych.high === 'yes') yesZones.push('the cinematic one')
+  if (triptych && (triptych.low != null || triptych.mid != null || triptych.high != null)) {
+    const isYes = (r) => typeof r === 'number' && r >= 4
+    const zones = []
+    if (isYes(triptych.low))  zones.push('the quiet one')
+    if (isYes(triptych.mid))  zones.push('the restless one')
+    if (isYes(triptych.high)) zones.push('the cinematic one')
 
-    if (yesZones.length === 0) {
+    if (zones.length === 0) {
       return {
         signal: 'none of the three landed',
         interpretation: 'you stayed at a distance — that is also a kind of answer',
         causal: false,
       }
     }
-    if (yesZones.length === 1) {
-      const zone = yesZones[0]
+    if (zones.length === 1) {
+      const zone = zones[0]
       const interp = zone === 'the quiet one'
         ? 'you stayed where it was still'
         : zone === 'the restless one'
@@ -127,9 +129,9 @@ function buildMomentLine(phaseData) {
         interpretation: interp,
       }
     }
-    if (yesZones.length === 2) {
+    if (zones.length === 2) {
       return {
-        signal: `you said yes to ${yesZones[0]} and ${yesZones[1]}`,
+        signal: `you said yes to ${zones[0]} and ${zones[1]}`,
         interpretation: 'you moved through it without picking one home',
       }
     }

@@ -18,12 +18,12 @@ function dominantSpectrumLabel(pairs) {
 }
 
 function tempoDescriptor(moment) {
-  // New shape: crescendo triptych. Render the dominant "yes" zone.
+  // New shape: crescendo triptych — pick the highest-rated zone (≥4 = "yes").
   const t = moment?.triptych
-  if (t && (t.low || t.mid || t.high)) {
-    if (t.high === 'yes') return 'reached for the cinematic one'
-    if (t.mid === 'yes')  return 'found yourself in the restless one'
-    if (t.low === 'yes')  return 'stayed in the quiet one'
+  if (t && (t.low != null || t.mid != null || t.high != null)) {
+    if (typeof t.high === 'number' && t.high >= 4) return 'reached for the cinematic one'
+    if (typeof t.mid === 'number'  && t.mid  >= 4) return 'found yourself in the restless one'
+    if (typeof t.low === 'number'  && t.low  >= 4) return 'stayed in the quiet one'
     return 'kept your distance from all three'
   }
 

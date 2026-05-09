@@ -5,13 +5,13 @@ import { COLORS, FONTS } from '../score/tokens'
 import { audioEngine } from '../engine/audio'
 
 // Crescendo triptych: three 12s movements rising in arousal, fixed
-// low → mid → high order. After each: a yes/no "did that feel right?" probe.
-// The arc itself is the climactic experience; the three reads give an
+// low → mid → high order. After each: a 1-5 rating probe. The arc
+// itself is the climactic experience; the three reads give an
 // archetype-zone hedonic map plus a clean A-axis preference.
 //
 // References for the redesign:
 //   Belfi et al. 2022/2023 — short clips reliably predict full-song liking.
-//   Janata et al. 2012 — graded liking probes; we use binary for simplicity.
+//   Janata et al. 2012 — graded (Likert) liking probes outperform binary.
 //   Chmiel & Schubert 2017 — inverted-U; rising arc is felt as a single piece.
 const MOVEMENTS = [
   { id: 'low',  path: '/moment/low.mp3',  romanLabel: 'i',   arousal: 0.20, name: 'the quiet one' },
@@ -19,16 +19,13 @@ const MOVEMENTS = [
   { id: 'high', path: '/moment/high.mp3', romanLabel: 'iii', arousal: 0.80, name: 'the cinematic one' },
 ]
 
-const PROBE_TIMEOUT_MS = 4000   // user has 4s to answer; after that, null
-
 export default function Moment({ onNext, avd }) {
   const [stage, setStage] = useState('intro')        // 'intro' | 'playing' | 'probe' | 'done'
   const [movementIdx, setMovementIdx] = useState(0)
-  const [responses, setResponses] = useState([])      // ['yes' | 'no' | null, ...]
+  const [responses, setResponses] = useState([])      // [rating 1-5, ...]
   const [elapsed, setElapsed] = useState(0)           // 0..1 within current movement
 
   const audioRef = useRef(null)
-  const probeTimerRef = useRef(null)
   const elapsedRafRef = useRef(null)
   const advancedRef = useRef(false)
   const respondedRef = useRef(false)                  // guards double-record per movement
@@ -38,25 +35,33 @@ export default function Moment({ onNext, avd }) {
     advancedRef.current = true
     setStage('done')
 
-    // A axis preference: average of the arousal values of the "yes" zones.
-    // Defaults to neutral (0.5) when no zone got "yes".
-    const yesArousals = finalResponses
-      .map((r, i) => r === 'yes' ? MOVEMENTS[i].arousal : null)
-      .filter(v => v !== null)
-    const A = yesArousals.length > 0
-      ? yesArousals.reduce((s, v) => s + v, 0) / yesArousals.length
-      : 0.5
+    // A axis preference: weighted average of arousal levels by their rating.
+    // Ratings above 3 (neutral) pull toward that arousal level; below 3 push
+    // away. Defaults to 0.5 when ratings are flat/all neutral.
+    let weightedSum = 0
+    let totalWeight = 0
+    finalResponses.forEach((rating, i) => {
+      if (rating == null) return
+      const weight = (rating - 3) / 2   // -1 .. +1
+      if (weight > 0) {
+        weightedSum += MOVEMENTS[i].arousal * weight
+        totalWeight += weight
+      }
+    })
+    const A = totalWeight > 0 ? weightedSum / totalWeight : 0.5
 
     // Hedonic for applyHedonicBias compat:
-    // - high "no" + (low or mid "yes") → user explicitly rejected the peak
-    //   in favor of something quieter → hedonic = false (push toward low-V
-    //   archetypes, away from Sky-Seeker).
-    // - high "yes" → enjoyed the peak → hedonic = true.
-    // - everything else → null (don't bias).
+    // - high rating ≤2 + (low or mid rating ≥4) → rejected the peak in favor
+    //   of something quieter → hedonic = false (push toward low-V archetypes).
+    // - high rating ≥4 → enjoyed the peak → hedonic = true.
+    // - everything else → null.
+    const lowR  = finalResponses[0]
+    const midR  = finalResponses[1]
+    const highR = finalResponses[2]
     let hedonic
-    if (finalResponses[2] === 'no' && (finalResponses[0] === 'yes' || finalResponses[1] === 'yes')) {
+    if (highR != null && highR <= 2 && ((lowR != null && lowR >= 4) || (midR != null && midR >= 4))) {
       hedonic = false
-    } else if (finalResponses[2] === 'yes') {
+    } else if (highR != null && highR >= 4) {
       hedonic = true
     } else {
       hedonic = null
@@ -65,9 +70,9 @@ export default function Moment({ onNext, avd }) {
     avd.setArousal(A)
     avd.setPhaseData('moment', {
       triptych: {
-        low:  finalResponses[0] ?? null,
-        mid:  finalResponses[1] ?? null,
-        high: finalResponses[2] ?? null,
+        low:  lowR  ?? null,
+        mid:  midR  ?? null,
+        high: highR ?? null,
       },
       hedonic,
       derivedArousal: A,
@@ -76,11 +81,7 @@ export default function Moment({ onNext, avd }) {
     setTimeout(() => {
       onNext({
         moment: {
-          triptych: {
-            low:  finalResponses[0] ?? null,
-            mid:  finalResponses[1] ?? null,
-            high: finalResponses[2] ?? null,
-          },
+          triptych: { low: lowR ?? null, mid: midR ?? null, high: highR ?? null },
           hedonic,
         },
       })
@@ -115,20 +116,15 @@ export default function Moment({ onNext, avd }) {
       cancelAnimationFrame(elapsedRafRef.current)
       setElapsed(1)
       setStage('probe')
-      probeTimerRef.current = setTimeout(() => {
-        if (respondedRef.current) return
-        respondedRef.current = true
-        recordResponse(null)
-      }, PROBE_TIMEOUT_MS)
+      // No auto-advance. The probe waits indefinitely until the user rates.
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const recordResponse = useCallback((response) => {
-    if (respondedRef.current && response !== null) return
+  const recordResponse = useCallback((rating) => {
+    if (respondedRef.current) return
     respondedRef.current = true
-    clearTimeout(probeTimerRef.current)
     setResponses(prev => {
-      const next = [...prev, response]
+      const next = [...prev, rating]
       if (next.length >= MOVEMENTS.length) {
         finishPhase(next)
       } else {
@@ -144,7 +140,6 @@ export default function Moment({ onNext, avd }) {
     const t = setTimeout(() => playMovement(0), 800)
     return () => {
       clearTimeout(t)
-      clearTimeout(probeTimerRef.current)
       cancelAnimationFrame(elapsedRafRef.current)
       if (audioRef.current) {
         audioRef.current.pause()
@@ -184,25 +179,17 @@ export default function Moment({ onNext, avd }) {
           gap: 56,
         }}>
           {MOVEMENTS.map((m, i) => {
-            const response = responses[i]
+            const rating = responses[i]                         // 1..5 if rated
             const isActive = i === movementIdx && (stage === 'playing' || stage === 'probe')
             const isComplete = i < responses.length
 
-            // Mark style by state:
-            //  - upcoming  (not yet played) — faint dotted line
-            //  - active    — bright filled bar with playing animation
-            //  - yes       — solid filled bar
-            //  - no        — hollow bar
-            //  - null      — faint dotted bar
-            const opacity = isActive ? 1 : isComplete ? 0.85 : 0.25
-            const fill = isComplete && response === 'yes'
-              ? COLORS.inkCream
-              : isActive
-                ? COLORS.scoreAmber
-                : 'transparent'
-            const strokeColor = isComplete && response === 'no'
-              ? COLORS.inkCream
-              : COLORS.inkCreamSecondary
+            // Mark style: bar height shows the rating (rating/5 of full),
+            // filled in inkCream. Upcoming = faint dotted outline. Active
+            // playing = amber progress overlay growing from the bottom.
+            const opacity = isActive ? 1 : isComplete ? 0.95 : 0.25
+            const filledHeight = isComplete && rating != null
+              ? (rating / 5) * 92
+              : 0
 
             return (
               <motion.div
@@ -229,14 +216,25 @@ export default function Moment({ onNext, avd }) {
 
                 {/* Vertical mark */}
                 <svg width="14" height="92">
+                  {/* Outline frame — always visible */}
                   <rect
                     x="5" y="0"
                     width="4" height="92"
-                    fill={fill}
-                    stroke={strokeColor}
+                    fill="transparent"
+                    stroke={COLORS.inkCreamSecondary}
                     strokeWidth="1.2"
-                    strokeDasharray={(!isComplete && !isActive) || response === null ? '3 3' : ''}
+                    strokeDasharray={!isComplete && !isActive ? '3 3' : ''}
                   />
+                  {/* Rated fill — height proportional to rating */}
+                  {isComplete && rating != null && (
+                    <rect
+                      x="5"
+                      y={92 - filledHeight}
+                      width="4"
+                      height={filledHeight}
+                      fill={COLORS.inkCream}
+                    />
+                  )}
                   {/* Active progress overlay */}
                   {isActive && stage === 'playing' && (
                     <rect
@@ -248,6 +246,18 @@ export default function Moment({ onNext, avd }) {
                     />
                   )}
                 </svg>
+
+                {/* Rating numeral below the mark, after rating */}
+                {isComplete && rating != null && (
+                  <div style={{
+                    fontFamily: FONTS.serif,
+                    fontStyle: 'italic',
+                    fontSize: 11,
+                    color: COLORS.inkCreamSecondary,
+                  }}>
+                    {rating}
+                  </div>
+                )}
               </motion.div>
             )
           })}
@@ -282,39 +292,52 @@ export default function Moment({ onNext, avd }) {
               }}>
                 did that feel right?
               </div>
-              <div style={{ display: 'flex', gap: 48 }}>
-                <button
-                  onClick={() => recordResponse('yes')}
-                  style={{
-                    background: 'transparent',
-                    border: `1px solid ${COLORS.inkCreamSecondary}`,
-                    color: COLORS.inkCream,
-                    fontFamily: FONTS.serif,
-                    fontStyle: 'italic',
-                    fontSize: 16,
-                    padding: '10px 26px',
-                    borderRadius: 4,
-                    cursor: 'pointer',
-                  }}
-                >
-                  yes
-                </button>
-                <button
-                  onClick={() => recordResponse('no')}
-                  style={{
-                    background: 'transparent',
-                    border: `1px solid ${COLORS.inkCreamSecondary}`,
-                    color: COLORS.inkCream,
-                    fontFamily: FONTS.serif,
-                    fontStyle: 'italic',
-                    fontSize: 16,
-                    padding: '10px 26px',
-                    borderRadius: 4,
-                    cursor: 'pointer',
-                  }}
-                >
-                  no
-                </button>
+
+              {/* 5-point rating dots */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+                {[1, 2, 3, 4, 5].map(rating => (
+                  <button
+                    key={rating}
+                    onClick={() => recordResponse(rating)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: '50%',
+                      background: 'transparent',
+                      border: `1px solid ${COLORS.inkCreamSecondary}`,
+                      color: COLORS.inkCream,
+                      fontFamily: FONTS.serif,
+                      fontStyle: 'italic',
+                      fontSize: 14,
+                      cursor: 'pointer',
+                      padding: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'background 0.2s',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = COLORS.scoreAmber + '40' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                  >
+                    {rating}
+                  </button>
+                ))}
+              </div>
+
+              {/* Scale labels */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                width: 240,
+                fontFamily: FONTS.serif,
+                fontStyle: 'italic',
+                fontSize: 11,
+                color: COLORS.inkCreamSecondary,
+                marginTop: -12,
+              }}>
+                <span>not at all</span>
+                <span>completely</span>
               </div>
             </motion.div>
           )}
