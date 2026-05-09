@@ -2,26 +2,42 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import OrchestraEngine from '../orchestra/OrchestraEngine.js'
 import ConductingEngine from '../orchestra/ConductingEngine.js'
-import VoiceScheduler from '../orchestra/VoiceScheduler.js'
 import BriefingScreen from '../orchestra/BriefingScreen.jsx'
-import ReturnScreen from '../orchestra/ReturnScreen.jsx'
+import ClosingCard from '../orchestra/ClosingCard.jsx'
 import { startOrchestraPreload, isPreloadComplete } from '../orchestra/preloader.js'
-import { STARTS, TOTAL_DURATION } from '../orchestra/constants.js'
+import {
+  PHASES,
+  BRIEFING_DURATION,
+  END_FADE_DURATION,
+  CLOSING_CARD_DURATION,
+} from '../orchestra/constants.js'
+import StemPlayer from '../lib/stemPlayer.js'
+import { scoreArchetype } from '../lib/scoreArchetype.js'
 
 export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx }) {
-  const [phase, setPhase] = useState(() => isPreloadComplete() ? 'briefing' : 'loading') // loading | briefing | experience | return
+  const [phase, setPhase] = useState(() => isPreloadComplete() ? 'briefing' : 'loading') // loading | briefing | experience | closing
   const [loadProgress, setLoadProgress] = useState(0)
 
   const engineRef = useRef(null)
   const conductingRef = useRef(null)
-  const schedulerRef = useRef(null)
   const audioCtxRef = useRef(null)
+  const songDurationRef = useRef(0)
+  const archetypeIdRef = useRef(null)
   const rafRef = useRef(null)
   const startRef = useRef(null)
   const lastRef = useRef(null)
-  const returnTonePlayed = useRef(false)
-  const returnToneFaded = useRef(false)
+  const fadeStartedRef = useRef(false)
   const wakeLockRef = useRef(null)
+
+  // Score the archetype now so we know which Forer line to show on the
+  // closing card. This is purely a read — scoreArchetype is deterministic
+  // given current AVD + phase data.
+  useEffect(() => {
+    try {
+      const scored = scoreArchetype(avd.getAVD(), avd.getPhaseData())
+      archetypeIdRef.current = scored?.archetypeId || null
+    } catch { /* leave null — ClosingCard handles missing */ }
+  }, [avd])
 
   // ─── Initialize on mount ──────────────────────────────────────────────────
 
@@ -30,11 +46,10 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
 
     async function init() {
       if (!revealAudioRef?.current) {
-        console.error('Orchestra: no audio element from Reveal')
+        console.error('Orchestra: no audio handoff from Reveal')
         return
       }
 
-      // Reuse the AudioContext created during Entry phase tap — already resumed
       const audioCtx = getAudioCtx()
       if (!audioCtx) {
         console.error('Orchestra: no AudioContext available')
@@ -42,17 +57,14 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
       }
       audioCtxRef.current = audioCtx
 
-      // Ensure it's running (it should be from the Entry tap)
       if (audioCtx.state === 'suspended') {
         await audioCtx.resume()
       }
 
-      // ConductingEngine
       const conducting = new ConductingEngine()
       conductingRef.current = conducting
       await conducting.requestPermission()
 
-      // OrchestraEngine — reuse shared preloaded buffers (warmed during Reveal)
       const engine = new OrchestraEngine(audioCtx)
       engineRef.current = engine
 
@@ -65,15 +77,45 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
 
       engine.init()
 
-      // Connect song immediately — AudioContext is already running from Entry tap
+      // Connect audio sources from Reveal handoff. Capture song duration
+      // so the engine knows when to fade out.
       try {
-        engine.connectSong(revealAudioRef.current)
+        const handoff = revealAudioRef.current
+        if (handoff instanceof StemPlayer) {
+          // 4-stem path: detach the running BufferSources from Reveal's
+          // sum bus and route them through the spatial graph.
+          const sources = handoff.detachAndGetSources()
+          if (sources) {
+            engine.connectStems({
+              vocals: sources.vocals,
+              drums:  sources.drums,
+              bass:   sources.bass,
+              other:  sources.other,
+            })
+          }
+          // Pull the longest stem buffer's duration as the song length.
+          const dur = Math.max(
+            handoff.buffers?.vocals?.duration || 0,
+            handoff.buffers?.drums?.duration  || 0,
+            handoff.buffers?.bass?.duration   || 0,
+            handoff.buffers?.other?.duration  || 0,
+          )
+          songDurationRef.current = dur
+        } else if (handoff && handoff.tagName === 'AUDIO') {
+          // Single-master fallback — fan one MediaElementSource into all
+          // 4 stem entry nodes. Spatial layout works; per-stem differentiation
+          // is unavailable until Demucs stems land.
+          const src = audioCtx.createMediaElementSource(handoff)
+          engine.connectStems({ vocals: src, drums: src, bass: src, other: src })
+          songDurationRef.current = handoff.duration || 0
+        }
       } catch (e) {
-        console.error('Orchestra: connectSong failed', e)
+        console.error('Orchestra: connectStems failed', e)
       }
 
-      // VoiceScheduler
-      schedulerRef.current = new VoiceScheduler(engine)
+      // Tell the engine how long the song is so its envelopes know when
+      // the end-fade window opens.
+      engine.setSongDuration(songDurationRef.current)
 
       if (!cancelled) setPhase('briefing')
     }
@@ -93,26 +135,18 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
     }
   }, [])
 
-  // ─── Briefing complete → start experience (auto, no button) ───────────────
+  // ─── Briefing complete → start Bloom + Throne ────────────────────────────
 
   const handleBriefingComplete = useCallback(() => {
     const engine = engineRef.current
     const conducting = conductingRef.current
-    const scheduler = schedulerRef.current
     const audioCtx = audioCtxRef.current
 
     if (!engine || !audioCtx) return
 
-    // Start conducting
     if (conducting) conducting.start()
-
-    // Start audience ambient
     engine.startAudience()
 
-    // Schedule all voices (pass AVD for dynamic line selection)
-    scheduler.scheduleAll(audioCtx.currentTime, avd.getAVD())
-
-    // Wake lock
     if (navigator.wakeLock) {
       navigator.wakeLock.request('screen')
         .then(lock => { wakeLockRef.current = lock })
@@ -121,7 +155,12 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
 
     setPhase('experience')
 
-    // rAF loop
+    // rAF loop — t is seconds since briefing-onset (NOT absolute audio
+    // context time). Bloom fades in from t=BRIEFING_DURATION; song body
+    // runs from t=PHASES.THRONE_START until t=songDuration; closing card
+    // fires once the fade-out completes.
+    const songDuration = songDurationRef.current
+
     const tick = (timestamp) => {
       if (!startRef.current) {
         startRef.current = timestamp
@@ -129,12 +168,14 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
       }
 
       const elapsed = (timestamp - startRef.current) / 1000
-      const dt = (timestamp - lastRef.current) / 1000
       lastRef.current = timestamp
 
-      const t = elapsed + STARTS.BLOOM // absolute time (briefing already happened)
+      // Engine sees absolute briefing-relative time (we add BRIEFING_DURATION
+      // because briefing already happened in the prior phase — but here the
+      // briefing screen already ran, so elapsed=0 corresponds to BLOOM_START).
+      const t = elapsed + PHASES.BLOOM_START
 
-      engine.tick(t, dt)
+      engine.tick(t, songDuration)
 
       if (conducting) {
         const gesture = conducting.getData()
@@ -144,23 +185,21 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
         }
       }
 
-      // Return tone at 14:20 (860s) — sine wave from depth value, fades in over 8s
-      if (t >= STARTS.RETURN + 5 && !returnTonePlayed.current) {
-        engine.playReturnTone(avd.getAVD().d)
-        returnTonePlayed.current = true
+      // Trigger master fade once we hit the end-fade window
+      if (!fadeStartedRef.current && t >= songDuration - END_FADE_DURATION) {
+        fadeStartedRef.current = true
+        engine.fadeOut(END_FADE_DURATION)
       }
 
-      // Fade return tone before stopAll
-      if (t >= STARTS.END - 5 && !returnToneFaded.current) {
-        engine.fadeReturnTone(3)
-        returnToneFaded.current = true
-      }
-
-      // Transition to return at 960s (16:00)
-      if (t >= STARTS.END) {
+      // Transition to closing card after the song completes
+      if (t >= songDuration) {
         engine.stopAll()
-        if (revealAudioRef.current) revealAudioRef.current.pause()
-        setPhase('return')
+        const ref = revealAudioRef.current
+        if (ref) {
+          if (ref instanceof StemPlayer) ref.stop()
+          else if (typeof ref.pause === 'function') ref.pause()
+        }
+        setPhase('closing')
         return
       }
 
@@ -168,7 +207,13 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
     }
 
     rafRef.current = requestAnimationFrame(tick)
-  }, [avd, revealAudioRef])
+  }, [revealAudioRef])
+
+  // ─── Closing card complete → return to entry ─────────────────────────────
+
+  const handleClosingComplete = useCallback(() => {
+    goToPhase('entry')
+  }, [goToPhase])
 
   // ─── Touch handlers (fallback conducting) ─────────────────────────────────
 
@@ -216,7 +261,10 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <BriefingScreen onComplete={handleBriefingComplete} />
+            <BriefingScreen
+              durationMs={BRIEFING_DURATION * 1000}
+              onComplete={handleBriefingComplete}
+            />
           </motion.div>
         )}
 
@@ -231,12 +279,16 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
           />
         )}
 
-        {phase === 'return' && (
-          <motion.div key="return" className="h-full w-full"
+        {phase === 'closing' && (
+          <motion.div key="closing" className="h-full w-full"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            transition={{ duration: 3 }}
+            transition={{ duration: 1.5 }}
           >
-            <ReturnScreen avd={avd} onReturn={() => goToPhase('reveal')} />
+            <ClosingCard
+              archetypeId={archetypeIdRef.current}
+              durationMs={CLOSING_CARD_DURATION * 1000}
+              onComplete={handleClosingComplete}
+            />
           </motion.div>
         )}
       </AnimatePresence>

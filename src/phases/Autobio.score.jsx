@@ -5,7 +5,7 @@ import { COLORS, FONTS } from '../score/tokens'
 import { searchTracks } from '../lib/itunesSearch'
 import { summarizeAutobio } from '../lib/autobio'
 import { useAdmirer } from '../hooks/useAdmirer'
-import { buildCompositionPlan } from '../lib/compositionPlan'
+import { getStems, getMasterUrl, STATIC_FALLBACK_TRACK } from '../lib/stemsCatalog'
 import { scoreArchetype } from '../lib/scoreArchetype'
 import { dominantGemsTag } from '../lib/gemsTags'
 
@@ -16,6 +16,16 @@ const PROMPTS = [
 ]
 
 const SEARCH_DEBOUNCE_MS = 300
+
+// Fire-and-forget HEAD/GET fetches to seed the browser cache during Reflection
+// + Mirror. Reveal will issue real fetch+decodeAudioData when it mounts, but
+// by then the bytes are already cached. Failures are silently ignored.
+function preloadStemUrls(stems) {
+  if (!stems) return
+  for (const url of Object.values(stems)) {
+    try { fetch(url, { method: 'GET', priority: 'low' }).catch(() => {}) } catch { /* preload best-effort */ }
+  }
+}
 
 export default function Autobio({ onNext, avd }) {
   const [promptIdx, setPromptIdx] = useState(0)
@@ -85,38 +95,37 @@ export default function Autobio({ onNext, avd }) {
     setResults([])
 
     if (promptIdx + 1 >= PROMPTS.length) {
-      // Summarize, persist, and kick off Music API generation now that we
-      // have ALL the inputs (autobio era median was unavailable in Moment).
-      // App.jsx stores musicPromise in a ref so it survives Reflection +
-      // Mirror; the ~30s Music API latency overlaps those phases.
+      // Summarize, persist, and resolve the matched archetype's pre-recorded
+      // 4-stem set. Stems are static R2 assets (no API latency); Reveal still
+      // does the fetch + decode work in parallel with Reflection + Mirror.
       const summary = summarizeAutobio(songsRef.current)
       avd.setPhaseData('autobio', summary)
 
       const phaseData = avd.getPhaseData()
       const avdValues = avd.getAVD()
       const scored = scoreArchetype(avdValues, phaseData)
-      const plan = buildCompositionPlan({
+      const stems = getStems(scored.archetypeId, scored.variationId)
+      const masterUrl = getMasterUrl(scored.archetypeId, scored.variationId)
+      const stemsBundle = stems
+        ? { kind: 'stems', stems, masterUrl, archetypeId: scored.archetypeId, variationId: scored.variationId }
+        : { kind: 'master', url: masterUrl || STATIC_FALLBACK_TRACK, archetypeId: scored.archetypeId, variationId: scored.variationId }
+
+      // Pre-warm both stem URLs and the per-archetype master so Reveal's
+      // fallback path is also already in cache by the time it runs.
+      void preloadStemUrls(stems)
+      void preloadStemUrls({ master: masterUrl })
+
+      // Carry hedonic / gems context forward — Orchestra uses these to bias
+      // the live mix even though they no longer change the composed master.
+      const sessionExtras = {
         archetypeId: scored.archetypeId,
         variationId: scored.variationId,
         eraMedian: phaseData.autobio?.eraSummary?.median,
         dominantGemsTag: dominantGemsTag(phaseData.gems?.excerpts),
         hedonic: phaseData.moment?.hedonic ?? null,
-      })
-      const musicPromise = plan
-        ? fetch('/api/compose', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ composition_plan: plan }),
-          })
-            .then(async (res) => {
-              if (!res.ok) throw new Error(`compose failed: ${res.status}`)
-              const blob = await res.blob()
-              return URL.createObjectURL(blob)
-            })
-            .catch(() => '/chamber/tracks/track-a.mp3')
-        : Promise.resolve('/chamber/tracks/track-a.mp3')
+      }
 
-      setTimeout(() => onNext({ autobio: summary, musicPromise }), 800)
+      setTimeout(() => onNext({ autobio: summary, stemsBundle, ...sessionExtras }), 800)
     } else {
       setPromptIdx(promptIdx + 1)
     }

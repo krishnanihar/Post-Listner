@@ -1,44 +1,31 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import Paper from '../score/Paper'
-import Stave from '../score/Stave'
-import { Linea, Vox, Tremolo, Tactus } from '../score/marks'
-import { COLORS, FONTS } from '../score/tokens'
-import { playVoice } from '../score/voice'
-import { avdEngine } from '../engine/avd'
+import { COLORS } from '../score/tokens'
 
-export default function BriefingScreen({ onComplete }) {
-  const [blackOverlay, setBlackOverlay] = useState(0) // 0 to 1
-  const [showDarkScore, setShowDarkScore] = useState(false)
+/**
+ * Orchestra v3 BriefingScreen — silent threshold rite.
+ *
+ * 12 s total. Cream paper with an animated baton silhouette in slow
+ * conductor's-arc motion. Around 8 s in the screen begins darkening; by
+ * 12 s it's fully dark and the song begins materializing through Bloom.
+ *
+ * No text, no voice. Per the brief, the gesture vocabulary is discovered
+ * proprioceptively — the baton just suggests "this is what you're holding."
+ */
+export default function BriefingScreen({ onComplete, durationMs = 12000 }) {
+  const [blackOverlay, setBlackOverlay] = useState(0)
   const completedRef = useRef(false)
-
-  const phaseData = avdEngine.getPhaseData()
-  const avdValues = avdEngine.getAVD()
 
   useEffect(() => {
     const timers = []
     const t = (ms, fn) => timers.push(setTimeout(fn, ms))
 
-    // t=4: Voice line 1 — "This is your music..."
-    t(4000, () => playVoice('/chamber/voices/v2/01-briefing-ownership.mp3'))
-
-    // t=12: begin darkening — opacity 0 → 0.4 over 2s
-    t(12000, () => setBlackOverlay(0.4))
-
-    // t=16: opacity 0.4 → 0.85 over 2s
-    t(16000, () => setBlackOverlay(0.85))
-
-    // t=18: Voice line 2 — "...close your eyes"
-    t(18000, () => playVoice('/chamber/voices/v2/02-briefing-close-eyes.mp3'))
-
-    // t=26: opacity → 1.0 (screen goes black on "Now close your eyes")
-    t(26000, () => setBlackOverlay(1))
-
-    // t=28: show dark version of score
-    t(28000, () => setShowDarkScore(true))
-
-    // t=32: complete — experience begins
-    t(32000, () => {
+    // Two-stage darkening so the threshold feels deliberate, not abrupt.
+    // ~67% of the way → soft dim; final 17% → full black.
+    t(Math.round(durationMs * 0.67), () => setBlackOverlay(0.55))
+    t(Math.round(durationMs * 0.83), () => setBlackOverlay(1.0))
+    t(durationMs, () => {
       if (!completedRef.current) {
         completedRef.current = true
         onComplete()
@@ -46,73 +33,67 @@ export default function BriefingScreen({ onComplete }) {
     })
 
     return () => timers.forEach(clearTimeout)
-  }, [onComplete])
-
-  // Build spectrum marks
-  const spectrumMarks = (phaseData.spectrum?.pairs || []).map((p, i) => ({
-    x: 20 + i * 38 + 19,
-    dip: p.choice === 'left' ? 'left' : 'right',
-  }))
-
-  const depthLayers = phaseData.depth?.finalLayer || 0
-
-  const renderScore = (variant) => {
-    const ink = variant === 'cream' ? COLORS.inkCream : COLORS.inkDark
-    const inkSec = variant === 'cream' ? COLORS.inkCreamSecondary : COLORS.inkDarkSecondary
-
-    return (
-      <svg viewBox="0 0 360 600" preserveAspectRatio="xMidYMid meet"
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-        {/* Spectrum stave */}
-        <Stave width={310} y={90} color={ink} />
-        <text x="5" y={84} fill={inkSec} fontSize="8" fontFamily={FONTS.serif} fontStyle="italic">spectrum</text>
-        {spectrumMarks.map((m, i) => (
-          <g key={i} transform={`translate(${m.x}, 96)`}>
-            <Linea size={30} dip={m.dip} color={ink} />
-          </g>
-        ))}
-
-        {/* Depth stave */}
-        <Stave width={310} y={180} color={ink} />
-        <text x="5" y={174} fill={inkSec} fontSize="8" fontFamily={FONTS.serif} fontStyle="italic">depth</text>
-        {Array.from({ length: depthLayers }, (_, i) => (
-          <g key={i} transform={`translate(${30 + i * 20}, 182)`}>
-            <Vox size={10} color={ink} />
-          </g>
-        ))}
-
-        {/* Textures stave */}
-        <Stave width={310} y={270} color={ink} />
-        <text x="5" y={264} fill={inkSec} fontSize="8" fontFamily={FONTS.serif} fontStyle="italic">textures</text>
-
-        {/* Moment stave */}
-        <Stave width={310} y={360} color={ink} />
-        <text x="5" y={354} fill={inkSec} fontSize="8" fontFamily={FONTS.serif} fontStyle="italic">moment</text>
-        <g transform="translate(20, 366)">
-          <Tactus width={290} color={ink} amplitude={4} frequency={3 + avdValues.a * 4} />
-        </g>
-      </svg>
-    )
-  }
+  }, [onComplete, durationMs])
 
   return (
     <div style={{ position: 'absolute', inset: 0 }}>
-      {/* Cream paper with score — visible under the overlay */}
       <Paper variant="cream">
-        {/* Page header */}
+        {/* Centered baton in slow conductor's-arc motion */}
         <div style={{
-          position: 'absolute', top: 32, left: 24, right: 24,
-          display: 'flex', justifyContent: 'space-between',
-          fontSize: 11, color: COLORS.inkCreamSecondary,
-          fontFamily: FONTS.serif, fontStyle: 'italic',
+          position: 'absolute', inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
-          <span>vi. reveal</span>
+          <svg
+            viewBox="-100 -100 200 200"
+            preserveAspectRatio="xMidYMid meet"
+            style={{ width: 240, height: 240 }}
+          >
+            {/* Faint arc-path hint — suggests the gesture envelope */}
+            <ellipse
+              cx="0" cy="0" rx="60" ry="36"
+              fill="none"
+              stroke={COLORS.inkCreamSecondary}
+              strokeWidth="0.4"
+              strokeDasharray="2 4"
+              opacity="0.35"
+            />
+
+            {/* Animated baton group — pivot around the handle (bottom-center) */}
+            <motion.g
+              animate={{
+                rotate: [-22, 22, -22],
+              }}
+              transition={{
+                duration: 4,        // 4-second arc cycle ≈ 60 BPM gesture
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+              style={{ transformOrigin: '0px 50px' }}
+            >
+              {/* Baton shaft — thin tapered line, ~80px long */}
+              <line
+                x1="0" y1="50"
+                x2="0" y2="-30"
+                stroke={COLORS.inkCream}
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+              {/* Tip — small dot at the lighter end */}
+              <circle cx="0" cy="-30" r="2" fill={COLORS.inkCream} />
+              {/* Handle — slightly thicker, suggests grip */}
+              <line
+                x1="0" y1="50"
+                x2="0" y2="42"
+                stroke={COLORS.inkCream}
+                strokeWidth="4"
+                strokeLinecap="round"
+              />
+            </motion.g>
+          </svg>
         </div>
-        <div style={{ position: 'absolute', top: 50, left: 24, right: 24, height: 0.5, background: COLORS.inkCreamSecondary, opacity: 0.5 }} />
-        {renderScore('cream')}
       </Paper>
 
-      {/* Black overlay — the inversion */}
+      {/* Dim-to-black overlay — final threshold into the spatial bed */}
       <motion.div
         style={{
           position: 'absolute', inset: 0,
@@ -121,33 +102,10 @@ export default function BriefingScreen({ onComplete }) {
         }}
         animate={{ opacity: blackOverlay }}
         transition={{
-          duration: blackOverlay <= 0.4 ? 1.5 : blackOverlay <= 0.85 ? 2 : 1,
+          duration: blackOverlay <= 0.55 ? 2 : 1.2,
           ease: 'easeIn',
         }}
       />
-
-      {/* Dark score — fades in after pure black moment */}
-      {showDarkScore && (
-        <motion.div
-          style={{ position: 'absolute', inset: 0 }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 3 }}
-        >
-          <Paper variant="dark">
-            <div style={{
-              position: 'absolute', top: 32, left: 24, right: 24,
-              display: 'flex', justifyContent: 'space-between',
-              fontSize: 11, color: COLORS.inkDarkSecondary,
-              fontFamily: FONTS.serif, fontStyle: 'italic',
-            }}>
-              <span>vi. reveal</span>
-            </div>
-            <div style={{ position: 'absolute', top: 50, left: 24, right: 24, height: 0.5, background: COLORS.inkDarkSecondary, opacity: 0.5 }} />
-            {renderScore('dark')}
-          </Paper>
-        </motion.div>
-      )}
     </div>
   )
 }

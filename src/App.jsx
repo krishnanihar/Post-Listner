@@ -39,12 +39,12 @@ function App() {
     }
   }, [phase])
 
-  const musicPromiseRef = useRef(null)
+  const stemsBundleRef = useRef(null)
   const revealAudioRef = useRef(null)
 
   const nextPhase = useCallback((data = {}) => {
-    const { musicPromise, ...rest } = data
-    if (musicPromise) musicPromiseRef.current = musicPromise
+    const { stemsBundle, ...rest } = data
+    if (stemsBundle) stemsBundleRef.current = stemsBundle
     setSessionData(prev => ({ ...prev, ...rest }))
     const idx = PHASES.indexOf(phase)
     if (idx < PHASES.length - 1) {
@@ -65,7 +65,7 @@ function App() {
     moment: <Moment onNext={nextPhase} avd={avdEngine} inputMode={inputMode} />,
     autobio: <Autobio onNext={nextPhase} avd={avdEngine} />,
     reflection: <Reflection onNext={nextPhase} avd={avdEngine} />,
-    reveal: <Reveal onNext={nextPhase} avd={avdEngine} sessionData={{ ...sessionData, musicPromise: musicPromiseRef.current }} revealAudioRef={revealAudioRef} />,
+    reveal: <Reveal onNext={nextPhase} avd={avdEngine} sessionData={{ ...sessionData, stemsBundle: stemsBundleRef.current }} revealAudioRef={revealAudioRef} getAudioCtx={getAudioCtx} />,
     orchestra: <Orchestra avd={avdEngine} revealAudioRef={revealAudioRef} goToPhase={goToPhase} getAudioCtx={getAudioCtx} />,
   }
 

@@ -1,81 +1,70 @@
-import { STARTS, SECTIONS, FRACTURE, TRACK_B, GAINS, DUCK, CONDUCTING, CONDUCTING_EXAGGERATION } from './constants.js'
-import { HALL_IR_FILE, TRACK_B_FILE, AUDIENCE_FILES, OVATION_FILE } from './scripts.js'
+import {
+  PHASES,
+  BRIEFING_DURATION,
+  BLOOM_DURATION,
+  END_FADE_DURATION,
+  STEMS,
+  EARLY_REFLECTIONS,
+  YAW_SPOTLIGHT,
+  GAINS,
+  CONDUCTING,
+  distanceCutoff,
+} from './constants.js'
+import { HALL_IR_FILE, AUDIENCE_FILES } from './scripts.js'
 import { lerp, clamp, sphericalToCartesian } from '../chamber/utils/math.js'
 
+const STEM_NAMES = ['VOCALS', 'DRUMS', 'BASS', 'OTHER']
+
 /**
- * Master audio graph for the Orchestra experience.
+ * Master audio graph for the Orchestra v3 (3-phase, voice-free).
  *
- * Audio architecture:
- *   songSource → dryGain (fades during Bloom)
- *              → 3-band split (LOW/MID/HIGH) → per-section gain → per-section HRTF panner
- *                → duckGain → hallConvolver (wet) + hallDry → compressor → destination
+ * Per-stem (mono):
+ *   stemEntry → stemGain → eqFilter → distanceLP → conductingFilter
+ *     ├→ HRTFPanner(stemAzimuth)                         → directBus
+ *     └→ reverbSend gain                                 → reverbBus
  *
- *   trackB → trackBFilter → trackBGain → trackBPanner → compressor
- *   audience → audienceGain → compressor
- *   ovation → ovationGain → ovationPanner → compressor
- *   binaural (L+R sine → merger) → binauralGain → compressor
- *   voices → voiceGain → compressor
+ * Shared (mono → stereo):
+ *   reverbBus → 6× [delay → wallFilter → gain → HRTFPanner] → directBus
+ *   reverbBus → ConvolverNode(binaural hall IR) → wetGain   → directBus
+ *
+ * Output:
+ *   directBus → masterCompressor → masterGain → ctx.destination
+ *
+ * Bypass (per spatial-audio Priority 6):
+ *   binaural (oscL+oscR → ChannelMerger) → binauralGain → ctx.destination
+ *
+ * v3 changes from v2: no Track B, no voices/duck, no ovation, no fracture
+ * curves, binaural locked at constant 10 Hz alpha, no Ascent/Dissolution
+ * envelopes — Track A holds at GAINS.TRACK_A throughout once Bloom completes.
  */
 export default class OrchestraEngine {
   constructor(audioCtx) {
     this.ctx = audioCtx
-    this.buffers = new Map() // path → AudioBuffer
+    this.buffers = new Map()
 
-    // Song source
-    this.songSource = null
-    this.dryGain = null
-    this.splitGain = null
+    this.stems = {}
 
-    // 3-band split
-    this.sections = {} // { LOW: { filter, gain, panner }, MID: { ... }, HIGH: { ... } }
-
-    // Hall reverb
+    this.reverbBus = null
+    this.reflectionPanners = []
     this.hallConvolver = null
     this.hallWetGain = null
-    this.hallDryGain = null
+    this.directBus = null
 
-    // Duck
-    this.duckGain = null
-
-    // Track B
-    this.trackBSources = []
-    this.trackBFilter = null
-    this.trackBGain = null
-    this.trackBPanner = null
-    this.trackBStarted = false
-    this.trackBAngle = 0
-
-    // Audience
     this.audienceSources = []
     this.audienceGain = null
 
-    // Ovation
-    this.ovationSource = null
-    this.ovationGain = null
-    this.ovationPanner = null
-
-    // Binaural
     this.binauralLeft = null
     this.binauralRight = null
     this.binauralMerger = null
     this.binauralGain = null
 
-    // Voices
-    this.voiceGain = null
-    this.activeSources = [] // track all for cleanup
+    this.activeSources = []
 
-    // Master
     this.compressor = null
     this.masterGain = null
 
-    // Section coupling (computed from FRACTURE curves)
-    this.sectionCoupling = { LOW: 1.0, MID: 1.0, HIGH: 1.0 }
-
-    // Conducting filter (shared across sections)
-    this.conductingFilter = null
-
-    // Drift seeds for azimuth random walk
-    this._driftSeeds = { LOW: Math.random() * 100, MID: Math.random() * 100, HIGH: Math.random() * 100 }
+    this._driftSeeds = Object.fromEntries(STEM_NAMES.map(n => [n, Math.random() * 100]))
+    this._lastT = 0
   }
 
   // ─── Preload ─────────────────────────────────────────────────────────────────
@@ -115,153 +104,101 @@ export default class OrchestraEngine {
     this.compressor.connect(this.masterGain)
     this.masterGain.connect(ctx.destination)
 
-    // Duck gain (sidechain for voice ducking)
-    this.duckGain = ctx.createGain()
-    this.duckGain.gain.value = 1.0
+    // Direct bus — sum of spatialized sources before final compression
+    this.directBus = ctx.createGain()
+    this.directBus.gain.value = 1.0
+    this.directBus.connect(this.compressor)
 
-    // Hall convolver reverb (wet/dry parallel)
+    // Reverb bus (mono — pre-HRTF sends from each stem)
+    this.reverbBus = ctx.createGain()
+    this.reverbBus.gain.value = 1.0
+
+    // Late reverb (binaural hall IR convolver)
     if (hallIRBuffer) {
       this.hallConvolver = ctx.createConvolver()
       this.hallConvolver.buffer = hallIRBuffer
       this.hallWetGain = ctx.createGain()
       this.hallWetGain.gain.value = 0.0
-      this.hallDryGain = ctx.createGain()
-      this.hallDryGain.gain.value = 1.0
 
-      this.duckGain.connect(this.hallConvolver)
+      this.reverbBus.connect(this.hallConvolver)
       this.hallConvolver.connect(this.hallWetGain)
-      this.hallWetGain.connect(this.compressor)
-
-      this.duckGain.connect(this.hallDryGain)
-      this.hallDryGain.connect(this.compressor)
-    } else {
-      // No IR — direct connection
-      this.duckGain.connect(this.compressor)
+      this.hallWetGain.connect(this.directBus)
     }
 
-    // Dry path (stereo, pre-split)
-    this.dryGain = ctx.createGain()
-    this.dryGain.gain.value = 1.0
-    this.dryGain.connect(this.compressor) // dry goes direct
+    // Early reflections (6 surfaces, image-source method, shared across stems)
+    this._buildEarlyReflections()
 
-    // Split path gain (crossfade with dry during Bloom)
-    this.splitGain = ctx.createGain()
-    this.splitGain.gain.value = 0.0
+    // Per-stem mono chains (entry node → caller connects their source here)
+    for (const name of STEM_NAMES) {
+      const cfg = STEMS[name]
+      const stem = {}
 
-    // Conducting filter (shared, for filter cutoff control)
-    // All section panners → conductingFilter → duckGain
-    this.conductingFilter = ctx.createBiquadFilter()
-    this.conductingFilter.type = 'lowpass'
-    this.conductingFilter.frequency.value = 4000
-    this.conductingFilter.Q.value = 1
-    this.conductingFilter.connect(this.duckGain)
+      stem.entry = ctx.createGain()
+      stem.entry.gain.value = 1.0
 
-    // 3-band split sections
-    for (const [name, cfg] of Object.entries(SECTIONS)) {
-      const section = {}
+      stem.gain = ctx.createGain()
+      stem.gain.gain.value = 1.0
 
-      if (name === 'MID') {
-        // Bandpass: highpass 250Hz + lowpass 2500Hz in series
-        section.filterHP = ctx.createBiquadFilter()
-        section.filterHP.type = 'highpass'
-        section.filterHP.frequency.value = cfg.cutoffLow
-        section.filterHP.Q.value = 0.7
+      stem.eqFilter = ctx.createBiquadFilter()
+      stem.eqFilter.type = 'peaking'
+      stem.eqFilter.frequency.value = 1000
+      stem.eqFilter.gain.value = 0
+      stem.eqFilter.Q.value = 1
 
-        section.filterLP = ctx.createBiquadFilter()
-        section.filterLP.type = 'lowpass'
-        section.filterLP.frequency.value = cfg.cutoffHigh
-        section.filterLP.Q.value = 0.7
+      stem.distanceLP = ctx.createBiquadFilter()
+      stem.distanceLP.type = 'lowpass'
+      stem.distanceLP.frequency.value = distanceCutoff(cfg.distance)
+      stem.distanceLP.Q.value = 0.7
 
-        section.filterHP.connect(section.filterLP)
-        section.filter = section.filterHP // entry point
-      } else {
-        section.filter = ctx.createBiquadFilter()
-        section.filter.type = cfg.type
-        section.filter.frequency.value = cfg.cutoff
-        section.filter.Q.value = 0.7
-      }
+      stem.conductingFilter = ctx.createBiquadFilter()
+      stem.conductingFilter.type = 'lowpass'
+      stem.conductingFilter.frequency.value = 4000
+      stem.conductingFilter.Q.value = 1
 
-      section.gain = ctx.createGain()
-      section.gain.gain.value = 1.0
+      stem.panner = ctx.createPanner()
+      stem.panner.panningModel = 'HRTF'
+      stem.panner.distanceModel = 'inverse'
+      stem.panner.refDistance = 1
+      stem.panner.maxDistance = 20
+      stem.panner.rolloffFactor = 1
+      stem.panner.coneInnerAngle = 360
+      stem.panner.coneOuterAngle = 360
+      const pos = sphericalToCartesian(cfg.azimuth, cfg.elevation, cfg.distance)
+      stem.panner.positionX.value = pos.x
+      stem.panner.positionY.value = pos.y
+      stem.panner.positionZ.value = pos.z
 
-      section.panner = ctx.createPanner()
-      section.panner.panningModel = 'HRTF'
-      section.panner.distanceModel = 'inverse'
-      section.panner.refDistance = 1
-      section.panner.maxDistance = 20
-      section.panner.rolloffFactor = 1
-      section.panner.coneInnerAngle = 360
-      section.panner.coneOuterAngle = 360
+      stem.reverbSend = ctx.createGain()
+      stem.reverbSend.gain.value = cfg.reverbSend
 
-      // Set initial position
-      const pos = sphericalToCartesian(cfg.azimuth || 0, cfg.elevation || 0, cfg.distance || 2)
-      section.panner.positionX.value = pos.x
-      section.panner.positionY.value = pos.y
-      section.panner.positionZ.value = pos.z
+      stem.entry.connect(stem.gain)
+      stem.gain.connect(stem.eqFilter)
+      stem.eqFilter.connect(stem.distanceLP)
+      stem.distanceLP.connect(stem.conductingFilter)
 
-      // Connect: splitGain → filter → gain → panner → duckGain
-      const lastFilter = name === 'MID' ? section.filterLP : section.filter
-      lastFilter.connect(section.gain)
-      section.gain.connect(section.panner)
-      section.panner.connect(this.conductingFilter)
+      // Branch: direct via HRTF + reverb send (pre-HRTF mono)
+      stem.conductingFilter.connect(stem.panner)
+      stem.panner.connect(this.directBus)
 
-      this.sections[name] = section
+      stem.conductingFilter.connect(stem.reverbSend)
+      stem.reverbSend.connect(this.reverbBus)
+
+      this.stems[name] = stem
     }
 
-    // Track B nodes (source created on demand)
-    this.trackBFilter = ctx.createBiquadFilter()
-    this.trackBFilter.type = 'lowpass'
-    this.trackBFilter.frequency.value = TRACK_B.INITIAL_LOWPASS
-
-    this.trackBGain = ctx.createGain()
-    this.trackBGain.gain.value = 0.0
-
-    this.trackBPanner = ctx.createPanner()
-    this.trackBPanner.panningModel = 'HRTF'
-    this.trackBPanner.distanceModel = 'inverse'
-    this.trackBPanner.refDistance = 1
-    this.trackBPanner.maxDistance = 20
-    this.trackBPanner.rolloffFactor = 1
-    this.trackBPanner.coneInnerAngle = 360
-    this.trackBPanner.coneOuterAngle = 360
-    const tbPos = sphericalToCartesian(90, 0, 4)
-    this.trackBPanner.positionX.value = tbPos.x
-    this.trackBPanner.positionY.value = tbPos.y
-    this.trackBPanner.positionZ.value = tbPos.z
-
-    this.trackBFilter.connect(this.trackBGain)
-    this.trackBGain.connect(this.trackBPanner)
-    this.trackBPanner.connect(this.compressor)
-
-    // Audience
+    // Audience murmur (constant level once Bloom completes)
     this.audienceGain = ctx.createGain()
     this.audienceGain.gain.value = 0.0
-    this.audienceGain.connect(this.compressor)
+    this.audienceGain.connect(this.directBus)
 
-    // Ovation
-    this.ovationGain = ctx.createGain()
-    this.ovationGain.gain.value = 0.0
-    this.ovationPanner = ctx.createPanner()
-    this.ovationPanner.panningModel = 'HRTF'
-    this.ovationPanner.distanceModel = 'inverse'
-    this.ovationPanner.refDistance = 1
-    this.ovationPanner.maxDistance = 20
-    this.ovationPanner.rolloffFactor = 1
-    const ovPos = sphericalToCartesian(180, 0, 3)
-    this.ovationPanner.positionX.value = ovPos.x
-    this.ovationPanner.positionY.value = ovPos.y
-    this.ovationPanner.positionZ.value = ovPos.z
-    this.ovationGain.connect(this.ovationPanner)
-    this.ovationPanner.connect(this.compressor)
-
-    // Binaural
+    // Binaural — locked at constant 10 Hz alpha, BYPASSES the compressor
     this.binauralLeft = ctx.createOscillator()
     this.binauralLeft.type = 'sine'
     this.binauralLeft.frequency.value = GAINS.BINAURAL.CARRIER
 
     this.binauralRight = ctx.createOscillator()
     this.binauralRight.type = 'sine'
-    this.binauralRight.frequency.value = GAINS.BINAURAL.CARRIER + 10 // alpha
+    this.binauralRight.frequency.value = GAINS.BINAURAL.CARRIER + GAINS.BINAURAL.BEAT_HZ
 
     this.binauralMerger = ctx.createChannelMerger(2)
     this.binauralGain = ctx.createGain()
@@ -270,140 +207,119 @@ export default class OrchestraEngine {
     this.binauralLeft.connect(this.binauralMerger, 0, 0)
     this.binauralRight.connect(this.binauralMerger, 0, 1)
     this.binauralMerger.connect(this.binauralGain)
-    this.binauralGain.connect(this.compressor)
+    this.binauralGain.connect(ctx.destination)  // bypass compressor + master
 
     this.binauralLeft.start()
     this.binauralRight.start()
-
-    // Voice gain
-    this.voiceGain = ctx.createGain()
-    this.voiceGain.gain.value = 1.0
-    this.voiceGain.connect(this.compressor)
   }
 
-  // ─── Connect Song ────────────────────────────────────────────────────────────
+  _buildEarlyReflections() {
+    const ctx = this.ctx
+    for (const er of EARLY_REFLECTIONS) {
+      const delay = ctx.createDelay(0.05)
+      delay.delayTime.value = er.delayMs / 1000
 
-  connectSong(audioElement) {
-    this.songSource = this.ctx.createMediaElementSource(audioElement)
+      const wallFilter = ctx.createBiquadFilter()
+      wallFilter.type = 'lowpass'
+      wallFilter.frequency.value = er.lpHz
+      wallFilter.Q.value = 0.7
 
-    // Dry path (fades to 0 during Bloom)
-    this.songSource.connect(this.dryGain)
+      const gain = ctx.createGain()
+      gain.gain.value = Math.pow(10, er.gainDb / 20)
 
-    // Split path: song → splitGain → each section filter
-    this.songSource.connect(this.splitGain)
-    for (const section of Object.values(this.sections)) {
-      this.splitGain.connect(section.filter)
+      const panner = ctx.createPanner()
+      panner.panningModel = 'HRTF'
+      panner.distanceModel = 'inverse'
+      panner.refDistance = 1
+      panner.maxDistance = 20
+      panner.rolloffFactor = 1
+      const pos = sphericalToCartesian(er.azimuth, er.elevation, 1.5)
+      panner.positionX.value = pos.x
+      panner.positionY.value = pos.y
+      panner.positionZ.value = pos.z
+
+      this.reverbBus.connect(delay)
+      delay.connect(wallFilter)
+      wallFilter.connect(gain)
+      gain.connect(panner)
+      panner.connect(this.directBus)
+
+      this.reflectionPanners.push({ name: er.name, panner, gain })
+    }
+  }
+
+  // ─── Connect Stems ────────────────────────────────────────────────────────────
+
+  /**
+   * Wire 4 source nodes (already running, sample-aligned) into the spatial graph.
+   * @param {{vocals: AudioNode, drums: AudioNode, bass: AudioNode, other: AudioNode}} sourceNodes
+   */
+  connectStems(sourceNodes) {
+    if (!sourceNodes || !this.stems.VOCALS) return
+    const map = {
+      VOCALS: sourceNodes.vocals,
+      DRUMS:  sourceNodes.drums,
+      BASS:   sourceNodes.bass,
+      OTHER:  sourceNodes.other,
+    }
+    for (const name of STEM_NAMES) {
+      const node = map[name]
+      if (!node) {
+        console.warn(`OrchestraEngine.connectStems: missing source for ${name}`)
+        continue
+      }
+      try {
+        node.connect(this.stems[name].entry)
+      } catch (e) {
+        console.warn(`OrchestraEngine.connectStems: failed to connect ${name}`, e)
+      }
     }
   }
 
   // ─── Tick (frame update) ─────────────────────────────────────────────────────
 
-  tick(t, dt) {
+  /**
+   * t — relative time since briefing start (seconds)
+   * songDuration — full duration of the user's track (seconds)
+   */
+  tick(t, songDuration) {
     const now = this.ctx.currentTime
+    this._lastT = t
 
-    // 1. Bloom crossfade (32s–95s): dry→0, split→1, hall wet→0.55, audience→0.10
-    if (t >= STARTS.BLOOM && t < STARTS.THRONE) {
-      const p = clamp((t - STARTS.BLOOM) / (STARTS.THRONE - STARTS.BLOOM), 0, 1)
-      this.dryGain.gain.setTargetAtTime(1.0 - p, now, 0.1)
-      this.splitGain.gain.setTargetAtTime(p, now, 0.1)
+    // Bloom envelope: hall reverb + audience murmur fade in across the
+    // BLOOM_DURATION window starting at PHASES.BLOOM_START.
+    if (t >= PHASES.BLOOM_START && t < PHASES.THRONE_START) {
+      const p = clamp((t - PHASES.BLOOM_START) / BLOOM_DURATION, 0, 1)
       if (this.hallWetGain) {
-        this.hallWetGain.gain.setTargetAtTime(lerp(GAINS.HALL_WET.BLOOM_START, GAINS.HALL_WET.BLOOM_END, p), now, 0.1)
+        this.hallWetGain.gain.setTargetAtTime(
+          lerp(GAINS.HALL_WET.BLOOM_START, GAINS.HALL_WET.BLOOM_END, p),
+          now, 0.1,
+        )
       }
-      this.audienceGain.gain.setTargetAtTime(lerp(0, GAINS.AUDIENCE.BLOOM, p), now, 0.1)
-    } else if (t >= STARTS.THRONE && this.dryGain.gain.value > 0.01) {
-      // Bloom window missed (e.g. tab was backgrounded) — snap to post-Bloom values
-      this.dryGain.gain.setTargetAtTime(0, now, 0.05)
-      this.splitGain.gain.setTargetAtTime(1, now, 0.05)
-      if (this.hallWetGain) {
+      this.audienceGain.gain.setTargetAtTime(lerp(0, GAINS.AUDIENCE, p), now, 0.1)
+    } else if (t >= PHASES.THRONE_START) {
+      // Snap to post-Bloom values in case Bloom window was missed (tab backgrounded)
+      if (this.hallWetGain && this.hallWetGain.gain.value < GAINS.HALL_WET.BLOOM_END - 0.01) {
         this.hallWetGain.gain.setTargetAtTime(GAINS.HALL_WET.BLOOM_END, now, 0.05)
       }
-      this.audienceGain.gain.setTargetAtTime(GAINS.AUDIENCE.BLOOM, now, 0.05)
-    }
-
-    // 2. Hall reverb wet (grows slightly during Ascent)
-    if (t >= STARTS.ASCENT && t < STARTS.DISSOLUTION && this.hallWetGain) {
-      const p = clamp((t - STARTS.ASCENT) / (STARTS.DISSOLUTION - STARTS.ASCENT), 0, 1)
-      this.hallWetGain.gain.setTargetAtTime(lerp(GAINS.HALL_WET.THRONE, GAINS.HALL_WET.ASCENT_END, p), now, 0.5)
-    }
-
-    // 3. Per-section coupling (FRACTURE curves)
-    for (const name of ['HIGH', 'MID', 'LOW']) {
-      this.sectionCoupling[name] = this._interpolateCurve(FRACTURE[name], t)
-    }
-
-    // 4. Per-section azimuth drift (store for applyConducting to combine)
-    this._currentDrift = this._currentDrift || {}
-    for (const [name, section] of Object.entries(this.sections)) {
-      const coupling = this.sectionCoupling[name]
-      const driftAmount = 1.0 - coupling
-      const cfg = SECTIONS[name]
-      const maxDrift = FRACTURE[`${name}_DRIFT`] || 0
-      const drift = Math.sin(t * 0.1 + this._driftSeeds[name]) * maxDrift * driftAmount
-      this._currentDrift[name] = drift
-      const baseAzimuth = cfg.azimuth || 0
-      const pos = sphericalToCartesian(baseAzimuth + drift, cfg.elevation || 0, cfg.distance || 2)
-      section.panner.positionX.setTargetAtTime(pos.x, now, 0.1)
-      section.panner.positionY.setTargetAtTime(pos.y, now, 0.1)
-      section.panner.positionZ.setTargetAtTime(pos.z, now, 0.1)
-
-      // 5. Per-section detune
-      const maxDetune = FRACTURE[`${name}_DETUNE`] || 0
-      if (maxDetune > 0 && section.filter) {
-        const detune = Math.sin(t * 0.07 + this._driftSeeds[name] * 2) * maxDetune * driftAmount
-        section.filter.detune.setTargetAtTime(detune, now, 0.1)
+      if (this.audienceGain.gain.value < GAINS.AUDIENCE - 0.005) {
+        this.audienceGain.gain.setTargetAtTime(GAINS.AUDIENCE, now, 0.05)
       }
     }
 
-    // 6. Track A master gain
-    const trackAGain = this._getTrackAGain(t)
-    for (const section of Object.values(this.sections)) {
-      section.gain.gain.setTargetAtTime(trackAGain, now, 0.3)
+    // Track A gain — held constant once Bloom completes.
+    const trackAGain = this._getTrackAGain(t, songDuration)
+    for (const name of STEM_NAMES) {
+      this.stems[name].gain.gain.setTargetAtTime(trackAGain, now, 0.3)
     }
 
-    // 7. Track B
-    if (t >= TRACK_B.ENTER && !this.trackBStarted) {
-      this.startTrackB()
-    }
-    if (this.trackBStarted) {
-      const trackBGain = this._getTrackBGain(t)
-      this.trackBGain.gain.setTargetAtTime(trackBGain, now, 0.3)
-
-      // Filter opens over time
-      const filterProgress = clamp((t - TRACK_B.ENTER) / (STARTS.DISSOLUTION - TRACK_B.ENTER), 0, 1)
-      const filterFreq = lerp(TRACK_B.INITIAL_LOWPASS, TRACK_B.FINAL_LOWPASS, filterProgress)
-      this.trackBFilter.frequency.setTargetAtTime(filterFreq, now, 0.5)
-
-      // Orbital position
-      this.trackBAngle += TRACK_B.ORBITAL_SPEED * dt
-      const elevation = t >= STARTS.DISSOLUTION ? lerp(0, 30, clamp((t - STARTS.DISSOLUTION) / 120, 0, 1)) : 0
-      const tbPos = sphericalToCartesian((this.trackBAngle * 180 / Math.PI) % 360, elevation, 4)
-      this.trackBPanner.positionX.setTargetAtTime(tbPos.x, now, 0.05)
-      this.trackBPanner.positionY.setTargetAtTime(tbPos.y, now, 0.05)
-      this.trackBPanner.positionZ.setTargetAtTime(tbPos.z, now, 0.05)
-    }
-
-    // 8. Audience gain (fades out by Dissolution)
-    if (t >= STARTS.THRONE && t < STARTS.DISSOLUTION) {
-      const p = clamp((t - STARTS.THRONE) / (STARTS.DISSOLUTION - STARTS.THRONE), 0, 1)
-      // Audience is at BLOOM level during Throne, fades to 0 by Dissolution
-      if (t >= STARTS.ASCENT) {
-        const fadeP = clamp((t - STARTS.ASCENT) / (STARTS.DISSOLUTION - STARTS.ASCENT), 0, 1)
-        this.audienceGain.gain.setTargetAtTime(lerp(GAINS.AUDIENCE.BLOOM, 0, fadeP), now, 0.5)
-      }
-    } else if (t >= STARTS.DISSOLUTION) {
-      this.audienceGain.gain.setTargetAtTime(0, now, 0.5)
-    }
-
-    // 9. Binaural beat frequency sweep
-    const beatFreq = this._getBinauralBeat(t)
-    this.binauralRight.frequency.setTargetAtTime(GAINS.BINAURAL.CARRIER + beatFreq, now, 0.5)
-
-    // Binaural gain
-    if (t >= STARTS.BLOOM && t < STARTS.RETURN) {
+    // Binaural gain — fade in once Briefing ends, hold through Throne, fade
+    // out across the END_FADE_DURATION tail.
+    if (t >= BRIEFING_DURATION && t < songDuration - END_FADE_DURATION) {
       this.binauralGain.gain.setTargetAtTime(GAINS.BINAURAL.MAX, now, 0.3)
-    } else if (t >= STARTS.RETURN) {
-      const fadeP = clamp((t - STARTS.RETURN) / (STARTS.END - STARTS.RETURN), 0, 1)
-      this.binauralGain.gain.setTargetAtTime(GAINS.BINAURAL.MAX * (1 - fadeP), now, 0.3)
+    } else if (t >= songDuration - END_FADE_DURATION) {
+      const fadeP = clamp((t - (songDuration - END_FADE_DURATION)) / END_FADE_DURATION, 0, 1)
+      this.binauralGain.gain.setTargetAtTime(GAINS.BINAURAL.MAX * (1 - fadeP), now, 0.2)
     }
   }
 
@@ -412,75 +328,67 @@ export default class OrchestraEngine {
   applyConducting(params) {
     if (!params) return
     const now = this.ctx.currentTime
-    const t = this._lastT || 0
+    const t = this._lastT
     const { pan, filterNorm, gestureGain, articulation, downbeat } = params
 
-    // Conducting exaggeration during first 60s of Throne
-    const inExaggeration = t >= CONDUCTING_EXAGGERATION.START && t < CONDUCTING_EXAGGERATION.END
-    const gainMul = inExaggeration ? CONDUCTING_EXAGGERATION.GAIN_MULTIPLIER : 1.0
-    const filterMul = inExaggeration ? CONDUCTING_EXAGGERATION.FILTER_MULTIPLIER : 1.0
+    // Pan offset → user's facing direction in world degrees.
+    // pan=0.5 → 0°; pan=0 → -90°; pan=1 → +90°.
+    const panOffset = (pan - 0.5) * 2
+    const facingDeg = panOffset * 90
 
-    // Pan: tilt emphasizes different sections (gain + spatial movement)
-    // Left tilt (pan < 0.5) → LOW +, HIGH -
-    // Right tilt (pan > 0.5) → HIGH +, LOW -
-    const panOffset = (pan - 0.5) * 2 // -1 to 1
-    const lowBoost = 1.0 + (-panOffset * 0.6) // up to ±4.5dB when tilted
-    const highBoost = 1.0 + (panOffset * 0.6)
+    for (const name of STEM_NAMES) {
+      const stem = this.stems[name]
+      const cfg = STEMS[name]
 
-    // Spatial panner shift from tilt: ±20° azimuth, scaled by avg coupling
-    const avgCouplingForPan = (this.sectionCoupling.LOW + this.sectionCoupling.MID + this.sectionCoupling.HIGH) / 3
-    const panShift = panOffset * 20 * avgCouplingForPan
+      // Yaw-quadrant spotlight — angular distance from facing direction to
+      // this stem's azimuth. Closest stem (within HALFWIDTH) → +BOOST_DB;
+      // opposite (≥180-HALFWIDTH) → -CUT_DB.
+      const ang = angularDistanceDeg(facingDeg, cfg.azimuth)
+      let spotlightDb = 0
+      if (ang <= YAW_SPOTLIGHT.HALFWIDTH_DEG) {
+        const proximity = 1 - (ang / YAW_SPOTLIGHT.HALFWIDTH_DEG)
+        spotlightDb = YAW_SPOTLIGHT.BOOST_DB * proximity
+      } else if (ang >= 180 - YAW_SPOTLIGHT.HALFWIDTH_DEG) {
+        const proximity = 1 - ((180 - ang) / YAW_SPOTLIGHT.HALFWIDTH_DEG)
+        spotlightDb = -YAW_SPOTLIGHT.CUT_DB * proximity
+      }
+      const spotlightLin = Math.pow(10, spotlightDb / 20)
 
-    for (const [name, section] of Object.entries(this.sections)) {
-      const coupling = this.sectionCoupling[name]
-      let sectionGainMod = 1.0
-
-      if (name === 'LOW') sectionGainMod = lerp(1.0, lowBoost, coupling)
-      else if (name === 'HIGH') sectionGainMod = lerp(1.0, highBoost, coupling)
-
-      // Gesture size → dynamics (with exaggeration multiplier)
+      // Gesture size → dynamics
       const dynamicsGain = lerp(
         CONDUCTING.GESTURE_SIZE_GAIN_MIN,
         CONDUCTING.GESTURE_SIZE_GAIN_MAX,
-        clamp(gestureGain * coupling * gainMul, 0, 1)
+        clamp(gestureGain, 0, 1),
       )
 
-      const finalGain = dynamicsGain * sectionGainMod
-      section.gain.gain.setTargetAtTime(
-        clamp(finalGain * this._getTrackAGain(this._lastT || 0), 0, 1.5),
-        now,
-        CONDUCTING.INTENSITY_TC
-      )
+      const trackAGain = this._getTrackAGain(t, this._songDuration || 9999)
+      const finalGain = clamp(trackAGain * dynamicsGain * spotlightLin, 0, 1.5)
+      stem.gain.gain.setTargetAtTime(finalGain, now, CONDUCTING.INTENSITY_TC)
 
-      // Shift section panner azimuth based on tilt (combine with fracture drift)
-      const cfg = SECTIONS[name]
-      const drift = this._currentDrift?.[name] || 0
-      const finalAz = (cfg.azimuth || 0) + drift + panShift * coupling
-      const pos = sphericalToCartesian(finalAz, cfg.elevation || 0, cfg.distance || 2)
-      section.panner.positionX.setTargetAtTime(pos.x, now, CONDUCTING.PAN_TC)
-      section.panner.positionY.setTargetAtTime(pos.y, now, CONDUCTING.PAN_TC)
-      section.panner.positionZ.setTargetAtTime(pos.z, now, CONDUCTING.PAN_TC)
-    }
+      // Per-stem conducting filter cutoff
+      const cutoff = 200 + filterNorm * 3800
+      stem.conductingFilter.frequency.setTargetAtTime(cutoff, now, CONDUCTING.FILTER_FREQ_TC)
 
-    // Filter cutoff (shared)
-    if (this.conductingFilter) {
-      const avgCoupling = (this.sectionCoupling.LOW + this.sectionCoupling.MID + this.sectionCoupling.HIGH) / 3
-      const cutoff = 200 + filterNorm * avgCoupling * 3800 * filterMul
-      this.conductingFilter.frequency.setTargetAtTime(cutoff, now, CONDUCTING.FILTER_FREQ_TC)
-    }
-
-    // Articulation → Q spike
-    if (articulation > CONDUCTING.ARTICULATION_THRESHOLD) {
-      const avgCoupling = (this.sectionCoupling.LOW + this.sectionCoupling.MID + this.sectionCoupling.HIGH) / 3
-      if (avgCoupling > 0.05 && this.conductingFilter) {
+      // Articulation → Q spike
+      if (articulation > CONDUCTING.ARTICULATION_THRESHOLD) {
         const targetQ = CONDUCTING.ARTICULATION_Q_BASE +
           articulation * (CONDUCTING.ARTICULATION_Q_MAX - CONDUCTING.ARTICULATION_Q_BASE)
-        this.conductingFilter.Q.setTargetAtTime(targetQ, now, 0.01)
-        this.conductingFilter.Q.setTargetAtTime(CONDUCTING.ARTICULATION_Q_BASE, now + 0.02, CONDUCTING.ARTICULATION_DECAY_TC)
+        stem.conductingFilter.Q.setTargetAtTime(targetQ, now, 0.01)
+        stem.conductingFilter.Q.setTargetAtTime(
+          CONDUCTING.ARTICULATION_Q_BASE,
+          now + 0.02,
+          CONDUCTING.ARTICULATION_DECAY_TC,
+        )
       }
+
+      // Per-stem panner shift from tilt (azimuth offset)
+      const finalAz = cfg.azimuth + facingDeg * 0.3
+      const pos = sphericalToCartesian(finalAz, cfg.elevation, cfg.distance)
+      stem.panner.positionX.setTargetAtTime(pos.x, now, CONDUCTING.PAN_TC)
+      stem.panner.positionY.setTargetAtTime(pos.y, now, CONDUCTING.PAN_TC)
+      stem.panner.positionZ.setTargetAtTime(pos.z, now, CONDUCTING.PAN_TC)
     }
 
-    // Downbeat accent
     if (downbeat && downbeat.fired) {
       this._applyDownbeat(downbeat.intensity)
     }
@@ -489,28 +397,28 @@ export default class OrchestraEngine {
   _applyDownbeat(intensity) {
     const now = this.ctx.currentTime
 
-    // Gain spike on each section
-    for (const section of Object.values(this.sections)) {
-      const currentGain = section.gain.gain.value
+    for (const name of STEM_NAMES) {
+      const stem = this.stems[name]
+      const currentGain = stem.gain.gain.value
       const spike = CONDUCTING.DOWNBEAT_GAIN_SPIKE_MIN +
         intensity * (CONDUCTING.DOWNBEAT_GAIN_SPIKE_MAX - CONDUCTING.DOWNBEAT_GAIN_SPIKE_MIN)
       const spikeGain = Math.min(1.5, currentGain * spike)
 
-      section.gain.gain.cancelScheduledValues(now)
-      section.gain.gain.setValueAtTime(spikeGain, now)
-      section.gain.gain.setTargetAtTime(currentGain, now + 0.01, CONDUCTING.DOWNBEAT_GAIN_DECAY_TC)
-    }
+      stem.gain.gain.cancelScheduledValues(now)
+      stem.gain.gain.setValueAtTime(spikeGain, now)
+      stem.gain.gain.setTargetAtTime(currentGain, now + 0.01, CONDUCTING.DOWNBEAT_GAIN_DECAY_TC)
 
-    // Q spike on conducting filter
-    if (this.conductingFilter) {
       const targetQ = CONDUCTING.DOWNBEAT_Q_MIN +
         intensity * (CONDUCTING.DOWNBEAT_Q_MAX - CONDUCTING.DOWNBEAT_Q_MIN)
-      this.conductingFilter.Q.cancelScheduledValues(now)
-      this.conductingFilter.Q.setValueAtTime(targetQ, now)
-      this.conductingFilter.Q.setTargetAtTime(CONDUCTING.ARTICULATION_Q_BASE, now + 0.01, CONDUCTING.DOWNBEAT_Q_DECAY_TC)
+      stem.conductingFilter.Q.cancelScheduledValues(now)
+      stem.conductingFilter.Q.setValueAtTime(targetQ, now)
+      stem.conductingFilter.Q.setTargetAtTime(
+        CONDUCTING.ARTICULATION_Q_BASE,
+        now + 0.01,
+        CONDUCTING.DOWNBEAT_Q_DECAY_TC,
+      )
     }
 
-    // Percussive noise transient
     this._playDownbeatTransient(intensity)
   }
 
@@ -543,88 +451,12 @@ export default class OrchestraEngine {
     source.stop(now + duration + 0.01)
   }
 
-  // ─── Track B ─────────────────────────────────────────────────────────────────
-
-  startTrackB() {
-    const buffer = this.buffers.get(TRACK_B_FILE)
-    if (!buffer || this.trackBStarted) return
-    this.trackBStarted = true
-
-    this._playTrackBLoop(buffer)
-  }
-
-  _playTrackBLoop(buffer) {
-    const overlap = 2 // seconds of crossfade overlap
-    const now = this.ctx.currentTime
-
-    // First source with per-source gain for crossfade
-    const sourceGain = this.ctx.createGain()
-    sourceGain.gain.value = 1.0
-    sourceGain.connect(this.trackBFilter)
-
-    const source = this.ctx.createBufferSource()
-    source.buffer = buffer
-    source.connect(sourceGain)
-    source.start(now)
-    this.trackBSources.push(source)
-    this.activeSources.push(source)
-
-    // Schedule fade-out for first source at its end
-    const firstFadeStart = now + buffer.duration - overlap
-    sourceGain.gain.setValueAtTime(1.0, firstFadeStart)
-    sourceGain.gain.linearRampToValueAtTime(0, firstFadeStart + overlap)
-
-    // Schedule next loop before this one ends, anchored to previous source's end
-    let lastStartAt = now
-    const loopLen = buffer.duration - overlap
-    const scheduleNext = () => {
-      if (!this.trackBStarted) return
-      let startAt = lastStartAt + loopLen
-      // If startAt is in the past (timer throttled / tab backgrounded),
-      // advance to the next future crossfade point to avoid stacking sources.
-      while (startAt < this.ctx.currentTime - overlap) {
-        startAt += loopLen
-      }
-      // Clamp to now — never pass a past time to start()
-      const actualStart = Math.max(startAt, this.ctx.currentTime)
-
-      // Per-source gain for crossfade
-      const nextGain = this.ctx.createGain()
-      nextGain.gain.value = 0.0
-      nextGain.connect(this.trackBFilter)
-
-      const nextSource = this.ctx.createBufferSource()
-      nextSource.buffer = buffer
-      nextSource.connect(nextGain)
-      nextSource.start(actualStart)
-      lastStartAt = actualStart
-      this.trackBSources.push(nextSource)
-      this.activeSources.push(nextSource)
-
-      // Fade in new source over overlap period
-      nextGain.gain.setValueAtTime(0, actualStart)
-      nextGain.gain.linearRampToValueAtTime(1.0, actualStart + overlap)
-
-      // Pre-schedule fade-out for this source at its end
-      const fadeOutAt = actualStart + buffer.duration - overlap
-      nextGain.gain.setValueAtTime(1.0, fadeOutAt)
-      nextGain.gain.linearRampToValueAtTime(0, fadeOutAt + overlap)
-
-      // Schedule the one after that
-      const delay = Math.max(0, (startAt - this.ctx.currentTime - 1) * 1000)
-      setTimeout(scheduleNext, delay)
-    }
-
-    setTimeout(scheduleNext, (buffer.duration - overlap - 1) * 1000)
-  }
-
   // ─── Audience ────────────────────────────────────────────────────────────────
 
   startAudience() {
-    // Place audience sources behind/around the listener for surround immersion
     const positions = [
-      { azimuth: 210, elevation: 5, distance: 4 },  // left-rear
-      { azimuth: 150, elevation: 5, distance: 4 },  // right-rear
+      { azimuth: 210, elevation: 5, distance: 4 },
+      { azimuth: 150, elevation: 5, distance: 4 },
     ]
 
     AUDIENCE_FILES.forEach((path, i) => {
@@ -637,7 +469,7 @@ export default class OrchestraEngine {
       const panner = this.ctx.createPanner()
       panner.panningModel = 'HRTF'
       panner.distanceModel = 'inverse'
-      panner.refDistance = 4  // match placement distance — no distance attenuation
+      panner.refDistance = 4
       panner.maxDistance = 20
       panner.rolloffFactor = 1
       panner.coneInnerAngle = 360
@@ -656,215 +488,49 @@ export default class OrchestraEngine {
     })
   }
 
-  // ─── Ovation ─────────────────────────────────────────────────────────────────
+  // ─── Fade Out (called near song end by Orchestra.jsx) ───────────────────────
 
-  scheduleOvation(ctxStartTime) {
-    const buffer = this.buffers.get(OVATION_FILE)
-    if (!buffer) return
-
-    const playAt = ctxStartTime + GAINS.OVATION.TIME
-    const source = this.ctx.createBufferSource()
-    source.buffer = buffer
-    source.connect(this.ovationGain)
-
-    // Gain envelope: 0 → peak over 2s, hold, decay over 4s
-    const dur = GAINS.OVATION.DURATION
-    this.ovationGain.gain.setValueAtTime(0, playAt)
-    this.ovationGain.gain.linearRampToValueAtTime(GAINS.OVATION.PEAK, playAt + 2)
-    this.ovationGain.gain.setValueAtTime(GAINS.OVATION.PEAK, playAt + dur - 4)
-    this.ovationGain.gain.exponentialRampToValueAtTime(0.001, playAt + dur)
-
-    source.start(playAt)
-    this.activeSources.push(source)
-  }
-
-  // ─── Voice Scheduling ───────────────────────────────────────────────────────
-
-  scheduleVoice(buffer, startTime, options = {}) {
-    if (!buffer) return
-
-    const source = this.ctx.createBufferSource()
-    source.buffer = buffer
-
-    const gainNode = this.ctx.createGain()
-    gainNode.gain.value = options.gain || 1.0
-
-    if (options.lowpass) {
-      const filter = this.ctx.createBiquadFilter()
-      filter.type = 'lowpass'
-      filter.frequency.value = options.lowpass
-      source.connect(filter).connect(gainNode)
-    } else {
-      source.connect(gainNode)
-    }
-
-    if (options.azimuth != null || options.elevation != null) {
-      const panner = this.ctx.createPanner()
-      panner.panningModel = 'HRTF'
-      panner.distanceModel = 'inverse'
-      panner.refDistance = 1
-      panner.maxDistance = 20
-      panner.rolloffFactor = 1
-      const pos = sphericalToCartesian(options.azimuth || 0, options.elevation || 0, options.distance || 3)
-      panner.positionX.value = pos.x
-      panner.positionY.value = pos.y
-      panner.positionZ.value = pos.z
-      gainNode.connect(panner)
-      panner.connect(this.voiceGain)
-    } else {
-      gainNode.connect(this.voiceGain)
-    }
-
-    // Sidechain duck if requested — pre-roll 50ms so bed is attenuated before first syllable
-    if (options.duck && this.duckGain) {
-      const duckStart = Math.max(this.ctx.currentTime, startTime - 0.05)
-      this.duckGain.gain.setTargetAtTime(DUCK.GAIN, duckStart, DUCK.ATTACK_TC)
-      // Release after buffer duration
-      const releaseTime = startTime + buffer.duration
-      this.duckGain.gain.setTargetAtTime(1.0, releaseTime, DUCK.RELEASE_TC)
-    }
-
-    source.start(startTime)
-    this.activeSources.push(source)
-    return source
-  }
-
-  // ─── Fade Out ────────────────────────────────────────────────────────────────
-
-  fadeOut(duration = 5) {
+  fadeOut(duration = END_FADE_DURATION) {
     const now = this.ctx.currentTime
     this.masterGain.gain.setTargetAtTime(0, now, duration / 4)
-  }
-
-  // ─── Return Tone ─────────────────────────────────────────────────────────────
-
-  playReturnTone(depthValue) {
-    let freq = 65
-    if (depthValue >= 0.6) freq = 55
-    else if (depthValue >= 0.3) freq = 82
-
-    const osc = this.ctx.createOscillator()
-    osc.type = 'sine'
-    osc.frequency.value = freq
-
-    const gain = this.ctx.createGain()
-    gain.gain.value = 0
-
-    osc.connect(gain)
-    gain.connect(this.compressor)
-
-    const now = this.ctx.currentTime
-    osc.start()
-    gain.gain.setValueAtTime(0, now)
-    gain.gain.linearRampToValueAtTime(0.25, now + 5)
-
-    this.activeSources.push(osc)
-    this._returnToneGain = gain
-    this._returnToneStartTime = now
-  }
-
-  // ─── Fade Return Tone ───────────────────────────────────────────────────────
-
-  fadeReturnTone(duration = 2) {
-    if (!this._returnToneGain) return
-    const now = this.ctx.currentTime
-    // Compute expected ramp value mathematically (Safari may not reflect
-    // the instantaneous ramped value via AudioParam.value)
-    const elapsed = now - (this._returnToneStartTime || now)
-    const currentVal = Math.min(0.25, 0.25 * (elapsed / 5))
-    this._returnToneGain.gain.cancelScheduledValues(now)
-    this._returnToneGain.gain.setValueAtTime(currentVal, now)
-    this._returnToneGain.gain.setTargetAtTime(0, now, duration / 4)
   }
 
   // ─── Stop All ────────────────────────────────────────────────────────────────
 
   stopAll() {
-    this.trackBStarted = false
-
     for (const source of this.activeSources) {
-      try { source.stop() } catch (e) { /* already stopped */ }
+      try { source.stop() } catch { /* already stopped */ }
     }
     this.activeSources = []
-    this.trackBSources = []
     this.audienceSources = []
-
-    try { this.binauralLeft.stop() } catch (e) {}
-    try { this.binauralRight.stop() } catch (e) {}
+    try { this.binauralLeft.stop() } catch { /* already stopped */ }
+    try { this.binauralRight.stop() } catch { /* already stopped */ }
   }
+
+  // Allow Orchestra.jsx to inform the engine of the song duration so
+  // applyConducting can compute the Track A envelope tail correctly.
+  setSongDuration(seconds) { this._songDuration = seconds }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-  _interpolateCurve(curve, t) {
-    if (!curve || curve.length === 0) return 1.0
-    if (t <= curve[0][0]) return curve[0][1]
-    if (t >= curve[curve.length - 1][0]) return curve[curve.length - 1][1]
-
-    for (let i = 0; i < curve.length - 1; i++) {
-      const [t0, v0] = curve[i]
-      const [t1, v1] = curve[i + 1]
-      if (t >= t0 && t <= t1) {
-        const p = (t - t0) / (t1 - t0)
-        return lerp(v0, v1, p)
-      }
+  _getTrackAGain(t, songDuration) {
+    // Briefing — silent
+    if (t < PHASES.BLOOM_START) return 0
+    // Bloom — fade in
+    if (t < PHASES.THRONE_START) {
+      const p = (t - PHASES.BLOOM_START) / BLOOM_DURATION
+      return lerp(0, GAINS.TRACK_A, p)
     }
-    return curve[curve.length - 1][1]
+    // Throne — held flat
+    if (t < songDuration - END_FADE_DURATION) return GAINS.TRACK_A
+    // End fade
+    const fadeP = clamp((t - (songDuration - END_FADE_DURATION)) / END_FADE_DURATION, 0, 1)
+    return lerp(GAINS.TRACK_A, 0, fadeP)
   }
+}
 
-  _getTrackAGain(t) {
-    this._lastT = t
-    if (t < STARTS.THRONE) return GAINS.TRACK_A.BLOOM
-    if (t < STARTS.ASCENT) return GAINS.TRACK_A.THRONE
-    if (t < STARTS.DISSOLUTION) {
-      const p = (t - STARTS.ASCENT) / (STARTS.DISSOLUTION - STARTS.ASCENT)
-      return lerp(GAINS.TRACK_A.THRONE, GAINS.TRACK_A.ASCENT_END, p)
-    }
-    if (t < 720) { // gone by ~12:00
-      const p = (t - STARTS.DISSOLUTION) / (720 - STARTS.DISSOLUTION)
-      return lerp(GAINS.TRACK_A.ASCENT_END, GAINS.TRACK_A.DISSOLUTION_END, p)
-    }
-    return 0
-  }
-
-  _getTrackBGain(t) {
-    if (t < TRACK_B.ENTER) return 0
-    // Crossover at ~8:40 (520s)
-    if (t < 520) {
-      const p = (t - TRACK_B.ENTER) / (520 - TRACK_B.ENTER)
-      return lerp(GAINS.TRACK_B.ENTER, GAINS.TRACK_B.CROSSOVER, p)
-    }
-    if (t < STARTS.DISSOLUTION) {
-      const p = (t - 520) / (STARTS.DISSOLUTION - 520)
-      return lerp(GAINS.TRACK_B.CROSSOVER, GAINS.TRACK_B.DISSOLUTION, p)
-    }
-    if (t < STARTS.RETURN) {
-      // Check for "Good" swell near 835s (line 34)
-      if (t >= 833 && t <= 840) {
-        const swellP = t < 835 ? (t - 833) / 2 : (840 - t) / 5
-        return lerp(GAINS.TRACK_B.DISSOLUTION, GAINS.TRACK_B.PEAK, clamp(swellP, 0, 1))
-      }
-      return GAINS.TRACK_B.DISSOLUTION
-    }
-    // Return phase: fade out
-    const p = (t - STARTS.RETURN) / (STARTS.END - STARTS.RETURN)
-    return lerp(GAINS.TRACK_B.DISSOLUTION, GAINS.TRACK_B.SILENCE, clamp(p, 0, 1))
-  }
-
-  _getBinauralBeat(t) {
-    // Bloom–Throne: 10Hz (alpha)
-    if (t < STARTS.ASCENT) return 10
-    // Ascent: 10Hz→6Hz
-    if (t < STARTS.DISSOLUTION) {
-      const p = (t - STARTS.ASCENT) / (STARTS.DISSOLUTION - STARTS.ASCENT)
-      return lerp(10, 6, p)
-    }
-    // Dissolution: 6Hz→4Hz
-    if (t < STARTS.RETURN) {
-      const p = (t - STARTS.DISSOLUTION) / (STARTS.RETURN - STARTS.DISSOLUTION)
-      return lerp(6, 4, p)
-    }
-    // Return: 4Hz→2Hz→off
-    const p = (t - STARTS.RETURN) / (STARTS.END - STARTS.RETURN)
-    return lerp(4, 2, clamp(p, 0, 1))
-  }
+// Smallest absolute angular difference between two azimuths in degrees [0, 180].
+function angularDistanceDeg(a, b) {
+  const diff = Math.abs(((a - b + 540) % 360) - 180)
+  return diff
 }

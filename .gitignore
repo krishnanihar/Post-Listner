@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Heavy audio assets — served from Cloudflare R2 in prod, not git
+public/stems/
+public/music/
+tmp/
