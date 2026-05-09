@@ -3,15 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Paper from '../score/Paper'
 import { COLORS, FONTS } from '../score/tokens'
 import { audioEngine } from '../engine/audio'
-import { useAdmirer } from '../hooks/useAdmirer'
 
 export default function Entry({ onNext }) {
   const [stage, setStage] = useState('headphones')
   const [name, setName] = useState('')
 
   const droneStopRef = useRef(null)
-
-  const admirer = useAdmirer()
 
   const beginAudio = useCallback(() => {
     audioEngine.init()
@@ -37,11 +34,6 @@ export default function Entry({ onNext }) {
     setStage('threshold')
   }
 
-  // Threshold statement voiced + button appears.
-  useEffect(() => {
-    if (stage !== 'threshold') return
-    admirer.play('entry.threshold')
-  }, [stage]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Unmount cleanup — make sure the drone doesn't outlive the phase
   // (e.g., on deep-link skip or unexpected unmount).

@@ -3,7 +3,6 @@ import { motion } from 'framer-motion'
 import Paper from '../score/Paper'
 import { COLORS, FONTS } from '../score/tokens'
 import { buildReflectionLines } from '../lib/reflectionLines'
-import { useAdmirer } from '../hooks/useAdmirer'
 
 const LINE_FADE_MS = 1200
 const LINE_HOLD_MS = 1700  // time between line appearances
@@ -29,15 +28,12 @@ export default function Reflection({ onNext, avd }) {
   })
   const [visibleCount, setVisibleCount] = useState(0)
 
-  const admirer = useAdmirer()
-
   useEffect(() => {
     const timers = []
     for (let i = 0; i < LINES_TOTAL; i++) {
       timers.push(setTimeout(() => setVisibleCount(i + 1), i * LINE_HOLD_MS + 600))
     }
     timers.push(setTimeout(() => onNext(), LINES_TOTAL * LINE_HOLD_MS + HOLD_AFTER_LAST_MS))
-    admirer.play('reflection.open')
     return () => timers.forEach(clearTimeout)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 

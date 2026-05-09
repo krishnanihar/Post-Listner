@@ -4,16 +4,7 @@ import { audioEngine } from '../engine/audio'
 import ConductingEngine from '../orchestra/ConductingEngine'
 import Paper from '../score/Paper'
 import { COLORS, FONTS } from '../score/tokens'
-import { playVoice, preloadVoices } from '../score/voice'
 import { clamp } from '../chamber/utils/math'
-import { useAdmirer } from '../hooks/useAdmirer'
-
-const VOICE_PATHS = [
-  '/chamber/voices/score/moment-01.mp3',
-  '/chamber/voices/score/moment-02.mp3',
-  '/chamber/voices/score/moment-03.mp3',
-  '/chamber/voices/score/moment-04.mp3',
-]
 
 const DURATION = 30
 
@@ -38,8 +29,6 @@ export default function Moment({ onNext, avd, inputMode }) {
   const [elapsed, setElapsed] = useState(0)
   const [gestureIntensity, setGestureIntensity] = useState(0) // 0-1 for visual feedback
 
-  const admirer = useAdmirer()
-
   const conductingRef = useRef(null)
   const rafRef = useRef(null)
   const trackRef = useRef(null)
@@ -47,7 +36,6 @@ export default function Moment({ onNext, avd, inputMode }) {
   const gestureSum = useRef(0)
   const sampleCount = useRef(0)
   const downbeatCount = useRef(0)
-  const lastVoice03Time = useRef(0)
   const tactusPoints = useRef([])
   const finishedRef = useRef(false)
   const [hurleyVisible, setHurleyVisible] = useState(false)
@@ -56,8 +44,6 @@ export default function Moment({ onNext, avd, inputMode }) {
   const finishPhaseRef = useRef(null)
 
   useEffect(() => {
-    preloadVoices(VOICE_PATHS)
-    admirer.play('moment.intro')
     audioEngine.stopAll()
 
     const engine = new ConductingEngine()
@@ -78,9 +64,7 @@ export default function Moment({ onNext, avd, inputMode }) {
 
     const timers = []
     const t = (ms, fn) => timers.push(setTimeout(fn, ms))
-    t(0, () => playVoice(VOICE_PATHS[0]))
-    t(3300, () => playVoice(VOICE_PATHS[1]))
-    t(5500, () => startPlaying())
+    t(800, () => startPlaying())
 
     return () => {
       engine.stop()
@@ -121,7 +105,6 @@ export default function Moment({ onNext, avd, inputMode }) {
     // fallback ensures Reveal still has a track to play.
     const musicPromise = Promise.resolve('/chamber/tracks/track-a.mp3')
 
-    playVoice(VOICE_PATHS[3])
     setTimeout(() => {
       onNext({
         moment: { totalDownbeats: dbCount, avgGestureGain: avgGesture, hedonic: hedonicRef.current },
@@ -195,10 +178,6 @@ export default function Moment({ onNext, avd, inputMode }) {
           downbeatCount.current++
           setDownbeats(prev => [...prev, { x, y }])
           if (navigator.vibrate) navigator.vibrate(15)
-          if (data.downbeat.intensity > 0.7 && Date.now() - lastVoice03Time.current > 8000) {
-            lastVoice03Time.current = Date.now()
-            playVoice(VOICE_PATHS[2])
-          }
         }
       }
       rafRef.current = requestAnimationFrame(loop)

@@ -4,16 +4,7 @@ import { audioEngine } from '../engine/audio'
 import Score from '../score/Score'
 import { Linea } from '../score/marks'
 import { COLORS, FONTS } from '../score/tokens'
-import { playVoice, preloadVoices } from '../score/voice'
 import { ACTIVE_PAIRS as PAIRS } from '../lib/spectrumPairs'
-import { useAdmirer } from '../hooks/useAdmirer'
-
-const VOICE_PATHS = [
-  '/chamber/voices/score/spectrum-01.mp3',
-  '/chamber/voices/score/spectrum-02.mp3',
-  '/chamber/voices/score/spectrum-03.mp3',
-  '/chamber/voices/score/spectrum-04.mp3',
-]
 
 const STAVE_Y = 280
 const STAVE_WIDTH = 340
@@ -29,8 +20,6 @@ export default function Spectrum({ onNext, avd, inputMode }) {
   const [pairVisible, setPairVisible] = useState(true)
   const [showHint, setShowHint] = useState(true)
   const [transparencyComment, setTransparencyComment] = useState(null)
-
-  const admirer = useAdmirer()
 
   const areaRef = useRef(null)
   const pairRef = useRef(null)
@@ -49,11 +38,6 @@ export default function Spectrum({ onNext, avd, inputMode }) {
   const isMouse = inputMode === 'mouse'
 
   const pair = PAIRS[pairIdx]
-
-  useEffect(() => {
-    preloadVoices(VOICE_PATHS)
-    admirer.play('spectrum.intro')
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const stopAudio = useCallback(() => {
     if (pairRef.current) {
@@ -160,10 +144,6 @@ export default function Spectrum({ onNext, avd, inputMode }) {
       setTransparencyComment(comment)
       setTimeout(() => setTransparencyComment(null), 3500)
     }
-    if (completedPair === 2) playVoice(VOICE_PATHS[0])
-    if (completedPair === 4) playVoice(VOICE_PATHS[1])
-    if (completedPair === 6) playVoice(VOICE_PATHS[2])
-
     setPairVisible(false)
     if (showHint) setShowHint(false)
 
@@ -173,7 +153,6 @@ export default function Spectrum({ onNext, avd, inputMode }) {
         setPairVisible(true)
         setTransitioning(false)
       } else {
-        playVoice(VOICE_PATHS[3])
         avd.setPhaseData('spectrum', {
           pairs: results.current,
           hoveredButNotChosen: hoveredButNotChosen.current,

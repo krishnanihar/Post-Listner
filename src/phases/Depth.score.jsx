@@ -4,17 +4,8 @@ import { audioEngine } from '../engine/audio'
 import Score from '../score/Score'
 import { Vox } from '../score/marks'
 import { COLORS, FONTS } from '../score/tokens'
-import { playVoice, preloadVoices } from '../score/voice'
-import { useAdmirer } from '../hooks/useAdmirer'
 
 const ROMAN = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii']
-
-const VOICE_PATHS = [
-  '/chamber/voices/score/depth-01.mp3',
-  '/chamber/voices/score/depth-02.mp3',
-  '/chamber/voices/score/depth-03.mp3',
-  '/chamber/voices/score/depth-04.mp3',
-]
 
 const STAVE_START_Y = 130
 const STAVE_SPACING = 40
@@ -23,8 +14,6 @@ const STAVE_WIDTH = 340
 export default function Depth({ onNext, avd, inputMode }) {
   const [layers, setLayers] = useState(0)
   const [committed, setCommitted] = useState(false)
-
-  const admirer = useAdmirer()
 
   const layerControl = useRef(null)
   const inactivityTimer = useRef(null)
@@ -37,17 +26,11 @@ export default function Depth({ onNext, avd, inputMode }) {
   const pointerDownTime = useRef(null)
 
   useEffect(() => {
-    preloadVoices(VOICE_PATHS)
-    admirer.play('depth.intro')
     // Start audio engine layered build
     layerControl.current = audioEngine.playLayeredBuild(8)
     layerControl.current.setActiveCount(0)
 
-    // Play first voice cue after fade-in
-    const t = setTimeout(() => playVoice(VOICE_PATHS[0]), 800)
-
     return () => {
-      clearTimeout(t)
       if (layerControl.current) layerControl.current.stop()
       clearTimeout(inactivityTimer.current)
       clearTimeout(longPressTimer.current)
@@ -69,8 +52,6 @@ export default function Depth({ onNext, avd, inputMode }) {
     avd.setDepth(d)
     avd.setPhaseData('depth', { finalLayer, maxLayer, reEngaged: reEng })
 
-    // Voice 04 then advance
-    playVoice(VOICE_PATHS[3])
     setTimeout(() => onNext({ depth: { finalLayer, maxLayer, reEngaged: reEng } }), 1500)
   }, [avd, onNext])
 
@@ -100,10 +81,6 @@ export default function Depth({ onNext, avd, inputMode }) {
     // Track re-engagement
     if (newCount > maxReached.current) maxReached.current = newCount
     if (timeSinceLastTap > 2000 && current > 0) reEngaged.current = true
-
-    // Voice cues
-    if (newCount === 1) playVoice(VOICE_PATHS[1])
-    if (newCount === 3) playVoice(VOICE_PATHS[2])
 
     // Auto-commit at 8
     if (newCount >= 8) {

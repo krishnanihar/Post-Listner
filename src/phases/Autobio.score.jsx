@@ -4,7 +4,6 @@ import Paper from '../score/Paper'
 import { COLORS, FONTS } from '../score/tokens'
 import { searchTracks } from '../lib/itunesSearch'
 import { summarizeAutobio } from '../lib/autobio'
-import { useAdmirer } from '../hooks/useAdmirer'
 import { getStems, getMasterUrl, STATIC_FALLBACK_TRACK } from '../lib/stemsCatalog'
 import { scoreArchetype } from '../lib/scoreArchetype'
 import { dominantGemsTag } from '../lib/gemsTags'
@@ -35,12 +34,6 @@ export default function Autobio({ onNext, avd }) {
   const songsRef = useRef([])
   const debounceRef = useRef(null)
   const abortRef = useRef(null)
-
-  const admirer = useAdmirer()
-
-  useEffect(() => {
-    admirer.play('autobio.intro')
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced iTunes search
   useEffect(() => {
