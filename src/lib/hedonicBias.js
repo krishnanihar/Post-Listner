@@ -6,7 +6,7 @@
 
 const HEDONIC_FALSE_MULTIPLIERS = {
   'quiet-insurgent': 2.0,
-  'slow-glow':       1.6,
+  'slow-glow':       1.4,
   'sky-seeker':      0.06,
   'hearth-keeper':   0.85,
   // late-night-architect and velvet-mystic stay at 1.0

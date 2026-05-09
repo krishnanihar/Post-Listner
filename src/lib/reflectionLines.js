@@ -23,16 +23,15 @@ function buildSpectrumLine(phaseData) {
     return {
       signal: 'no spectrum data',
       interpretation: 'a blank page is also a kind of answer',
+      causal: false,
     }
   }
   const dom = dominantSide(pairs)
   const sample = dom.samples[0] || 'a word'
-  const otherSample = dom.samples[1] || ''
-  const examples = otherSample ? `${sample}, ${otherSample}` : sample
 
   return {
-    signal: `${examples} chosen ${dom.count} of ${dom.total} times`,
-    interpretation: `you favor ${examples.split(',')[0]} — your hand keeps reaching the same way`,
+    signal: `you reached for ${sample} ${dom.count} of ${dom.total} times`,
+    interpretation: `your hand keeps reaching the same way`,
   }
 }
 
@@ -55,18 +54,19 @@ function buildGemsLine(phaseData) {
     return {
       signal: 'no emotion tiles selected',
       interpretation: 'you held back. some things resist naming.',
+      causal: false,
     }
   }
   const interp = {
-    nostalgic:   'you let nostalgia land — most people skip past it',
-    awed:        'you stayed open to wonder — that\'s harder than it sounds',
-    tender:      'tenderness reached you — you let it',
-    melancholic: 'you let the sad ones in. you weren\'t looking away',
+    nostalgic:   'most people skip past it',
+    awed:        'that\'s harder than it sounds',
+    tender:      'you let it reach you',
+    melancholic: 'you weren\'t looking away',
     defiant:     'you found something to push against',
     peaceful:    'you let the room be quiet',
   }[dom] || 'something landed'
   return {
-    signal: `${dom} kept showing up`,
+    signal: `you kept naming it ${dom}`,
     interpretation: interp,
   }
 }
@@ -77,6 +77,7 @@ function buildAutobioLine(phaseData) {
     return {
       signal: 'no songs named',
       interpretation: 'sometimes the song comes later',
+      causal: false,
     }
   }
   const cluster = phaseData.autobio?.eraSummary
@@ -104,6 +105,7 @@ function buildMomentLine(phaseData) {
     return {
       signal: 'no tempo recorded',
       interpretation: 'you held a stillness — that is also a tempo',
+      causal: false,
     }
   }
   let interp
@@ -113,7 +115,7 @@ function buildMomentLine(phaseData) {
   else interp = 'a quickened pulse — the tempo of something arriving'
 
   return {
-    signal: `your tap tempo: ${bpm} BPM`,
+    signal: `you tapped at ${bpm} BPM`,
     interpretation: interp,
   }
 }

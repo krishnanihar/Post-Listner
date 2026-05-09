@@ -131,7 +131,14 @@ export default function Spectrum({ onNext, avd, inputMode }) {
     stopAudio()
 
     const dwellSec = (Date.now() - pairStartTime.current) / 1000
-    const confidence = Math.max(0.2, Math.min(1, (dwellSec - 0.5) / 4.0))
+    // Stillman 2018 / 5-minute taste-extraction redesign: long dwell = conflict
+    // between near-equal utilities, not preference strength. Snap-but-not-impulsive
+    // picks are most reliable; both very-fast and very-slow get discounted.
+    const confidence = dwellSec < 0.4
+      ? 0.5
+      : dwellSec <= 2.0
+        ? 1.0
+        : Math.max(0.3, 1 - (dwellSec - 2.0) / 4.0)
     const sliderPos = Math.min(1, Math.abs(cursorHistoryRef.current[cursorHistoryRef.current.length - 1] || 0))
     const slideCommitmentWeight = getSlideCommitmentWeight(sliderPos)
 

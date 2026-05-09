@@ -84,7 +84,7 @@ export default function Reflection({ onNext, avd }) {
               color: COLORS.inkCream,
               lineHeight: 1.5,
             }}>
-              {line.signal}
+              {line.causal === false ? line.signal : `Because ${line.signal}.`}
             </div>
             <div style={{
               fontFamily: FONTS.serif,

@@ -52,15 +52,14 @@ function selectVariation(archetype, phaseData, rand = Math.random) {
     return ranked[0].variation
   }
 
-  // Fall back to the depth-density heuristic from Phase 1.
+  // Fall back to the depth-density heuristic when autobio is missing.
+  // (Textures phase was removed; era-fit alone is the heuristic now.)
   const depthNorm = Math.min(1, (phaseData.depth?.finalLayer || 1) / 8)
-  const texCount = (phaseData.textures?.preferred || []).length
 
   const variationScores = archetype.variations.map(v => {
     const eraNorm = (v.era - 1960) / 70
     const eraFit = 1 - Math.abs(depthNorm - eraNorm)
-    const textureFit = texCount / 8
-    return { variation: v, score: eraFit * 0.7 + textureFit * 0.3 }
+    return { variation: v, score: eraFit }
   })
 
   variationScores.sort((a, b) => b.score - a.score)
