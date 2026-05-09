@@ -378,45 +378,22 @@ class AudioEngine {
     // Master gain nodes for each side (balance target)
     const masterA = ctx.createGain()
     const masterB = ctx.createGain()
-    // Per-clip makeup gains: equalize RMS loudness between the two clips
-    // (ElevenLabs gens are not loudness-normalized, so one often dominates).
-    // Set to 1.0 by default; recomputed once both buffers decode below.
-    const makeupA = ctx.createGain()
-    const makeupB = ctx.createGain()
     const panA = ctx.createStereoPanner()
     const panB = ctx.createStereoPanner()
     panA.pan.value = -0.8
     panB.pan.value = 0.8
     masterA.gain.value = 0
     masterB.gain.value = 0
-    makeupA.gain.value = 1
-    makeupB.gain.value = 1
-    // Chain: src → env → makeup → master → pan → output.
-    makeupA.connect(masterA).connect(panA).connect(this.masterGain)
-    makeupB.connect(masterB).connect(panB).connect(this.masterGain)
+    masterA.connect(panA).connect(this.masterGain)
+    masterB.connect(panB).connect(this.masterGain)
 
     let stopped = false
     let activeSources = []
     let loopTimers = []
 
-    // Compute RMS over an AudioBuffer's samples — used for per-clip
-    // loudness normalization so neither clip dominates at center balance.
-    const computeRMS = (buffer) => {
-      let sum = 0
-      let count = 0
-      for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
-        const data = buffer.getChannelData(ch)
-        for (let i = 0; i < data.length; i++) {
-          sum += data[i] * data[i]
-        }
-        count += data.length
-      }
-      return count > 0 ? Math.sqrt(sum / count) : 0
-    }
-
     // Crossfade-looping: schedule overlapping buffer sources so the
     // tail of one fades out while the head of the next fades in.
-    const scheduleLoop = (buffer, entry) => {
+    const scheduleLoop = (buffer, masterGain) => {
       if (stopped) return
       const clipDur = buffer.duration
 
@@ -425,7 +402,7 @@ class AudioEngine {
         const src = ctx.createBufferSource()
         const env = ctx.createGain()
         src.buffer = buffer
-        src.connect(env).connect(entry)
+        src.connect(env).connect(masterGain)
 
         const now = ctx.currentTime
         // Fade in over XFADE seconds
@@ -468,23 +445,11 @@ class AudioEngine {
     let pendingBalance = 0
     const ready = Promise.all([loadBuffer(urlA), loadBuffer(urlB)]).then(([bufA, bufB]) => {
       if (stopped) return
-      // Per-clip RMS makeup: equalize loudness between A and B by anchoring
-      // to the pair's average RMS. Boost the quieter clip, attenuate the
-      // louder. Clamp ±6 dB so a near-silent clip doesn't blow up.
-      const rmsA = computeRMS(bufA)
-      const rmsB = computeRMS(bufB)
-      const target = (rmsA + rmsB) / 2
-      const makeupAValue = rmsA > 0.001
-        ? Math.max(0.5, Math.min(2.0, target / rmsA))
-        : 1.0
-      const makeupBValue = rmsB > 0.001
-        ? Math.max(0.5, Math.min(2.0, target / rmsB))
-        : 1.0
-      makeupA.gain.value = makeupAValue
-      makeupB.gain.value = makeupBValue
-      // Start crossfade-looping both clips through their makeup nodes.
-      scheduleLoop(bufA, makeupA)
-      scheduleLoop(bufB, makeupB)
+      // Start crossfade-looping both clips. Loudness normalization is now
+      // baked into the asset files themselves (ffmpeg loudnorm pass at -16
+      // LUFS), so no runtime makeup gain is needed.
+      scheduleLoop(bufA, masterA)
+      scheduleLoop(bufB, masterB)
       // Apply the latest balance (may have been set before load finished)
       applyBalance(pendingBalance)
     })
