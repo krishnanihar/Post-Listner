@@ -1,9 +1,15 @@
 import * as THREE from 'three'
-import { swingTwistDecompose } from './swingTwist'
 import { ANATOMICAL } from './conductorAnatomy'
 
-// World-space axes used for swing-twist decomposition.
-const Y_AXIS = new THREE.Vector3(0, 1, 0)
+// Decomposition order. Phone.js constructs the quaternion via ZXY composition
+// from (alpha, beta, gamma); decomposing the same way recovers those signals
+// independently, regardless of how the phone is held at calibration.
+//
+// Earlier we tried swing-twist around scene-Y to extract yaw vs pitch+roll,
+// but in portrait phone holds gamma (sideways tilt) rotates around the same
+// world axis as alpha (compass yaw) — both are world-Y. Swing-twist conflated
+// them and chest roll was unreachable. ZXY Euler keeps them separate.
+const PHONE_DECOMP_ORDER = 'ZXY'
 
 // Bone names verified by src/conductor/__tests__/conductor-glb.test.js.
 // Same keys are used by the integration test in conductorMotion.test.js.
@@ -50,8 +56,7 @@ export function captureBaseRotations(bones) {
 }
 
 // Pre-allocated workspace to keep useFrame allocation-free.
-const _swing = new THREE.Quaternion()
-const _twist = new THREE.Quaternion()
+const _euler = new THREE.Euler()
 const _delta = new THREE.Quaternion()
 const _axisX = new THREE.Vector3(1, 0, 0)
 const _axisY = new THREE.Vector3(0, 1, 0)
@@ -74,14 +79,16 @@ function clampedAxisDelta(signal, gain, max, axis, out = new THREE.Quaternion())
  * Apply a smoothed, calibrated phone quaternion to the driven bones.
  *
  * Pipeline:
- *   1. Decompose the phone quaternion around world Y → swing + twist.
- *      twist  = pure rotation around vertical (yaw)
- *      swing  = pure rotation around the horizontal plane (pitch + roll)
- *   2. From swing, extract pitch (around X) and roll (around Z) using ZXY
- *      Euler order (which is how phone.js originally constructed the quat
- *      from alpha/beta/gamma — round-trips cleanly).
- *   3. Drive each bone independently. No bone receives the same axis as
- *      another, so rotations cannot compound through the parent chain.
+ *   1. Decompose the phone quaternion using ZXY Euler order (matching how
+ *      phone.js constructs it from {alpha, beta, gamma}). This recovers the
+ *      three signals independently and is robust to phone orientation:
+ *        euler.z = dAlpha (compass heading delta) → conductor head YAW
+ *        euler.x = dBeta  (forward/back tilt)     → conductor head PITCH
+ *        euler.y = dGamma (sideways tilt)         → conductor chest ROLL
+ *   2. Drive each bone with its own dedicated signal axis. No two bones
+ *      share an axis, so rotations don't compound through the parent chain.
+ *   3. Right upper arm = baton arm: phone quaternion as a damped local-space
+ *      delta on top of rest, clamped to ARM_MAX angular distance.
  *
  * This function is pure — it mutates `bones[*].quaternion` only. Safe to
  * call every frame and from outside React.
@@ -91,24 +98,13 @@ function clampedAxisDelta(signal, gain, max, axis, out = new THREE.Quaternion())
  * @param {THREE.Quaternion} phoneQuat              calibrated, smoothed
  */
 export function applyGesturePose(bones, base, phoneQuat) {
-  // 1. Swing-twist around vertical.
-  const { swing, twist } = swingTwistDecompose(phoneQuat, _axisY)
-  _swing.copy(swing)
-  _twist.copy(twist)
+  // 1. ZXY Euler decomposition recovers the original alpha/beta/gamma deltas.
+  _euler.setFromQuaternion(phoneQuat, PHONE_DECOMP_ORDER)
+  const yawSignal   = _euler.z   // dAlpha (compass heading)
+  const pitchSignal = _euler.x   // dBeta  (forward/back tilt)
+  const rollSignal  = _euler.y   // dGamma (sideways tilt)
 
-  // 2. Extract scalar pitch + roll from swing using ZXY order.
-  //    With swing-twist around Y, swing only contains rotation in the
-  //    X-Z plane, so an XZY (or ZXY) decomposition cleanly separates pitch
-  //    (around X) from roll (around Z).
-  const swingEuler = new THREE.Euler().setFromQuaternion(_swing, 'ZXY')
-  const pitchSignal = swingEuler.x
-  const rollSignal  = swingEuler.z
-
-  // Yaw scalar from twist: twist is a rotation around Y, so its angle is
-  // the yaw signal we want.
-  const yawSignal = 2 * Math.atan2(_twist.y, _twist.w)
-
-  // 3. Per-bone application.
+  // 2. Per-bone application.
 
   // 3a. Head: pitch (around X) + yaw (around Y), each clamped, applied as a
   //     local-space delta on top of the rest pose.

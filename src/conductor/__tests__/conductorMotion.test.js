@@ -60,16 +60,19 @@ describe('applyGesturePose', () => {
     const gltf = await loadGLB()
     const bones = findDrivenBones(gltf.scene)
     const base = captureBaseRotations(bones)
-    // 30° roll around world Z (tilt sideways).
+    // 30° rotation around world Y. Under the ZXY Euler decomposition that
+    // matches phone.js's quaternion construction order, world-Y maps to the
+    // gamma axis (sideways tilt) → chest roll. (Pure world-Z would be alpha
+    // → head yaw under the same decomposition.)
     const phone = new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(0, 0, 1), 30 * Math.PI / 180
+      new THREE.Vector3(0, 1, 0), 30 * Math.PI / 180
     )
     applyGesturePose(bones, base, phone)
     const chestDelta = base.chest.clone().invert().multiply(bones.chest.quaternion)
     const chestAngle = 2 * Math.acos(Math.min(1, Math.abs(chestDelta.w)))
     expect(chestAngle).toBeGreaterThan(0.03)
     expect(chestAngle).toBeLessThanOrEqual(ANATOMICAL.CHEST_ROLL_MAX + 0.01)
-    // Head should NOT have leaned sideways from a pure-roll input
+    // Head should NOT have pitched from a pure-roll input
     const headDelta = base.head.clone().invert().multiply(bones.head.quaternion)
     const headAngle = 2 * Math.acos(Math.min(1, Math.abs(headDelta.w)))
     expect(headAngle).toBeLessThan(0.02)
