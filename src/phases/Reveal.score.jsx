@@ -1,34 +1,49 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Paper from '../score/Paper'
-import Mirror from './Mirror.score'
 import { COLORS, FONTS } from '../score/tokens'
 import StemPlayer from '../lib/stemPlayer'
+import { scoreArchetype } from '../lib/scoreArchetype'
+import { getArchetype } from '../lib/archetypes'
 
-const FULL_VOLUME_FADE_MS = 1500       // fade-in from silence → 0.8 when the video starts
+// Tunable timings.
+const MIRROR_DURATION_MS = 3000          // archetype name on cream before video
+const POST_VOICE_TAIL_MS = 4000          // pure-song tail after voiceover ends
+const FULL_VOLUME_FADE_MS = 2500         // song fade-in duration
+const SONG_FADE_LEAD_MS = 2500           // starts this long before voice ends
+
 const FULL_VOLUME_TARGET = 0.8
-
-const LISTENING_TEXT_MS = 2000         // "listen to what it sounds like" text-only beat
-const LISTENING_VIDEO_MS = 10000       // archetype video runtime
-const LISTENING_TOTAL_MS = LISTENING_TEXT_MS + LISTENING_VIDEO_MS
 
 export default function Reveal({ onNext, avd, sessionData, revealAudioRef, getAudioCtx }) {
   const [stage, setStage] = useState('computing')
-  const [listeningPhase, setListeningPhase] = useState('text') // 'text' | 'video'
-  const [archetypeId, setArchetypeId] = useState(null)
 
-  const playerRef = useRef(null)       // StemPlayer (4-stem case) or { kind:'audio', audio }
+  // Score archetype once on mount — used to be Mirror's responsibility.
+  // scoreArchetype is deterministic for archetype id; the variation has
+  // ε-randomness but Mirror only consumed the archetype here.
+  const archetype = useMemo(() => {
+    try {
+      const scored = scoreArchetype(avd.getAVD(), avd.getPhaseData())
+      return scored?.archetypeId ? getArchetype(scored.archetypeId) : null
+    } catch {
+      return null
+    }
+  }, [avd])
+  const archetypeId = archetype?.id || null
+
+  const playerRef = useRef(null)         // StemPlayer or { kind:'audio', audio }
+  const voiceRef = useRef(null)          // HTMLAudioElement for voiceover
   const advancedRef = useRef(false)
   const fadeRafRef = useRef(null)
   const timersRef = useRef([])
+  const songFadeStartedRef = useRef(false)
 
+  // ─── Load song stems silently while computing screen shows ──────────
   useEffect(() => {
     const bundle = sessionData?.stemsBundle
     if (!bundle) {
       setTimeout(() => setStage('mirror'), 0)
       return
     }
-
     const ctx = getAudioCtx?.()
 
     async function loadAudio() {
@@ -39,7 +54,6 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef, getAu
           playerRef.current = player
           if (revealAudioRef) revealAudioRef.current = player
         } else {
-          // Fallback: single master MP3 via HTMLAudio.
           const url = bundle.url || '/chamber/tracks/track-a.mp3'
           const audio = new Audio(url)
           audio.volume = 0
@@ -100,19 +114,61 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef, getAu
     setTimeout(() => onNext(), 1500)
   }, [avd, onNext])
 
-  // Mirror finishes (silent) → 2s text-only beat → 10s archetype video + song fade-up.
-  const handleMirrorComplete = useCallback((meta) => {
-    if (meta?.archetypeId) setArchetypeId(meta.archetypeId)
-    setStage('listening')
-    setListeningPhase('text')
+  // ─── Mirror stage: hold archetype name 3s, then advance to video ─────
+  useEffect(() => {
+    if (stage !== 'mirror') return
+    const t = setTimeout(() => setStage('video'), MIRROR_DURATION_MS)
+    return () => clearTimeout(t)
+  }, [stage])
 
-    const timers = timersRef.current
-    timers.push(setTimeout(() => {
-      setListeningPhase('video')
-      fadeAudio(FULL_VOLUME_TARGET, FULL_VOLUME_FADE_MS)
-    }, LISTENING_TEXT_MS))
-    timers.push(setTimeout(() => finishReveal(), LISTENING_TOTAL_MS))
-  }, [fadeAudio, finishReveal])
+  // ─── Video stage: play voiceover, fade song in near voice end ────────
+  useEffect(() => {
+    if (stage !== 'video') return
+    if (!archetypeId) {
+      // No archetype matched — skip ahead.
+      finishReveal()
+      return
+    }
+
+    const voice = new Audio(`/archetypes/voice/${archetypeId}.mp3`)
+    voice.preload = 'auto'
+    voice.volume = 1.0
+    voiceRef.current = voice
+
+    // Drive the song fade-in off the voice element's playback position so
+    // each archetype's per-file duration self-synchronizes.
+    const onTimeUpdate = () => {
+      if (songFadeStartedRef.current) return
+      if (!voice.duration || voice.duration === Infinity) return
+      const remaining = voice.duration - voice.currentTime
+      if (remaining * 1000 <= SONG_FADE_LEAD_MS) {
+        songFadeStartedRef.current = true
+        fadeAudio(FULL_VOLUME_TARGET, FULL_VOLUME_FADE_MS)
+      }
+    }
+    const onEnded = () => {
+      // Safety: if timeupdate didn't fire late enough to trigger fade, force it.
+      if (!songFadeStartedRef.current) {
+        songFadeStartedRef.current = true
+        fadeAudio(FULL_VOLUME_TARGET, FULL_VOLUME_FADE_MS)
+      }
+      const t = setTimeout(() => finishReveal(), POST_VOICE_TAIL_MS)
+      timersRef.current.push(t)
+    }
+    voice.addEventListener('timeupdate', onTimeUpdate)
+    voice.addEventListener('ended', onEnded)
+    voice.play().catch(() => { /* autoplay may fail — finishReveal still scheduled below as safety */ })
+
+    // Hard ceiling: if voice fails to play or ended event misses, force advance
+    // after a generous window (longest expected voice ~19s + tail + buffer).
+    const ceiling = setTimeout(() => finishReveal(), 30000)
+    timersRef.current.push(ceiling)
+
+    return () => {
+      voice.removeEventListener('timeupdate', onTimeUpdate)
+      voice.removeEventListener('ended', onEnded)
+    }
+  }, [stage, archetypeId, fadeAudio, finishReveal])
 
   // Cleanup
   useEffect(() => {
@@ -120,113 +176,117 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef, getAu
       timersRef.current.forEach(clearTimeout)
       timersRef.current = []
       if (fadeRafRef.current) cancelAnimationFrame(fadeRafRef.current)
+      if (voiceRef.current) {
+        try { voiceRef.current.pause() } catch { /* no-op */ }
+        voiceRef.current = null
+      }
     }
   }, [])
 
   return (
-    <div style={{ position: 'absolute', inset: 0 }}>
-      {stage === 'computing' && (
-        <Paper variant="cream">
+    <div style={{ position: 'absolute', inset: 0, backgroundColor: '#0a0a0f' }}>
+      {/* Computing — cream paper, "composing your score..." */}
+      <AnimatePresence>
+        {stage === 'computing' && (
           <motion.div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontFamily: FONTS.serif,
-              fontStyle: 'italic',
-              fontSize: 16,
-              color: COLORS.inkCreamSecondary,
-            }}
-            animate={{ opacity: [0.3, 0.7, 0.3] }}
-            transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+            key="computing"
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.6 }}
+            style={{ position: 'absolute', inset: 0, zIndex: 2 }}
           >
-            composing your score...
+            <Paper variant="cream">
+              <motion.div
+                style={{
+                  position: 'absolute', inset: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontFamily: FONTS.serif, fontStyle: 'italic',
+                  fontSize: 16, color: COLORS.inkCreamSecondary,
+                }}
+                animate={{ opacity: [0.3, 0.7, 0.3] }}
+                transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+              >
+                composing your score...
+              </motion.div>
+            </Paper>
           </motion.div>
-        </Paper>
-      )}
+        )}
+      </AnimatePresence>
 
-      {stage === 'mirror' && (
-        <Mirror
-          avd={avd}
-          onComplete={handleMirrorComplete}
+      {/* Mirror — cream paper, archetype name */}
+      <AnimatePresence>
+        {stage === 'mirror' && archetype && (
+          <motion.div
+            key="mirror"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1.1, ease: 'easeInOut' }}
+            style={{ position: 'absolute', inset: 0, zIndex: 2 }}
+          >
+            <Paper variant="cream">
+              <div style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '0 36px', textAlign: 'center',
+              }}>
+                <motion.h2
+                  style={{
+                    fontFamily: FONTS.serif,
+                    fontSize: 32,
+                    color: COLORS.inkCream,
+                    lineHeight: 1.1,
+                    margin: 0,
+                    letterSpacing: '0.01em',
+                  }}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 1.4, ease: 'easeOut', delay: 0.1 }}
+                >
+                  {archetype.displayName}
+                </motion.h2>
+              </div>
+            </Paper>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Video stage — archetype video full-bleed, voice + song play over it */}
+      {(stage === 'video' || stage === 'done') && archetypeId && (
+        <motion.video
+          key="archetype-video"
+          src={`/archetypes/${archetypeId}.mp4`}
+          autoPlay
+          muted
+          playsInline
+          preload="auto"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 1.1, ease: 'easeOut' }}
+          style={{
+            position: 'absolute', inset: 0,
+            width: '100%', height: '100%',
+            objectFit: 'cover',
+            zIndex: 0,
+          }}
         />
       )}
 
-      {(stage === 'listening' || stage === 'done') && (
-        <div style={{ position: 'absolute', inset: 0, backgroundColor: '#0a0a0f' }}>
-          <Paper variant="cream">
-            <AnimatePresence mode="wait">
-              {listeningPhase === 'text' && (
-                <motion.div
-                  key="listening-text"
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '0 32px',
-                    textAlign: 'center',
-                  }}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.9, ease: 'easeInOut' }}
-                >
-                  <div style={{
-                    fontFamily: FONTS.serif,
-                    fontStyle: 'italic',
-                    fontSize: 16,
-                    color: COLORS.inkCream,
-                    lineHeight: 1.6,
-                  }}>
-                    listen to what it sounds like
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </Paper>
-
-          {listeningPhase === 'video' && archetypeId && (
-            <motion.video
-              key="archetype-video"
-              src={`/archetypes/${archetypeId}.mp4`}
-              autoPlay
-              muted
-              playsInline
-              preload="auto"
-              style={{
-                position: 'absolute',
-                inset: 0,
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                zIndex: 2,
-              }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 1.0, ease: 'easeOut' }}
-            />
-          )}
-
-          <div style={{
-            position: 'absolute',
-            bottom: 18,
-            left: 0, right: 0,
-            textAlign: 'center',
-            fontFamily: FONTS.mono,
-            fontSize: 9,
-            color: listeningPhase === 'video' ? 'rgba(232, 223, 203, 0.6)' : COLORS.inkCreamSecondary,
-            letterSpacing: '0.1em',
-            zIndex: 3,
-            pointerEvents: 'none',
-            transition: 'color 0.6s ease-out',
-          }}>
-            vii. reveal
-          </div>
+      {/* Subtle vii. reveal label during the video stage */}
+      {(stage === 'video' || stage === 'done') && (
+        <div style={{
+          position: 'absolute',
+          bottom: 18,
+          left: 0, right: 0,
+          textAlign: 'center',
+          fontFamily: FONTS.mono,
+          fontSize: 9,
+          color: 'rgba(232, 223, 203, 0.55)',
+          letterSpacing: '0.1em',
+          zIndex: 3,
+          pointerEvents: 'none',
+        }}>
+          vii. reveal
         </div>
       )}
     </div>
