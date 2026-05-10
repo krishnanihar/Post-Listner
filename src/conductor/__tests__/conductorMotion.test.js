@@ -14,8 +14,13 @@ const GLB_PATH = path.resolve(__dirname, '../../../public/conductor/conductor.gl
 function loadGLB() {
   return new Promise((resolve, reject) => {
     const buf = readFileSync(GLB_PATH)
-    // Convert Buffer -> ArrayBuffer for parser
-    const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+    // Copy bytes into a fresh ArrayBuffer in the test realm. jsdom's
+    // ArrayBuffer global is distinct from Node's Buffer.buffer realm, and
+    // GLTFLoader's `data instanceof ArrayBuffer` check fails when the two
+    // don't match — falling through to a JSON path that misreports the
+    // version. Allocating in-realm sidesteps that.
+    const ab = new ArrayBuffer(buf.byteLength)
+    new Uint8Array(ab).set(buf)
     new GLTFLoader().parse(ab, '', resolve, reject)
   })
 }
