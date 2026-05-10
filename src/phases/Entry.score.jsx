@@ -5,46 +5,59 @@ import { COLORS, FONTS } from '../score/tokens'
 import { audioEngine } from '../engine/audio'
 
 export default function Entry({ onNext }) {
-  const [stage, setStage] = useState('headphones')
+  const [stage, setStage] = useState('intro')
   const [name, setName] = useState('')
 
+  const videoRef = useRef(null)
+  const audioRef = useRef(null)
   const droneStopRef = useRef(null)
+  const tailTimerRef = useRef(null)
 
-  const beginAudio = useCallback(() => {
+  const beginIntro = useCallback(() => {
+    if (stage !== 'intro') return
+
+    // 60 Hz felt anchor under the rite, started inside the user gesture.
     audioEngine.init()
     audioEngine.resume()
-    // Phase 0 threshold drone — 60 Hz felt anchor under the entire rite.
-    // Stops on advance() to leave Spectrum a clean palette.
     if (!droneStopRef.current) {
       droneStopRef.current = audioEngine.playDrone(60, 0.04)
     }
-  }, [])
 
-  const handleHeadphonesTap = () => {
-    if (stage !== 'headphones') return
-    beginAudio()
-    setStage('name')
+    // Play video + voice synchronously inside the user gesture so iOS Safari
+    // and other strict autoplay browsers honor it.
+    if (videoRef.current) {
+      videoRef.current.currentTime = 0
+      videoRef.current.play().catch(() => { /* ignore */ })
+    }
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0
+      audioRef.current.play().catch(() => { /* ignore */ })
+    }
+
+    setStage('video')
+  }, [stage])
+
+  // Video is 29s, voice is ~23.8s. We let the voice finish, then the cosmic
+  // tail (~5s of silent video) breathes before advancing on video.onEnded.
+  const onVideoEnded = () => {
+    if (tailTimerRef.current) clearTimeout(tailTimerRef.current)
+    tailTimerRef.current = setTimeout(() => setStage('name'), 400)
   }
+
+  // Pause the looping video once we leave the video stage to save battery/GPU.
+  useEffect(() => {
+    if (stage !== 'video' && videoRef.current && !videoRef.current.paused) {
+      videoRef.current.pause()
+    }
+  }, [stage])
 
   const handleNameSubmit = () => {
     if (!name.trim()) return
     try {
       localStorage.setItem('postlistener_name', name.trim())
     } catch { /* storage unavailable */ }
-    setStage('threshold')
+    advance()
   }
-
-
-  // Unmount cleanup — make sure the drone doesn't outlive the phase
-  // (e.g., on deep-link skip or unexpected unmount).
-  useEffect(() => {
-    return () => {
-      if (droneStopRef.current) {
-        droneStopRef.current()
-        droneStopRef.current = null
-      }
-    }
-  }, [])
 
   const advance = () => {
     if (droneStopRef.current) {
@@ -54,137 +67,155 @@ export default function Entry({ onNext }) {
     onNext({ name: name.trim() })
   }
 
-  return (
-    <div style={{ position: 'absolute', inset: 0 }}>
-      <Paper variant="cream">
-        <AnimatePresence mode="wait">
-          {stage === 'headphones' && (
-            <motion.div
-              key="headphones"
-              onClick={handleHeadphonesTap}
-              style={{
-                position: 'absolute', inset: 0,
-                display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center',
-                gap: 32, cursor: 'pointer',
-              }}
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              transition={{ duration: 0.6 }}
-            >
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
-                stroke={COLORS.inkCreamSecondary} strokeWidth="1.2"
-                strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
-                <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
-              </svg>
-              <span style={{
-                fontFamily: FONTS.serif, fontStyle: 'italic',
-                fontSize: 14, color: COLORS.inkCreamSecondary,
-              }}>
-                wear headphones
-              </span>
-              <motion.span
-                style={{
-                  fontFamily: FONTS.serif, fontStyle: 'italic',
-                  fontSize: 14, color: COLORS.scoreAmber, marginTop: 24,
-                }}
-                animate={{ opacity: [0, 0.8, 0.5, 0.8] }}
-                transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
-              >
-                tap to begin
-              </motion.span>
-            </motion.div>
-          )}
+  // Unmount cleanup
+  useEffect(() => {
+    return () => {
+      if (droneStopRef.current) {
+        droneStopRef.current()
+        droneStopRef.current = null
+      }
+      if (tailTimerRef.current) {
+        clearTimeout(tailTimerRef.current)
+        tailTimerRef.current = null
+      }
+    }
+  }, [])
 
-          {stage === 'name' && (
-            <motion.div
-              key="name"
+  const showVideo = stage === 'intro' || stage === 'video'
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', backgroundColor: '#0a0a0f' }}>
+      {/* Single video element — blurred while stage='intro', clear during 'video'. */}
+      {showVideo && (
+        <video
+          ref={videoRef}
+          src="/intro/intro.mp4"
+          poster="/intro/introimage.png"
+          muted
+          playsInline
+          preload="auto"
+          onEnded={onVideoEnded}
+          style={{
+            position: 'absolute', inset: 0,
+            width: '100%', height: '100%',
+            objectFit: 'cover',
+            filter: stage === 'intro' ? 'blur(36px) brightness(0.55)' : 'none',
+            transform: stage === 'intro' ? 'scale(1.08)' : 'scale(1)', // hide blurred edge bleed
+            transition: 'filter 1.8s ease-out, transform 1.8s ease-out',
+            zIndex: 0,
+          }}
+        />
+      )}
+
+      <audio
+        ref={audioRef}
+        src="/intro/voice.mp3"
+        preload="auto"
+      />
+
+      <AnimatePresence>
+        {stage === 'intro' && (
+          <motion.div
+            key="intro-overlay"
+            onClick={beginIntro}
+            style={{
+              position: 'absolute', inset: 0,
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              gap: 28,
+              cursor: 'pointer',
+              zIndex: 2,
+              padding: '0 32px',
+            }}
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1.2, ease: 'easeInOut' }}
+          >
+            <span style={{
+              fontFamily: FONTS.serif, fontStyle: 'italic',
+              fontSize: 14, letterSpacing: 0.2,
+              color: 'rgba(232, 223, 203, 0.7)',
+              textAlign: 'center',
+            }}>
+              wear headphones
+            </span>
+            <motion.span
               style={{
+                fontFamily: FONTS.serif, fontStyle: 'italic',
+                fontSize: 20,
+                color: COLORS.scoreAmber,
+                marginTop: 12,
+                letterSpacing: 0.4,
+              }}
+              animate={{ opacity: [0.45, 0.95, 0.45] }}
+              transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut', delay: 0.8 }}
+            >
+              begin
+            </motion.span>
+          </motion.div>
+        )}
+
+        {stage === 'name' && (
+          <motion.div
+            key="name"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.9, ease: 'easeInOut' }}
+            style={{ position: 'absolute', inset: 0, zIndex: 3 }}
+          >
+            <Paper variant="cream">
+              <div style={{
                 position: 'absolute', inset: 0,
                 display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center',
                 gap: 28, padding: '0 32px',
-              }}
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              transition={{ duration: 0.6 }}
-            >
-              <div style={{
-                fontFamily: FONTS.serif, fontStyle: 'italic',
-                fontSize: 18, color: COLORS.inkCream, textAlign: 'center',
               }}>
-                what should i call you?
-              </div>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleNameSubmit() }}
-                placeholder="your name"
-                autoFocus
-                style={{
-                  width: 220,
-                  padding: '12px 16px',
-                  border: `1px solid ${COLORS.inkCreamSecondary}`,
-                  background: 'transparent',
-                  color: COLORS.inkCream,
-                  fontFamily: FONTS.serif,
-                  fontSize: 16,
-                  outline: 'none',
-                  borderRadius: 4,
-                  textAlign: 'center',
-                }}
-              />
-              <button
-                onClick={handleNameSubmit}
-                disabled={!name.trim()}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: name.trim() ? COLORS.scoreAmber : COLORS.inkCreamSecondary,
+                <div style={{
                   fontFamily: FONTS.serif, fontStyle: 'italic',
-                  fontSize: 14,
-                  cursor: name.trim() ? 'pointer' : 'default',
-                }}
-              >
-                continue
-              </button>
-            </motion.div>
-          )}
-
-          {stage === 'threshold' && (
-            <motion.div
-              key="threshold"
-              onClick={advance}
-              style={{
-                position: 'absolute', inset: 0,
-                display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center',
-                gap: 36, padding: '0 32px', cursor: 'pointer',
-              }}
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-              transition={{ duration: 1.2 }}
-            >
-              <div style={{
-                fontFamily: FONTS.serif, fontStyle: 'italic',
-                fontSize: 17, color: COLORS.inkCream, textAlign: 'center',
-                lineHeight: 1.7, maxWidth: 320,
-              }}>
-                for the next sixteen minutes<br />you are not your inbox.
+                  fontSize: 18, color: COLORS.inkCream, textAlign: 'center',
+                }}>
+                  what should i call you?
+                </div>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleNameSubmit() }}
+                  placeholder="your name"
+                  autoFocus
+                  style={{
+                    width: 220,
+                    padding: '12px 16px',
+                    border: `1px solid ${COLORS.inkCreamSecondary}`,
+                    background: 'transparent',
+                    color: COLORS.inkCream,
+                    fontFamily: FONTS.serif,
+                    fontSize: 16,
+                    outline: 'none',
+                    borderRadius: 4,
+                    textAlign: 'center',
+                  }}
+                />
+                <button
+                  onClick={handleNameSubmit}
+                  disabled={!name.trim()}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: name.trim() ? COLORS.scoreAmber : COLORS.inkCreamSecondary,
+                    fontFamily: FONTS.serif, fontStyle: 'italic',
+                    fontSize: 14,
+                    cursor: name.trim() ? 'pointer' : 'default',
+                  }}
+                >
+                  continue
+                </button>
               </div>
-              <motion.div
-                style={{
-                  fontFamily: FONTS.serif, fontStyle: 'italic',
-                  fontSize: 14, color: COLORS.scoreAmber,
-                }}
-                animate={{ opacity: [0.4, 0.9, 0.4] }}
-                transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut', delay: 1.5 }}
-              >
-                begin
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </Paper>
+            </Paper>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
