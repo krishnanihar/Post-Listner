@@ -17,7 +17,6 @@ import {
 //   t=3000   : variation/microgenre line fades in
 //   t=4500   : because-you band fades in (3 fragments)
 //   t=8000   : Forer paragraph begins (4 sentences over ~9s)
-//   t=8000   : trigger sub-audible track fade-up
 //   t=17000  : 4th Forer sentence (audience-sized hole, smaller)
 //   t=21000  : memory callback fades in
 //   t=23500  : time-of-day OR latency line fades in
@@ -28,14 +27,13 @@ const T = {
   because: 4500,
   forer: 8000,
   forerSentences: [8000, 11200, 14400, 17000],  // 4th is the audience-sized hole
-  subAudibleStart: 8000,
   memory: 21000,                                // 4s gap after the hole — reading room
   passive: 23500,
   temporal: 25000,
   complete: 28000,
 }
 
-export default function Mirror({ avd, onComplete, onSubAudibleStart }) {
+export default function Mirror({ avd, onComplete }) {
   const result = useMemo(() => {
     const avdValues = avd.getAVD()
     const phaseData = avd.getPhaseData()
@@ -81,11 +79,10 @@ export default function Mirror({ avd, onComplete, onSubAudibleStart }) {
       next[i] = true
       return { ...v, forerSentences: next }
     })))
-    at(T.subAudibleStart, () => onSubAudibleStart && onSubAudibleStart())
     at(T.memory, () => setVisible(v => ({ ...v, memory: true })))
     at(T.passive, () => setVisible(v => ({ ...v, passive: true })))
     at(T.temporal, () => setVisible(v => ({ ...v, temporal: true })))
-    at(T.complete, () => onComplete && onComplete())
+    at(T.complete, () => onComplete && onComplete({ archetypeId: result.archetype.id }))
 
     return () => timers.forEach(clearTimeout)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
