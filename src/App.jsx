@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { Analytics } from '@vercel/analytics/react'
 import Entry from './phases/Entry.score'
 import Spectrum from './phases/Spectrum.score'
 import Gems from './phases/Gems.score'
@@ -81,6 +82,7 @@ function App() {
           {phaseComponent[phase]}
         </motion.div>
       </AnimatePresence>
+      <Analytics />
     </div>
   )
 }
