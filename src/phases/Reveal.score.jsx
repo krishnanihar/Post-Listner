@@ -8,18 +8,13 @@ import { getArchetype } from '../lib/archetypes'
 
 // Tunable timings.
 const MIRROR_DURATION_MS = 3000          // archetype name on cream before video
-const POST_VOICE_TAIL_MS = 4000          // pure-song tail after voiceover ends
-const FULL_VOLUME_FADE_MS = 2500         // song fade-in duration
-const SONG_FADE_LEAD_MS = 2500           // starts this long before voice ends
-
+const SONG_FADE_MS = 2500                // song fade-in during the mirror beat
 const FULL_VOLUME_TARGET = 0.8
 
 export default function Reveal({ onNext, avd, sessionData, revealAudioRef, getAudioCtx }) {
   const [stage, setStage] = useState('computing')
 
-  // Score archetype once on mount — used to be Mirror's responsibility.
-  // scoreArchetype is deterministic for archetype id; the variation has
-  // ε-randomness but Mirror only consumed the archetype here.
+  // Score archetype on mount — the visual + handoff target.
   const archetype = useMemo(() => {
     try {
       const scored = scoreArchetype(avd.getAVD(), avd.getPhaseData())
@@ -31,7 +26,6 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef, getAu
   const archetypeId = archetype?.id || null
 
   const playerRef = useRef(null)         // StemPlayer or { kind:'audio', audio }
-  const voiceRef = useRef(null)          // HTMLAudioElement for voiceover
   const advancedRef = useRef(false)
   const fadeRafRef = useRef(null)
   const timersRef = useRef([])
@@ -114,61 +108,27 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef, getAu
     setTimeout(() => onNext(), 1500)
   }, [avd, onNext])
 
-  // ─── Mirror stage: hold archetype name 3s, then advance to video ─────
+  // ─── Mirror stage: hold name 3s, fade song in, then advance to video ───
   useEffect(() => {
     if (stage !== 'mirror') return
+
+    // Start the song fade-in as the archetype name lands. The song builds
+    // under the mirror beat and is at full volume by the time the video
+    // appears.
+    if (!songFadeStartedRef.current) {
+      songFadeStartedRef.current = true
+      fadeAudio(FULL_VOLUME_TARGET, SONG_FADE_MS)
+    }
+
     const t = setTimeout(() => setStage('video'), MIRROR_DURATION_MS)
     return () => clearTimeout(t)
-  }, [stage])
+  }, [stage, fadeAudio])
 
-  // ─── Video stage: play voiceover, fade song in near voice end ────────
-  useEffect(() => {
-    if (stage !== 'video') return
-    if (!archetypeId) {
-      // No archetype matched — skip ahead.
-      finishReveal()
-      return
-    }
-
-    const voice = new Audio(`/archetypes/voice/${archetypeId}.mp3`)
-    voice.preload = 'auto'
-    voice.volume = 1.0
-    voiceRef.current = voice
-
-    // Drive the song fade-in off the voice element's playback position so
-    // each archetype's per-file duration self-synchronizes.
-    const onTimeUpdate = () => {
-      if (songFadeStartedRef.current) return
-      if (!voice.duration || voice.duration === Infinity) return
-      const remaining = voice.duration - voice.currentTime
-      if (remaining * 1000 <= SONG_FADE_LEAD_MS) {
-        songFadeStartedRef.current = true
-        fadeAudio(FULL_VOLUME_TARGET, FULL_VOLUME_FADE_MS)
-      }
-    }
-    const onEnded = () => {
-      // Safety: if timeupdate didn't fire late enough to trigger fade, force it.
-      if (!songFadeStartedRef.current) {
-        songFadeStartedRef.current = true
-        fadeAudio(FULL_VOLUME_TARGET, FULL_VOLUME_FADE_MS)
-      }
-      const t = setTimeout(() => finishReveal(), POST_VOICE_TAIL_MS)
-      timersRef.current.push(t)
-    }
-    voice.addEventListener('timeupdate', onTimeUpdate)
-    voice.addEventListener('ended', onEnded)
-    voice.play().catch(() => { /* autoplay may fail — finishReveal still scheduled below as safety */ })
-
-    // Hard ceiling: if voice fails to play or ended event misses, force advance
-    // after a generous window (longest expected voice ~19s + tail + buffer).
-    const ceiling = setTimeout(() => finishReveal(), 30000)
-    timersRef.current.push(ceiling)
-
-    return () => {
-      voice.removeEventListener('timeupdate', onTimeUpdate)
-      voice.removeEventListener('ended', onEnded)
-    }
-  }, [stage, archetypeId, fadeAudio, finishReveal])
+  // ─── Video stage: 10s archetype video, song already at full volume ─────
+  // Advance is driven off the video element's onEnded for accuracy.
+  const onVideoEnded = useCallback(() => {
+    finishReveal()
+  }, [finishReveal])
 
   // Cleanup
   useEffect(() => {
@@ -176,10 +136,6 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef, getAu
       timersRef.current.forEach(clearTimeout)
       timersRef.current = []
       if (fadeRafRef.current) cancelAnimationFrame(fadeRafRef.current)
-      if (voiceRef.current) {
-        try { voiceRef.current.pause() } catch { /* no-op */ }
-        voiceRef.current = null
-      }
     }
   }, [])
 
@@ -251,7 +207,7 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef, getAu
         )}
       </AnimatePresence>
 
-      {/* Video stage — archetype video full-bleed, voice + song play over it */}
+      {/* Video stage — archetype video full-bleed, song at full volume */}
       {(stage === 'video' || stage === 'done') && archetypeId && (
         <motion.video
           key="archetype-video"
@@ -260,6 +216,7 @@ export default function Reveal({ onNext, avd, sessionData, revealAudioRef, getAu
           muted
           playsInline
           preload="auto"
+          onEnded={onVideoEnded}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 1.1, ease: 'easeOut' }}
