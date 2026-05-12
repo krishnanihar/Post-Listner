@@ -1,6 +1,7 @@
-import { forwardRef, useMemo, useRef } from 'react'
+import { forwardRef, useEffect, useMemo, useRef } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { MathUtils, PCFShadowMap, Vector3 } from 'three'
+import { createStarfieldMaterial } from './starfieldMaterial'
 
 // PostListener score-page palette — cream parchment with ink figure.
 // (see src/score/tokens.js)
@@ -12,19 +13,25 @@ const AMBER_DEEP = '#8A6234'
 const TRAIL_COUNT = 7
 
 const Segment = forwardRef(function Segment(
-  { radius = 0.04, color = BODY, emissive = '#000000', emissiveIntensity = 0 },
+  { radius = 0.04, color = '#1C1814', emissive = '#000000', emissiveIntensity = 0, material },
   ref,
 ) {
+  // When a `material` prop is provided (e.g. the shared starfield shader),
+  // use it directly and skip the inline MeshStandardMaterial. Otherwise
+  // fall back to the standard PBR ink. This lets the arm segments render
+  // the cosmic starfield while the baton stays solid amber.
   return (
-    <mesh ref={ref} castShadow receiveShadow>
+    <mesh ref={ref} castShadow receiveShadow material={material}>
       <cylinderGeometry args={[radius, radius, 1, 18]} />
-      <meshStandardMaterial
-        color={color}
-        roughness={0.58}
-        metalness={0.05}
-        emissive={emissive}
-        emissiveIntensity={emissiveIntensity}
-      />
+      {!material && (
+        <meshStandardMaterial
+          color={color}
+          roughness={0.58}
+          metalness={0.05}
+          emissive={emissive}
+          emissiveIntensity={emissiveIntensity}
+        />
+      )}
     </mesh>
   )
 })
@@ -120,6 +127,13 @@ function ConductorFigure({ stateRef }) {
   const trailRefs = useRef([])
   const trailPoints = useRef(Array.from({ length: TRAIL_COUNT }, () => new Vector3(0.45, 1.45, 0.5)))
   const smoothed = useRef({ pitch: 0, roll: 0, yaw: 0, energy: 0.08, articulation: 0 })
+
+  // Shared starfield shader material — applied to every body part that
+  // should reveal the cosmos through the silhouette (torso, coat, head,
+  // arms, hands). One instance reused across meshes to avoid duplicating
+  // the shader program per mesh.
+  const starfieldMat = useMemo(() => createStarfieldMaterial(), [])
+  useEffect(() => () => starfieldMat.dispose(), [starfieldMat])
 
   const scratchRef = useRef({
     up: new Vector3(0, 1, 0),
@@ -272,15 +286,15 @@ function ConductorFigure({ stateRef }) {
 
   return (
     <group ref={groupRef} position={[0, 0.02, 0]}>
-      {/* All body parts are pure ink — the figure reads as a silhouette
-          against cream paper, matching the etched-illustration reference. */}
-      <mesh ref={torsoRef} castShadow receiveShadow position={[0, 0.88, 0]}>
+      {/* Body parts use the shared starfield shader so the silhouette
+          becomes a window onto the cosmos. The shader samples by
+          gl_FragCoord — stars are anchored to the page, the figure
+          reveals different patches as it moves. */}
+      <mesh ref={torsoRef} castShadow receiveShadow position={[0, 0.88, 0]} material={starfieldMat}>
         <capsuleGeometry args={[0.28, 0.48, 8, 18]} />
-        <meshStandardMaterial color={INK} roughness={0.9} metalness={0} />
       </mesh>
-      <mesh castShadow receiveShadow position={[0, 1.29, 0.035]} scale={[1.4, 0.22, 0.18]}>
+      <mesh castShadow receiveShadow position={[0, 1.29, 0.035]} scale={[1.4, 0.22, 0.18]} material={starfieldMat}>
         <sphereGeometry args={[0.27, 24, 12]} />
-        <meshStandardMaterial color={INK} roughness={0.85} />
       </mesh>
       {/* Head + hair tuft on the back of the skull. Group is the parent so
           headRef yaw/roll in useFrame rotates the hair with the head.
@@ -288,9 +302,8 @@ function ConductorFigure({ stateRef }) {
           reads as "conductor looking down at score / orchestra" and
           asymmetrically distinguishes back-of-head from front. */}
       <group ref={headRef} position={[0, 1.66, 0.02]} rotation={[-0.2, 0, 0]}>
-        <mesh castShadow>
+        <mesh castShadow material={starfieldMat}>
           <sphereGeometry args={[0.17, 32, 16]} />
-          <meshStandardMaterial color={INK} roughness={0.85} />
         </mesh>
         {/* Hair tuft — slightly larger flattened dome on the back+top of
             the skull. The +Z offset puts it on the back side of the head
@@ -323,10 +336,11 @@ function ConductorFigure({ stateRef }) {
       </group>
       {/* Long coat — replaces the small pedestal. Tapered cylinder from
           waist down to the hem near the floor, flared so the silhouette
-          reads as a person in a knee-/floor-length coat from behind. */}
-      <mesh castShadow receiveShadow position={[0, 0.36, 0]}>
+          reads as a person in a knee-/floor-length coat from behind.
+          Same starfield material so the cosmos extends down through
+          the coat too. */}
+      <mesh castShadow receiveShadow position={[0, 0.36, 0]} material={starfieldMat}>
         <cylinderGeometry args={[0.32, 0.5, 0.7, 24]} />
-        <meshStandardMaterial color={INK} roughness={0.95} />
       </mesh>
       {/* Coat hem ring — slight darker band at the bottom for shape
           definition, matches the etched-illustration line work. */}
@@ -334,19 +348,18 @@ function ConductorFigure({ stateRef }) {
         <ringGeometry args={[0.42, 0.5, 32]} />
         <meshBasicMaterial color={INK} />
       </mesh>
-      <Segment ref={rightUpperRef} radius={0.052} color={INK} />
-      <Segment ref={rightLowerRef} radius={0.045} color={INK} />
-      <Segment ref={leftUpperRef} radius={0.047} color={INK} />
-      <Segment ref={leftLowerRef} radius={0.04} color={INK} />
-      {/* Baton is amber-glow on cream — the single warm point of light. */}
+      <Segment ref={rightUpperRef} radius={0.052} material={starfieldMat} />
+      <Segment ref={rightLowerRef} radius={0.045} material={starfieldMat} />
+      <Segment ref={leftUpperRef} radius={0.047} material={starfieldMat} />
+      <Segment ref={leftLowerRef} radius={0.04} material={starfieldMat} />
+      {/* Baton stays solid amber — the single warm point of light, must
+          not dissolve into the starfield. */}
       <Segment ref={batonRef} radius={0.012} color={AMBER} emissive={AMBER} emissiveIntensity={0.4} />
-      <mesh ref={rightHandRef} castShadow>
+      <mesh ref={rightHandRef} castShadow material={starfieldMat}>
         <sphereGeometry args={[0.072, 20, 12]} />
-        <meshStandardMaterial color={INK} roughness={0.85} />
       </mesh>
-      <mesh ref={leftHandRef} castShadow>
+      <mesh ref={leftHandRef} castShadow material={starfieldMat}>
         <sphereGeometry args={[0.062, 18, 10]} />
-        <meshStandardMaterial color={INK} roughness={0.85} />
       </mesh>
       <mesh ref={batonTipRef}>
         <sphereGeometry args={[0.06, 24, 12]} />
