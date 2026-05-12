@@ -100,6 +100,9 @@ export default function ConductorCelestialField() {
     const inscribed = []
     let lastActStar = null
 
+    const inscribedMetatronEdges = new Set()  // 'i,j' string keys for inscribed edges
+    let lastActMetatronNodeIdx = -1
+
     // Downbeat tracking for burst events
     let lastConsumedBeat = 0
     const BURST_RADIUS = 180   // viewBox px around cursor
@@ -127,6 +130,12 @@ export default function ConductorCelestialField() {
       act: 0,                                  // activation 0..1, same pattern as stars
     }))
     const metatronEdgesLocal = computeMetatronEdges(13)
+
+    // O(1) lookup set for canonical Metatron edges — built after
+    // metatronEdgesLocal is available (const TDZ would fire earlier).
+    const canonicalEdgeKeys = new Set(
+      metatronEdgesLocal.map(([i, j]) => `${i},${j}`),
+    )
 
     // Viewport scaling — fit the logical SW×SH inside the available
     // root rectangle, preserving aspect.
@@ -353,6 +362,30 @@ export default function ConductorCelestialField() {
         }
         s.act = Math.max(0, s.act - dt * 0.55)
       }
+      // Metatron node activation — same pattern as stars. Trail tip
+      // proximity within NODE_HIT_PX bumps activation; otherwise decay.
+      for (let i = 0; i < metatronNodesLocal.length; i++) {
+        const n = metatronNodesLocal[i]
+        const d = Math.hypot(n.x - sm.x, n.y - sm.y)
+        if (d < NODE_HIT_PX) {
+          if (n.act < 0.4 && lastActMetatronNodeIdx !== i) {
+            // Activation transition — check if the edge from the previous
+            // node to this one is a canonical edge we haven't inscribed yet.
+            if (lastActMetatronNodeIdx >= 0) {
+              const a = Math.min(lastActMetatronNodeIdx, i)
+              const b = Math.max(lastActMetatronNodeIdx, i)
+              const key = `${a},${b}`
+              if (canonicalEdgeKeys.has(key) && !inscribedMetatronEdges.has(key)) {
+                inscribedMetatronEdges.add(key)
+              }
+            }
+            lastActMetatronNodeIdx = i
+          }
+          n.act = Math.min(1, n.act + dt * 5)
+        }
+        n.act = Math.max(0, n.act - dt * 0.55)
+      }
+
       while (inscribed.length && now - inscribed[0].t > LINE_LIFE) inscribed.shift()
       if (inscribed.length > 60) inscribed.splice(0, inscribed.length - 60)
 
@@ -426,6 +459,21 @@ export default function ConductorCelestialField() {
           fCtx.fill()
         }
       }
+      // Inscribed Metatron edges — permanent once drawn, rendered in
+      // bright gold over the watermark. The user is gradually "uncovering"
+      // the cube as they sweep the trail through the nodes.
+      fCtx.strokeStyle = `rgba(${GLOW[0]},${GLOW[1]},${GLOW[2]},0.85)`
+      fCtx.lineWidth = 1.6
+      for (const key of inscribedMetatronEdges) {
+        const [i, j] = key.split(',').map(Number)
+        const a = metatronNodesLocal[i]
+        const b = metatronNodesLocal[j]
+        fCtx.beginPath()
+        fCtx.moveTo(a.x, a.y)
+        fCtx.lineTo(b.x, b.y)
+        fCtx.stroke()
+      }
+
       // Metatron nodes — faint dots at the 13 Fruit-of-Life positions.
       // Activation comes from trail-tip proximity in the next task; for now
       // they're static dim circles.
