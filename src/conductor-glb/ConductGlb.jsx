@@ -7,10 +7,9 @@
  * bypasses the portrait-calibration gimbal lock the original /conduct
  * hook suffered from.
  */
-import { Suspense, createContext, useContext } from 'react'
+import { createContext, useContext } from 'react'
 import { usePhoneConductor } from '../conductor-codex/usePhoneConductor'
-import ConductorGlbScene from './ConductorGlbScene'
-import ConstellationOverlay from '../conductor-codex/ConstellationOverlay'
+import ConductorCelestialField from './ConductorCelestialField'
 import '../conductor-codex/conduct-codex.css'
 
 const PhoneContext = createContext(null)
@@ -69,10 +68,7 @@ export default function ConductGlb() {
   return (
     <PhoneProvider>
       <main className="conduct-codex-shell">
-        <ConstellationOverlay />
-        <Suspense fallback={null}>
-          <ConductorGlbScene />
-        </Suspense>
+        <ConductorCelestialField />
         <StatusPanel />
       </main>
     </PhoneProvider>
