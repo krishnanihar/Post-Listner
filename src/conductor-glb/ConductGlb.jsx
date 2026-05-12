@@ -1,16 +1,14 @@
 /* /conduct-glb — experiment: take the real Rigify GLB humanoid from
- * /conduct, apply our /conduct-codex aesthetic (cream parchment + ink
- * silhouette + starfield shader + constellation overlay + back-view
- * camera + headphones / hair-tuft accessories tracking the head bone).
+ * /conduct, apply our /conduct-codex aesthetic + control pipeline.
  *
- * Reuses:
- *   - usePhoneOrientation from ../conductor (drives IK)
- *   - armIK / gesturePose / idlePose / conductorAnatomy from ../conductor
- *   - starfieldMaterial + ConstellationOverlay from ../conductor-codex
- *   - conduct-codex.css for the cream parchment + foxing shell
+ * Phase 8 swap (this file): replaced the quaternion-based phone hook
+ * from ../conductor with usePhoneConductor from ../conductor-codex,
+ * which derives pitch/roll/yaw from raw alpha/beta/gamma Euler angles —
+ * bypasses the portrait-calibration gimbal lock the original /conduct
+ * hook suffered from.
  */
 import { Suspense, createContext, useContext } from 'react'
-import { usePhoneOrientation } from '../conductor/usePhoneOrientation'
+import { usePhoneConductor } from '../conductor-codex/usePhoneConductor'
 import ConductorGlbScene from './ConductorGlbScene'
 import ConstellationOverlay from '../conductor-codex/ConstellationOverlay'
 import '../conductor-codex/conduct-codex.css'
@@ -18,7 +16,11 @@ import '../conductor-codex/conduct-codex.css'
 const PhoneContext = createContext(null)
 
 function PhoneProvider({ children }) {
-  const phone = usePhoneOrientation()
+  // usePhoneConductor returns { stateRef, snapshot }.
+  // - stateRef is the live ref read inside useFrame for immediate access.
+  // - snapshot is the React-rendered version that triggers re-renders on
+  //   throttled intervals; used by the UI panel.
+  const phone = usePhoneConductor()
   return <PhoneContext.Provider value={phone}>{children}</PhoneContext.Provider>
 }
 
@@ -29,15 +31,15 @@ export function usePhone() {
 }
 
 function StatusPanel() {
-  const phone = usePhone()
-  const status = !phone.connected
+  const { snapshot } = usePhone()
+  const status = !snapshot.connected
     ? 'relay offline'
-    : !phone.calibrated
+    : !snapshot.calibrated
       ? 'waiting for calibration'
       : 'conducting · live'
-  const stateClass = phone.connected && phone.calibrated
+  const stateClass = snapshot.connected && snapshot.calibrated
     ? 'is-live'
-    : phone.connected
+    : snapshot.connected
       ? 'is-waiting'
       : ''
   return (

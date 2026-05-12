@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
+import { MathUtils } from 'three'
 import { usePhone } from './ConductGlb'
 import {
   applyGesturePose,
@@ -91,7 +92,7 @@ function HeadAccessories({ headBoneRef, material }) {
 function Conductor({ accessoryMat }) {
   const groupRef = useRef()
   const { scene, animations } = useGLTF('/conductor/conductor.glb')
-  const phone = usePhone()
+  const { stateRef } = usePhone()
 
   const drivenBones = useRef({})
   const baseRotations = useRef({})
@@ -100,6 +101,17 @@ function Conductor({ accessoryMat }) {
   const lastImpulseAt = useRef(0)
   const armIKRef = useRef(null)
   const headBoneRef = useRef(null)
+
+  // Damped controls — usePhoneConductor publishes raw controls each
+  // message; we smooth them per frame so motion is responsive but not
+  // jittery. Same time constants as /conduct-codex's stick figure.
+  const smoothed = useRef({ pitch: 0, roll: 0, yaw: 0 })
+
+  // Reusable buffers for the synthesized phoneQuat that the existing
+  // applyGesturePose + driveArmIK pipeline expects.
+  const eulerScratch = useMemo(() => new THREE.Euler(0, 0, 0, 'ZXY'), [])
+  const quatScratch = useMemo(() => new THREE.Quaternion(), [])
+  const identityQuat = useMemo(() => new THREE.Quaternion(), [])
 
   useEffect(() => {
     // Replace every mesh's material with a fresh MeshBasicMaterial
@@ -135,9 +147,38 @@ function Conductor({ accessoryMat }) {
   }, [scene, animations])
 
   useFrame((_, delta) => {
-    phone.advance(delta)
     elapsedRef.current += delta
     const t = elapsedRef.current
+
+    const state = stateRef.current
+    const controls = state.controls
+    const calibrated = state.calibrated
+
+    // Damp controls toward their incoming target values. Same time
+    // constants /conduct-codex uses on its stick figure — keeps the
+    // figure responsive without jitter.
+    smoothed.current.pitch = MathUtils.damp(smoothed.current.pitch, controls.pitch, 8.5, delta)
+    smoothed.current.roll = MathUtils.damp(smoothed.current.roll, controls.roll, 8.5, delta)
+    smoothed.current.yaw = MathUtils.damp(smoothed.current.yaw, controls.yaw, 7.5, delta)
+
+    // Synthesize a phoneQuat from damped controls. The existing
+    // applyGesturePose decomposes via ZXY Euler order, mapping back to
+    // (yawSignal = euler.z, pitchSignal = euler.x, rollSignal = euler.y).
+    // We build Euler in the SAME ZXY order so the values round-trip
+    // cleanly through the decomposition.
+    //   - euler.x  ← pitch signal (forward/back lean)
+    //   - euler.y  ← roll signal  (side tilt)
+    //   - euler.z  ← yaw signal   (compass)
+    // Scale 0.6 rad/unit so a full-deflection control (±1) is ~34° —
+    // matches the typical magnitudes the existing IK + gesture math
+    // expects from a real phone tilt.
+    const ANGLE_SCALE = 0.6
+    eulerScratch.set(
+      smoothed.current.pitch * ANGLE_SCALE,
+      smoothed.current.roll * ANGLE_SCALE,
+      smoothed.current.yaw * ANGLE_SCALE,
+    )
+    quatScratch.setFromEuler(eulerScratch)
 
     const bones = drivenBones.current
     const base = baseRotations.current
@@ -145,20 +186,22 @@ function Conductor({ accessoryMat }) {
     resetToBase(bones, base)
     applyIdlePose(bones, t)
 
-    if (phone.calibrated) {
-      applyGesturePose(bones, base, phone.currentQuat.current)
+    if (calibrated) {
+      applyGesturePose(bones, base, quatScratch)
     }
 
     scene.updateMatrixWorld(true)
-    const armPhoneQuat = phone.calibrated
-      ? phone.currentQuat.current
-      : new THREE.Quaternion()
-    driveArmIK(armIKRef.current, armPhoneQuat)
+    driveArmIK(armIKRef.current, calibrated ? quatScratch : identityQuat)
 
-    const beat = phone.lastDownbeat?.current
-    if (beat && beat.firedAt && beat.firedAt !== lastImpulseAt.current) {
-      lastImpulseAt.current = beat.firedAt
-      impulseRef.current = { startedAt: t, intensity: beat.intensity || 1 }
+    // Downbeat: detect when controls.lastDownbeatAt timestamp changes,
+    // trigger a fresh ictus impulse at that moment.
+    const beatAt = controls.lastDownbeatAt || 0
+    if (beatAt && beatAt !== lastImpulseAt.current) {
+      lastImpulseAt.current = beatAt
+      impulseRef.current = {
+        startedAt: t,
+        intensity: Math.max(0.5, controls.downbeatIntensity || 1),
+      }
     }
     if (impulseRef.current) {
       const stillActive = applyImpulsePose(bones, impulseRef.current, t)
