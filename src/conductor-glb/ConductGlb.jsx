@@ -1,29 +1,17 @@
-/* /conduct-glb — experiment: take the real Rigify GLB humanoid from
- * /conduct, apply our /conduct-codex aesthetic + control pipeline.
+/* /conduct-glb — experiment route.
  *
- * Phase 8 swap (this file): replaced the quaternion-based phone hook
- * from ../conductor with usePhoneConductor from ../conductor-codex,
- * which derives pitch/roll/yaw from raw alpha/beta/gamma Euler angles —
- * bypasses the portrait-calibration gimbal lock the original /conduct
- * hook suffered from.
+ * The conducting experience: cream parchment + ink trail + sacred
+ * geometry watermark + ambient audio. All rendering is 2D canvas
+ * inside ConductorCelestialField; no R3F.
  */
-import { createContext, useContext, useRef } from 'react'
+import { createContext, useContext } from 'react'
 import { usePhoneConductor } from '../conductor-codex/usePhoneConductor'
 import ConductorCelestialField from './ConductorCelestialField'
-import SacredGeometryLayer from './SacredGeometryLayer'
 import '../conductor-codex/conduct-codex.css'
-
-// GhostConductorLayer is intentionally NOT imported / mounted.
-// The translucent figure was reading as a haunted portrait rather than
-// ambient presence. File kept on disk in case we revisit later.
 
 const PhoneContext = createContext(null)
 
 function PhoneProvider({ children }) {
-  // usePhoneConductor returns { stateRef, snapshot }.
-  // - stateRef is the live ref read inside useFrame for immediate access.
-  // - snapshot is the React-rendered version that triggers re-renders on
-  //   throttled intervals; used by the UI panel.
   const phone = usePhoneConductor()
   return <PhoneContext.Provider value={phone}>{children}</PhoneContext.Provider>
 }
@@ -70,13 +58,10 @@ function StatusPanel() {
 }
 
 export default function ConductGlb() {
-  const trailTipRef = useRef({ x: 0, y: 0, active: false })
-
   return (
     <PhoneProvider>
       <main className="conduct-codex-shell">
-        <SacredGeometryLayer trailTipRef={trailTipRef} />
-        <ConductorCelestialField trailTipRef={trailTipRef} />
+        <ConductorCelestialField />
         <StatusPanel />
       </main>
     </PhoneProvider>
