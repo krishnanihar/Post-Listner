@@ -29,8 +29,12 @@ useGLTF.preload(GEOMETRY_URL)
 
 const EDGE_HIT_PX = 18         // proximity in screen pixels to count as a "cross"
 const EDGE_DECAY_PER_S = 1.5   // activation decays at this rate per second
-const COLOR_REST = new THREE.Color('#7a5a30')   // soft amber
-const COLOR_ACTIVE = new THREE.Color('#FFD888') // bright gold
+// Rest color sits very close to the parchment tone so the geometry
+// reads as a faint structural watermark, not a foreground element.
+// Active color stays bright gold so trail-passage lighting reads
+// against the quiet rest state.
+const COLOR_REST = new THREE.Color('#4a3a20')
+const COLOR_ACTIVE = new THREE.Color('#FFD888')
 
 function StemNode({ position, pulseRef, stemIndex }) {
   const meshRef = useRef()
@@ -38,17 +42,19 @@ function StemNode({ position, pulseRef, stemIndex }) {
   useFrame(() => {
     const p = pulseRef.current[stemIndex] || 0
     if (meshRef.current) {
-      const s = 0.05 + p * 0.10
+      const s = 0.04 + p * 0.10
       meshRef.current.scale.set(s, s, s)
     }
     if (matRef.current) {
-      matRef.current.opacity = 0.35 + p * 0.55
+      // At rest the node is nearly invisible — only the stem pulse
+      // brings it forward. Keeps the background quiet by default.
+      matRef.current.opacity = 0.10 + p * 0.65
     }
   })
   return (
     <mesh ref={meshRef} position={position}>
-      <sphereGeometry args={[1, 16, 12]} />
-      <meshBasicMaterial ref={matRef} color="#FFD888" transparent opacity={0.35} />
+      <sphereGeometry args={[1, 12, 8]} />
+      <meshBasicMaterial ref={matRef} color="#FFD888" transparent opacity={0.10} />
     </mesh>
   )
 }
@@ -134,8 +140,10 @@ function MetatronCube({ trailTipRef }) {
 
   useFrame((_, delta) => {
     if (!groupRef.current) return
-    groupRef.current.rotation.y += delta * (5 * Math.PI / 180)
-    groupRef.current.rotation.x += delta * (1 * Math.PI / 180)
+    // Geometry is intentionally STATIC — it lives as a quiet structural
+    // backdrop in the parchment, like the dust particles. Per-edge
+    // trail-passage lighting + stem-node pulses still animate; only the
+    // overall rotation is removed.
 
     const segs = segmentsRef.current
     const acts = activationsRef.current
@@ -205,7 +213,7 @@ function MetatronCube({ trailTipRef }) {
   return (
     <group ref={groupRef}>
       <lineSegments ref={linesRef} geometry={lineGeometry}>
-        <lineBasicMaterial vertexColors transparent opacity={0.55} />
+        <lineBasicMaterial vertexColors transparent opacity={0.28} />
       </lineSegments>
       {stemNodes.map((v, i) => (
         <StemNode key={i} position={v} pulseRef={stemPulseRef} stemIndex={i} />
