@@ -61,7 +61,7 @@ const HINT_CONSTELLATIONS = [
   [[625,295],[582,345],[638,395]],
 ]
 
-export default function ConductorCelestialField() {
+export default function ConductorCelestialField({ trailTipRef }) {
   const rootRef = useRef(null)
   const bgRef = useRef(null)
   const fgRef = useRef(null)
@@ -321,6 +321,17 @@ export default function ConductorCelestialField() {
       }
       while (inscribed.length && now - inscribed[0].t > LINE_LIFE) inscribed.shift()
       if (inscribed.length > 60) inscribed.splice(0, inscribed.length - 60)
+
+      // Publish trail tip in viewport-pixel coords so external layers
+      // (sacred geometry) can detect crossings with edges projected to
+      // the same pixel space.
+      if (trailTipRef) {
+        trailTipRef.current = {
+          x: ox + sm.x * sc,
+          y: oy + sm.y * sc,
+          active: phoneActive || (performance.now() - lastAct > 1500),
+        }
+      }
     }
 
     function buildRibbon() {

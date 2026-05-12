@@ -7,7 +7,7 @@
  * bypasses the portrait-calibration gimbal lock the original /conduct
  * hook suffered from.
  */
-import { createContext, useContext } from 'react'
+import { createContext, useContext, useRef } from 'react'
 import { usePhoneConductor } from '../conductor-codex/usePhoneConductor'
 import ConductorCelestialField from './ConductorCelestialField'
 import SacredGeometryLayer from './SacredGeometryLayer'
@@ -66,11 +66,13 @@ function StatusPanel() {
 }
 
 export default function ConductGlb() {
+  const trailTipRef = useRef({ x: 0, y: 0, active: false })
+
   return (
     <PhoneProvider>
       <main className="conduct-codex-shell">
-        <SacredGeometryLayer />
-        <ConductorCelestialField />
+        <SacredGeometryLayer trailTipRef={trailTipRef} />
+        <ConductorCelestialField trailTipRef={trailTipRef} />
         <StatusPanel />
       </main>
     </PhoneProvider>
