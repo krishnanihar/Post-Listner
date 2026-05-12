@@ -2,13 +2,13 @@ import { forwardRef, useMemo, useRef } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { MathUtils, PCFShadowMap, Vector3 } from 'three'
 
-const BODY = '#e6dfcf'
-const CLOTH = '#232329'
-const AMBER = '#e4ad59'
-const TEAL = '#55c0bd'
-const CRIMSON = '#9c4050'
-const FLOOR = '#111116'
-const METAL = '#b8b1a5'
+// PostListener Orchestra-phase palette (see src/score/tokens.js)
+const BODY = '#E8DFCB'         // inkDark — light cream body/skin
+const CLOTH = '#1A1612'        // warm dark clothing
+const AMBER = '#D4A053'        // scoreAmber accent
+const AMBER_DEEP = '#8A6234'   // amber shadow tone for stand variation
+const FLOOR = '#0B0908'        // paperDark stage floor
+const METAL = '#8A7556'        // inkDarkSecondary — muted brass for stand posts
 const TRAIL_COUNT = 7
 
 const Segment = forwardRef(function Segment(
@@ -48,11 +48,13 @@ function OrchestraArc() {
       const t = i / 14
       const angle = MathUtils.lerp(-2.35, -0.78, t)
       const radius = i % 2 === 0 ? 3.15 : 3.65
+      // Monochrome amber palette — alternating warmer/cooler amber tones
+      // give depth across the arc without breaking the single-accent rule.
       rows.push({
         x: Math.cos(angle) * radius,
         z: Math.sin(angle) * radius + 1.05,
         rotation: -angle + Math.PI * 0.5,
-        color: i % 3 === 0 ? TEAL : i % 3 === 1 ? AMBER : CRIMSON,
+        color: i % 2 === 0 ? AMBER : AMBER_DEEP,
       })
     }
     return rows
@@ -89,11 +91,11 @@ function Stage() {
       </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 0]} receiveShadow>
         <ringGeometry args={[0.72, 0.78, 96]} />
-        <meshBasicMaterial color="#3c3330" transparent opacity={0.72} />
+        <meshBasicMaterial color="#3a2d1a" transparent opacity={0.7} />
       </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.018, 0.34]} receiveShadow>
         <ringGeometry args={[1.72, 1.76, 128, 1, Math.PI * 0.05, Math.PI * 0.9]} />
-        <meshBasicMaterial color="#253c3e" transparent opacity={0.5} />
+        <meshBasicMaterial color={AMBER_DEEP} transparent opacity={0.42} />
       </mesh>
       <OrchestraArc />
     </group>
@@ -302,12 +304,17 @@ function ConductorFigure({ stateRef }) {
           }}
         >
           <sphereGeometry args={[1, 16, 8]} />
-          <meshBasicMaterial color={index < 3 ? '#ffd58a' : '#58d2cc'} transparent opacity={0.25} />
+          {/* Monochrome amber trail — bright near baton tip, fading to dim amber. */}
+          <meshBasicMaterial
+            color={index < 3 ? '#F2C97A' : AMBER_DEEP}
+            transparent
+            opacity={0.25}
+          />
         </mesh>
       ))}
       <mesh ref={targetRef} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[0.18, 0.24, 40]} />
-        <meshBasicMaterial color={TEAL} transparent opacity={0.44} />
+        <meshBasicMaterial color={AMBER} transparent opacity={0.44} />
       </mesh>
       <mesh ref={beatRingRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.035, 0.18]}>
         <ringGeometry args={[0.52, 0.56, 72]} />
@@ -320,13 +327,15 @@ function ConductorFigure({ stateRef }) {
 function SceneContents({ stateRef }) {
   return (
     <>
-      <color attach="background" args={['#07070a']} />
-      <fog attach="fog" args={['#07070a', 5.8, 10.8]} />
-      <ambientLight intensity={0.55} />
+      <color attach="background" args={['#0B0908']} />
+      <fog attach="fog" args={['#0B0908', 5.8, 10.8]} />
+      {/* Slightly cooler ambient for contrast against amber accents. */}
+      <ambientLight intensity={0.45} color="#C8BFA8" />
       <directionalLight
         castShadow
         position={[2.4, 5.5, 3.8]}
-        intensity={2.1}
+        intensity={1.9}
+        color="#F2E6CC"
         shadow-mapSize={[1024, 1024]}
         shadow-camera-near={0.5}
         shadow-camera-far={10}
@@ -335,8 +344,10 @@ function SceneContents({ stateRef }) {
         shadow-camera-top={4}
         shadow-camera-bottom={-4}
       />
-      <pointLight position={[-2.8, 1.7, 2.2]} intensity={2.2} color={TEAL} distance={6} />
-      <pointLight position={[2.7, 2.1, 1.8]} intensity={1.5} color={AMBER} distance={5} />
+      {/* Two warm amber rim lights — one stronger from stage-left, one fill from right.
+          Previously these were teal+amber; unified to amber-only for the Orchestra palette. */}
+      <pointLight position={[-2.8, 1.7, 2.2]} intensity={1.7} color={AMBER} distance={6} />
+      <pointLight position={[2.7, 2.1, 1.8]} intensity={1.2} color="#B07F3A" distance={5} />
       <Stage />
       <ConductorFigure stateRef={stateRef} />
     </>
