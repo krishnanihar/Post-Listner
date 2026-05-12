@@ -2,13 +2,13 @@ import { forwardRef, useMemo, useRef } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { MathUtils, PCFShadowMap, Vector3 } from 'three'
 
-// PostListener Orchestra-phase palette (see src/score/tokens.js)
-const BODY = '#E8DFCB'         // inkDark — light cream body/skin
-const CLOTH = '#1A1612'        // warm dark clothing
-const AMBER = '#D4A053'        // scoreAmber accent
-const AMBER_DEEP = '#8A6234'   // amber shadow tone for stand variation
-const FLOOR = '#0B0908'        // paperDark stage floor
-const METAL = '#8A7556'        // inkDarkSecondary — muted brass for stand posts
+// PostListener score-page palette — cream parchment with ink figure.
+// (see src/score/tokens.js)
+const PAPER = '#F2EBD8'    // paperCream — scene bg matches the shell bg
+const INK = '#1C1814'      // inkCream — main figure/silhouette color
+const INK_SOFT = '#3F3328' // softer ink for forms one step back
+const AMBER = '#D4A053'    // scoreAmber accent
+const AMBER_DEEP = '#8A6234'
 const TRAIL_COUNT = 7
 
 const Segment = forwardRef(function Segment(
@@ -48,13 +48,12 @@ function OrchestraArc() {
       const t = i / 14
       const angle = MathUtils.lerp(-2.35, -0.78, t)
       const radius = i % 2 === 0 ? 3.15 : 3.65
-      // Monochrome amber palette — alternating warmer/cooler amber tones
-      // give depth across the arc without breaking the single-accent rule.
+      // Ink-on-cream: alternating full ink / softer ink for subtle arc depth.
       rows.push({
         x: Math.cos(angle) * radius,
         z: Math.sin(angle) * radius + 1.05,
         rotation: -angle + Math.PI * 0.5,
-        color: i % 2 === 0 ? AMBER : AMBER_DEEP,
+        color: i % 2 === 0 ? INK : INK_SOFT,
       })
     }
     return rows
@@ -66,15 +65,15 @@ function OrchestraArc() {
         <group key={index} position={[stand.x, 0.08, stand.z]} rotation={[0, stand.rotation, 0]}>
           <mesh castShadow receiveShadow position={[0, 0.18, 0]}>
             <boxGeometry args={[0.42, 0.08, 0.3]} />
-            <meshStandardMaterial color="#1c1b20" roughness={0.8} />
+            <meshStandardMaterial color={INK} roughness={0.85} />
           </mesh>
           <mesh castShadow position={[0, 0.55, -0.08]} rotation={[-0.35, 0, 0]}>
             <boxGeometry args={[0.46, 0.32, 0.035]} />
-            <meshStandardMaterial color={stand.color} roughness={0.42} metalness={0.1} />
+            <meshStandardMaterial color={stand.color} roughness={0.55} metalness={0} />
           </mesh>
           <mesh castShadow position={[0, 0.34, -0.02]}>
             <cylinderGeometry args={[0.018, 0.018, 0.58, 8]} />
-            <meshStandardMaterial color={METAL} roughness={0.5} metalness={0.45} />
+            <meshStandardMaterial color={INK_SOFT} roughness={0.6} metalness={0} />
           </mesh>
         </group>
       ))}
@@ -85,13 +84,15 @@ function OrchestraArc() {
 function Stage() {
   return (
     <group>
+      {/* Sepia stage floor — a slightly darker shade than the paper so the
+          figure has a believable base without breaking the cream-page look. */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <circleGeometry args={[4.9, 96]} />
-        <meshStandardMaterial color={FLOOR} roughness={0.92} metalness={0.02} />
+        <meshStandardMaterial color="#D8C8A2" roughness={0.95} metalness={0} />
       </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 0]} receiveShadow>
         <ringGeometry args={[0.72, 0.78, 96]} />
-        <meshBasicMaterial color="#3a2d1a" transparent opacity={0.7} />
+        <meshBasicMaterial color={INK_SOFT} transparent opacity={0.55} />
       </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.018, 0.34]} receiveShadow>
         <ringGeometry args={[1.72, 1.76, 128, 1, Math.PI * 0.05, Math.PI * 0.9]} />
@@ -263,38 +264,41 @@ function ConductorFigure({ stateRef }) {
 
   return (
     <group ref={groupRef} position={[0, 0.02, 0]}>
+      {/* All body parts are pure ink — the figure reads as a silhouette
+          against cream paper, matching the etched-illustration reference. */}
       <mesh ref={torsoRef} castShadow receiveShadow position={[0, 0.88, 0]}>
         <capsuleGeometry args={[0.28, 0.48, 8, 18]} />
-        <meshStandardMaterial color={CLOTH} roughness={0.66} metalness={0.05} />
+        <meshStandardMaterial color={INK} roughness={0.9} metalness={0} />
       </mesh>
       <mesh castShadow receiveShadow position={[0, 1.29, 0.035]} scale={[1.4, 0.22, 0.18]}>
         <sphereGeometry args={[0.27, 24, 12]} />
-        <meshStandardMaterial color="#2c2b31" roughness={0.55} />
+        <meshStandardMaterial color={INK} roughness={0.85} />
       </mesh>
       <mesh ref={headRef} castShadow position={[0, 1.66, 0.02]}>
         <sphereGeometry args={[0.17, 32, 16]} />
-        <meshStandardMaterial color={BODY} roughness={0.5} />
+        <meshStandardMaterial color={INK} roughness={0.85} />
       </mesh>
       <mesh castShadow receiveShadow position={[0, 0.43, 0]}>
         <cylinderGeometry args={[0.2, 0.34, 0.34, 18]} />
-        <meshStandardMaterial color="#1b1b21" roughness={0.7} />
+        <meshStandardMaterial color={INK} roughness={0.9} />
       </mesh>
-      <Segment ref={rightUpperRef} radius={0.052} color={BODY} />
-      <Segment ref={rightLowerRef} radius={0.045} color={BODY} />
-      <Segment ref={leftUpperRef} radius={0.047} color={BODY} />
-      <Segment ref={leftLowerRef} radius={0.04} color={BODY} />
-      <Segment ref={batonRef} radius={0.012} color="#f4eee0" emissive={AMBER} emissiveIntensity={0.55} />
+      <Segment ref={rightUpperRef} radius={0.052} color={INK} />
+      <Segment ref={rightLowerRef} radius={0.045} color={INK} />
+      <Segment ref={leftUpperRef} radius={0.047} color={INK} />
+      <Segment ref={leftLowerRef} radius={0.04} color={INK} />
+      {/* Baton is amber-glow on cream — the single warm point of light. */}
+      <Segment ref={batonRef} radius={0.012} color={AMBER} emissive={AMBER} emissiveIntensity={0.4} />
       <mesh ref={rightHandRef} castShadow>
         <sphereGeometry args={[0.072, 20, 12]} />
-        <meshStandardMaterial color={BODY} roughness={0.45} />
+        <meshStandardMaterial color={INK} roughness={0.85} />
       </mesh>
       <mesh ref={leftHandRef} castShadow>
         <sphereGeometry args={[0.062, 18, 10]} />
-        <meshStandardMaterial color={BODY} roughness={0.45} />
+        <meshStandardMaterial color={INK} roughness={0.85} />
       </mesh>
       <mesh ref={batonTipRef}>
         <sphereGeometry args={[0.06, 24, 12]} />
-        <meshStandardMaterial color="#ffe8b3" emissive={AMBER} emissiveIntensity={1.45} />
+        <meshStandardMaterial color="#FFE8B3" emissive={AMBER} emissiveIntensity={1.45} />
       </mesh>
       {Array.from({ length: TRAIL_COUNT }).map((_, index) => (
         <mesh
@@ -304,11 +308,13 @@ function ConductorFigure({ stateRef }) {
           }}
         >
           <sphereGeometry args={[1, 16, 8]} />
-          {/* Monochrome amber trail — bright near baton tip, fading to dim amber. */}
+          {/* On cream paper the trail needs strong contrast — use amber
+              near the tip fading to deep amber, both readable against
+              parchment. */}
           <meshBasicMaterial
-            color={index < 3 ? '#F2C97A' : AMBER_DEEP}
+            color={index < 3 ? AMBER : AMBER_DEEP}
             transparent
-            opacity={0.25}
+            opacity={0.35}
           />
         </mesh>
       ))}
@@ -327,15 +333,18 @@ function ConductorFigure({ stateRef }) {
 function SceneContents({ stateRef }) {
   return (
     <>
-      <color attach="background" args={['#0B0908']} />
-      <fog attach="fog" args={['#0B0908', 5.8, 10.8]} />
-      {/* Slightly cooler ambient for contrast against amber accents. */}
-      <ambientLight intensity={0.45} color="#C8BFA8" />
+      <color attach="background" args={[PAPER]} />
+      {/* Fog fades distant geometry into the paper color so the arc of
+          orchestra stands dissolves into the parchment edge. */}
+      <fog attach="fog" args={[PAPER, 5.5, 11]} />
+      {/* Bright, neutral lighting — the figure is meant to read as a flat
+          ink silhouette, so we don't sculpt it with directional gradients. */}
+      <ambientLight intensity={0.9} color="#FFF5E0" />
       <directionalLight
         castShadow
         position={[2.4, 5.5, 3.8]}
-        intensity={1.9}
-        color="#F2E6CC"
+        intensity={0.55}
+        color="#FFF0D2"
         shadow-mapSize={[1024, 1024]}
         shadow-camera-near={0.5}
         shadow-camera-far={10}
@@ -344,10 +353,8 @@ function SceneContents({ stateRef }) {
         shadow-camera-top={4}
         shadow-camera-bottom={-4}
       />
-      {/* Two warm amber rim lights — one stronger from stage-left, one fill from right.
-          Previously these were teal+amber; unified to amber-only for the Orchestra palette. */}
-      <pointLight position={[-2.8, 1.7, 2.2]} intensity={1.7} color={AMBER} distance={6} />
-      <pointLight position={[2.7, 2.1, 1.8]} intensity={1.2} color="#B07F3A" distance={5} />
+      {/* Subtle amber accent light from the baton side. */}
+      <pointLight position={[1.2, 1.6, 1.2]} intensity={0.6} color={AMBER} distance={4} />
       <Stage />
       <ConductorFigure stateRef={stateRef} />
     </>
