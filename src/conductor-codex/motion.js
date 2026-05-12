@@ -6,6 +6,7 @@ const DEFAULT_CONTROLS = {
   yaw: 0,
   energy: 0.08,
   articulation: 0,
+  angularSpeed: 0,
   downbeatIntensity: 0,
   lastDownbeatAt: 0,
 }
@@ -110,6 +111,10 @@ export function mapRelayMessage(message, rawZero) {
     }
   }
 
+  const rrMag = (message.rotationRate && Number(message.rotationRate.mag)) || 0
+  // 360 deg/s is "very fast" — a brisk wrist flick. Normalize to 0..1.
+  const angularSpeed = clamp(rrMag / 360, 0, 1)
+
   return {
     rawZero: nextRawZero,
     controls: {
@@ -118,6 +123,7 @@ export function mapRelayMessage(message, rawZero) {
       yaw,
       energy: clamp(message.gestureGain ?? 0.08, 0, 1),
       articulation: clamp(message.articulation ?? 0, 0, 1),
+      angularSpeed,
     },
     downbeatIntensity: readDownbeat(message),
     calibrated: Boolean(message.calibrated),

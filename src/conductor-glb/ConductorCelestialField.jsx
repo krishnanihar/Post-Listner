@@ -118,6 +118,8 @@ export default function ConductorCelestialField() {
     let energySmoothed = 0
     // Articulation smoothing for ink wet/dry character
     let articulationSmoothed = 0
+    // Angular speed smoothing for trail width (direct gyro, no lag)
+    let angularSpeedSmoothed = 0
 
     function applyT(ctx) {
       ctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -227,6 +229,10 @@ export default function ConductorCelestialField() {
       const articulation = controls.articulation || 0
       articulationSmoothed += (articulation - articulationSmoothed) * 0.18
 
+      // Smooth angular speed for ribbon width — gyro is direct, no lag
+      const angularSpeed = controls.angularSpeed || 0
+      angularSpeedSmoothed += (angularSpeed - angularSpeedSmoothed) * 0.30
+
       if (phoneActive) {
         cur.x = SW / 2 + roll * SW * 0.40
         cur.y = SH / 2 + pitch * SH * 0.40
@@ -252,7 +258,12 @@ export default function ConductorCelestialField() {
         vel = dist / tdt
       }
       if (!last || Math.hypot(sm.x - last.x, sm.y - last.y) > 0.9) {
-        trace.push({ x: sm.x, y: sm.y, t: now, v: vel })
+        // Width source: blend phone-gyro angular speed (direct, no lag) with
+        // screen-cursor velocity (fallback when gyro data unavailable, e.g.
+        // on browsers without rotationRate). angularSpeed is 0..1; scale to
+        // the existing px/s domain of the original wid() function.
+        const widthSignal = Math.max(vel, angularSpeedSmoothed * V_SAT)
+        trace.push({ x: sm.x, y: sm.y, t: now, v: widthSignal })
       }
       while (trace.length && now - trace[0].t > TRACE_LIFE) trace.shift()
       if (trace.length > 240) trace.splice(0, trace.length - 240)

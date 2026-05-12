@@ -47,6 +47,7 @@ for (let i = 0; i < 20; i++) {
     raw: { alpha: 0, beta: 0, gamma: 0 },
     gestureGain: 0.7,
     articulation: 0.5,
+    rotationRate: { alpha: 0, beta: 0, gamma: 0, mag: 250 },
     calibrated: true,
     t: performance.now(),
   }))
@@ -79,6 +80,7 @@ for (const pose of POSES) {
       raw: { alpha: pose.alpha, beta: pose.beta, gamma: pose.gamma },
       gestureGain: 0.7,
       articulation: 0.5,
+      rotationRate: { alpha: 0, beta: 0, gamma: 0, mag: 250 },
       calibrated: true,
       downbeat: includeDownbeat ? { fired: true, intensity: 0.9 } : null,
       t: performance.now(),
@@ -99,6 +101,7 @@ for (let i = 0; i < 5; i++) {
     raw: { alpha: 0, beta: -25, gamma: 0 },
     gestureGain: 0.7,
     articulation: 0.5,
+    rotationRate: { alpha: 0, beta: 0, gamma: 0, mag: 250 },
     calibrated: true,
     downbeat: { fired: true, intensity: 0.9 },
     t: performance.now(),

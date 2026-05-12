@@ -32,6 +32,10 @@ let prevRms = 0;
 let pendingDownbeat = null; // {fired:true, intensity, t}
 let gestureGain = 0;
 let articulation = 0;
+let rotationRateAlpha = 0;
+let rotationRateBeta = 0;
+let rotationRateGamma = 0;
+let rotationRateMag = 0;
 
 function setStatus(s) {
   statusEl.textContent = s;
@@ -101,6 +105,12 @@ function onMotion(e) {
   const rms = Math.sqrt(ax * ax + ay * ay + az * az);
   const jerk = Math.abs(rms - prevRms);
   prevRms = rms;
+
+  const rr = e.rotationRate || {};
+  rotationRateAlpha = rr.alpha || 0;
+  rotationRateBeta  = rr.beta  || 0;
+  rotationRateGamma = rr.gamma || 0;
+  rotationRateMag = Math.hypot(rotationRateAlpha, rotationRateBeta, rotationRateGamma);
 
   const now = performance.now();
 
@@ -172,6 +182,12 @@ function onOrientation(e) {
       downbeat: pendingDownbeat,
       gestureGain,
       articulation,
+      rotationRate: {
+        alpha: rotationRateAlpha,
+        beta: rotationRateBeta,
+        gamma: rotationRateGamma,
+        mag: rotationRateMag,
+      },
       calibrated,
       t: now,
     };
