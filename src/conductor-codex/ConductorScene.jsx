@@ -177,38 +177,46 @@ function ConductorFigure({ stateRef }) {
     scratch.rightShoulder.set(0.34, 1.34 + breath, 0.02)
     scratch.leftShoulder.set(-0.34, 1.31 + breath, 0.02)
 
+    // The figure faces -Z (away from camera, toward the orchestra arc).
+    // All hand / baton Z components are NEGATIVE here so the conductor
+    // extends the baton forward (toward orchestra), not backward (toward
+    // the audience / camera). Forward tilt drives the hand further -Z;
+    // back tilt pulls it toward 0 / slight +Z.
     scratch.rightHand.set(
       0.45 + current.roll * 0.72 + current.yaw * 0.42,
       1.28 + Math.max(current.pitch, 0) * 0.46 - Math.max(-current.pitch, 0) * 0.28 + breath
         - downStroke * 0.48 + rebound * 0.22,
-      0.24 + Math.max(current.pitch, 0) * 0.72 - Math.max(-current.pitch, 0) * 0.34
-        + current.energy * 0.14 + downStroke * 0.34,
+      -0.4 - Math.max(current.pitch, 0) * 0.72 + Math.max(-current.pitch, 0) * 0.34
+        - current.energy * 0.14 - downStroke * 0.34,
     )
     scratch.rightHand.multiplyScalar(quickness)
     scratch.rightHand.x += (1 - quickness) * 0.45
     scratch.rightHand.y += (1 - quickness) * 1.28
-    scratch.rightHand.z += (1 - quickness) * 0.24
+    scratch.rightHand.z += (1 - quickness) * -0.4
 
     scratch.leftHand.set(
       -0.42 + current.roll * 0.2 + current.yaw * 0.18,
       1.08 + current.pitch * 0.14 + breath * 0.6 + rebound * 0.08,
-      0.12 + Math.max(current.pitch, 0) * 0.2 - Math.max(-current.pitch, 0) * 0.12,
+      -0.2 - Math.max(current.pitch, 0) * 0.2 + Math.max(-current.pitch, 0) * 0.12,
     )
 
     scratch.rightElbow.copy(scratch.rightShoulder).lerp(scratch.rightHand, 0.48)
     scratch.rightElbow.x += Math.sign(scratch.rightHand.x - scratch.rightShoulder.x || 1) * 0.18
     scratch.rightElbow.y -= 0.13 + downStroke * 0.08
-    scratch.rightElbow.z += 0.12
+    scratch.rightElbow.z -= 0.12   // elbow sits slightly forward of shoulder
 
     scratch.leftElbow.copy(scratch.leftShoulder).lerp(scratch.leftHand, 0.54)
     scratch.leftElbow.x -= 0.16
     scratch.leftElbow.y -= 0.1
-    scratch.leftElbow.z += 0.08
+    scratch.leftElbow.z -= 0.08
 
+    // Baton extends from hand in -Z (forward, toward orchestra). Pitch
+    // forward pushes the tip further forward; roll pulls it slightly back
+    // toward the body as the arm sweeps sideways.
     scratch.batonTip.set(
       scratch.rightHand.x + current.roll * 0.28 + current.yaw * 0.16,
       scratch.rightHand.y + 0.22 + Math.max(current.pitch, 0) * 0.36 + rebound * 0.16,
-      scratch.rightHand.z + 0.74 + Math.max(current.pitch, 0) * 0.18 - Math.abs(current.roll) * 0.08,
+      scratch.rightHand.z - 0.74 - Math.max(current.pitch, 0) * 0.18 + Math.abs(current.roll) * 0.08,
     )
     scratch.batonTail.copy(scratch.rightHand)
 
@@ -274,10 +282,24 @@ function ConductorFigure({ stateRef }) {
         <sphereGeometry args={[0.27, 24, 12]} />
         <meshStandardMaterial color={INK} roughness={0.85} />
       </mesh>
-      <mesh ref={headRef} castShadow position={[0, 1.66, 0.02]}>
-        <sphereGeometry args={[0.17, 32, 16]} />
-        <meshStandardMaterial color={INK} roughness={0.85} />
-      </mesh>
+      {/* Head + hair tuft on the back of the skull. Group is the parent so
+          headRef yaw/roll in useFrame rotates the hair with the head.
+          Initial rotation.x tilts the head forward (chin to chest) —
+          reads as "conductor looking down at score / orchestra" and
+          asymmetrically distinguishes back-of-head from front. */}
+      <group ref={headRef} position={[0, 1.66, 0.02]} rotation={[-0.2, 0, 0]}>
+        <mesh castShadow>
+          <sphereGeometry args={[0.17, 32, 16]} />
+          <meshStandardMaterial color={INK} roughness={0.85} />
+        </mesh>
+        {/* Hair tuft — slightly larger flattened dome on the back+top of
+            the skull. The +Z offset puts it on the back side of the head
+            since the figure faces -Z. */}
+        <mesh castShadow position={[0, 0.04, 0.07]} scale={[0.95, 0.65, 1.0]}>
+          <sphereGeometry args={[0.175, 24, 12]} />
+          <meshStandardMaterial color={INK} roughness={0.95} />
+        </mesh>
+      </group>
       <mesh castShadow receiveShadow position={[0, 0.43, 0]}>
         <cylinderGeometry args={[0.2, 0.34, 0.34, 18]} />
         <meshStandardMaterial color={INK} roughness={0.9} />
@@ -366,10 +388,13 @@ export default function ConductorScene({ stateRef }) {
     <Canvas
       shadows={{ type: PCFShadowMap }}
       dpr={[1, 2]}
-      camera={{ position: [0, 1.52, 5.35], fov: 42, near: 0.1, far: 32 }}
+      // Slightly elevated, looking down at the figure — matches the book-plate
+      // reference framing where the figure is photographed from behind and
+      // above, standing on its grassy mound.
+      camera={{ position: [0, 2.05, 4.7], fov: 40, near: 0.1, far: 32 }}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
       onCreated={({ camera }) => {
-        camera.lookAt(0, 1.02, 0.28)
+        camera.lookAt(0, 0.95, 0.1)
       }}
     >
       <SceneContents stateRef={stateRef} />
