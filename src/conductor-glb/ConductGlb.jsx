@@ -7,7 +7,10 @@
 import { createContext, useContext } from 'react'
 import { usePhoneConductor } from '../conductor-codex/usePhoneConductor'
 import ConductorCelestialField from './ConductorCelestialField'
+import { useAmbientAudio } from './useAmbientAudio'
 import '../conductor-codex/conduct-codex.css'
+
+const AUDIO_SRC = '/music/hearth-keeper_acoustic-soft-2000s.mp3'
 
 const PhoneContext = createContext(null)
 
@@ -57,12 +60,46 @@ function StatusPanel() {
   )
 }
 
+function BeginOverlay({ onBegin }) {
+  return (
+    <button
+      type="button"
+      onClick={onBegin}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: 'rgba(216,197,160,0.55)',
+        backdropFilter: 'blur(2px)',
+        border: 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 14,
+        fontFamily: "Georgia, 'Iowan Old Style', serif",
+        color: '#3a2a14',
+        cursor: 'pointer',
+        zIndex: 50,
+      }}
+    >
+      <span style={{
+        fontSize: 11, letterSpacing: '0.3em', textTransform: 'uppercase',
+        opacity: 0.7,
+      }}>tap anywhere</span>
+      <span style={{ fontSize: 26, fontStyle: 'italic' }}>begin</span>
+    </button>
+  )
+}
+
 export default function ConductGlb() {
+  const audio = useAmbientAudio({ src: AUDIO_SRC })
+
   return (
     <PhoneProvider>
       <main className="conduct-codex-shell">
-        <ConductorCelestialField />
+        <ConductorCelestialField audio={audio} />
         <StatusPanel />
+        {audio.needsGesture && <BeginOverlay onBegin={audio.tryStart} />}
       </main>
     </PhoneProvider>
   )

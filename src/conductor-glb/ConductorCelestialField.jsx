@@ -23,7 +23,6 @@
 import { useEffect, useRef } from 'react'
 import { usePhone } from './ConductGlb'
 import { computeMetatronNodes, computeMetatronEdges } from './metatronGeometry.js'
-import { useAmbientAudio } from './useAmbientAudio'
 import { bandAverage, detectBassBeat } from './audioBands.js'
 
 // Logical canvas dimensions — the same coords the original HTML uses.
@@ -44,7 +43,6 @@ const V_SAT = 620             // px/s — saturating velocity for ribbon width
 const STAR_HIT = 32           // px — proximity for activation
 const STAR_LINK = 240         // px — max distance to link sequential stars
 
-const AUDIO_SRC = '/music/hearth-keeper_acoustic-soft-2000s.mp3'
 const BASS_BIN_START = 0
 const BASS_BIN_END = 3
 const BEAT_THRESHOLD = 0.55              // bass band level that triggers a beat
@@ -82,13 +80,12 @@ const NODE_DEFAULT_RADIUS = 4             // resting node visual size
 const NODE_ACTIVE_RADIUS_BOOST = 7        // additional radius when fully activated
 const WATERMARK_RGBA = 'rgba(70,46,24,0.07)'   // faint amber, slightly darker than dust
 
-export default function ConductorCelestialField() {
+export default function ConductorCelestialField({ audio }) {
   const rootRef = useRef(null)
   const bgRef = useRef(null)
   const fgRef = useRef(null)
   const trailRef = useRef(null)
   const { stateRef } = usePhone()
-  const audio = useAmbientAudio({ src: AUDIO_SRC })
   // Stable ref so the rAF closure always sees the latest audio object
   // without re-running the effect when audio's render-object identity changes.
   const audioRef = useRef(audio)
