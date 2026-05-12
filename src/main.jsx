@@ -4,10 +4,12 @@ import './index.css'
 import App from './App.jsx'
 import ConductorView from './conductor/ConductorView.jsx'
 import ConductCodex from './conductor-codex/ConductCodex.jsx'
+import ConductGlb from './conductor-glb/ConductGlb.jsx'
 
 const ROUTES = {
   '/conduct': ConductorView,
   '/conduct-codex': ConductCodex,
+  '/conduct-glb': ConductGlb,
 }
 
 const Root = ROUTES[window.location.pathname] || App
