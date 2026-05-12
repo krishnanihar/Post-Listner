@@ -101,6 +101,14 @@ function Conductor({ accessoryMat }) {
   const lastImpulseAt = useRef(0)
   const armIKRef = useRef(null)
   const headBoneRef = useRef(null)
+  // Twist bones in the IK chain (DEF-forearmR.001 / DEF-upper_armR.001).
+  // CCDIK rotates them freely to help reach the target, but they're
+  // meant to ONLY twist along the limb's longitudinal axis to spread
+  // skin deformation smoothly. Free rotation wrings the mesh around
+  // the arm — visible as a weird, flat-looking hand. We snapshot
+  // their rest rotations and reset them every frame after IK runs.
+  const twistBonesRef = useRef({ forearmTwist: null, upperArmTwist: null })
+  const twistBaseRef = useRef({ forearmTwist: null, upperArmTwist: null })
 
   // Damped controls — usePhoneConductor publishes raw controls each
   // message; we smooth them per frame so motion is responsive but not
@@ -136,6 +144,26 @@ function Conductor({ accessoryMat }) {
     baseRotations.current = captureBaseRotations(bones)
     headBoneRef.current = bones.head ?? null
     armIKRef.current = setupArmIK(scene)
+
+    // Locate twist bones in the skeleton and snapshot their rest
+    // rotations. Names use the sanitized form (three.js's GLTFLoader
+    // strips dots): DEF-forearmR.001 → DEF-forearmR001 etc.
+    const findBoneByName = (name) => {
+      const sanitized = THREE.PropertyBinding.sanitizeNodeName(name)
+      let found = null
+      scene.traverse((o) => {
+        if (found || !o.isBone) return
+        if (o.name === sanitized || o.name === name) found = o
+      })
+      return found
+    }
+    const forearmTwist = findBoneByName('DEF-forearmR.001')
+    const upperArmTwist = findBoneByName('DEF-upper_armR.001')
+    twistBonesRef.current = { forearmTwist, upperArmTwist }
+    twistBaseRef.current = {
+      forearmTwist: forearmTwist ? forearmTwist.quaternion.clone() : null,
+      upperArmTwist: upperArmTwist ? upperArmTwist.quaternion.clone() : null,
+    }
 
     if (typeof window !== 'undefined') {
       // eslint-disable-next-line no-console
@@ -192,6 +220,21 @@ function Conductor({ accessoryMat }) {
 
     scene.updateMatrixWorld(true)
     driveArmIK(armIKRef.current, calibrated ? quatScratch : identityQuat)
+
+    // Undo CCDIK's twist-bone rotations. The upper-arm and forearm have
+    // already been rotated by the solver to reach the target — the
+    // twist bones' contribution gets discarded, which keeps the skin
+    // from getting wrung around the limb. The arm may end up slightly
+    // short of target in extreme reaches; that's preferable to the
+    // mesh deformation otherwise visible under the unlit starfield.
+    const tb = twistBonesRef.current
+    const tbBase = twistBaseRef.current
+    if (tb.forearmTwist && tbBase.forearmTwist) {
+      tb.forearmTwist.quaternion.copy(tbBase.forearmTwist)
+    }
+    if (tb.upperArmTwist && tbBase.upperArmTwist) {
+      tb.upperArmTwist.quaternion.copy(tbBase.upperArmTwist)
+    }
 
     // Downbeat: detect when controls.lastDownbeatAt timestamp changes,
     // trigger a fresh ictus impulse at that moment.
