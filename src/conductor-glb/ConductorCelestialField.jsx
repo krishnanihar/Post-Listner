@@ -87,6 +87,10 @@ export default function ConductorCelestialField() {
     const inscribed = []
     let lastActStar = null
 
+    // Downbeat tracking for burst events
+    let lastConsumedBeat = 0
+    const BURST_RADIUS = 180   // viewBox px around cursor
+
     // Star field — randomized slightly per mount so it doesn't feel
     // identical to the demo. Seed with the fixed positions then jitter.
     const stars = STAR_POSITIONS.map(([x, y]) => ({
@@ -252,6 +256,32 @@ export default function ConductorCelestialField() {
       }
       while (trace.length && now - trace[0].t > TRACE_LIFE) trace.shift()
       if (trace.length > 240) trace.splice(0, trace.length - 240)
+
+      // Detect new downbeat event
+      const beatAt = controls.lastDownbeatAt || 0
+      const beatNew = beatAt && beatAt !== lastConsumedBeat
+      if (beatNew) {
+        lastConsumedBeat = beatAt
+        const intensity = controls.downbeatIntensity || 1
+        // Burst: any star within BURST_RADIUS of the cursor activates to full.
+        // Pick the two closest to inscribe a constellation line.
+        const near = []
+        for (const s of stars) {
+          const d = Math.hypot(s.x - sm.x, s.y - sm.y)
+          if (d < BURST_RADIUS) {
+            s.act = Math.min(1, s.act + 0.6 * intensity)
+            near.push({ s, d })
+          }
+        }
+        near.sort((a, b) => a.d - b.d)
+        if (near.length >= 2) {
+          inscribed.push({
+            x1: near[0].s.x, y1: near[0].s.y,
+            x2: near[1].s.x, y2: near[1].s.y,
+            t: now,
+          })
+        }
+      }
 
       for (const s of stars) {
         const d = Math.hypot(s.x - sm.x, s.y - sm.y)

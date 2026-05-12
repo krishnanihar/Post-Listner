@@ -71,6 +71,7 @@ function qFromEulerZXY(aDeg, bDeg, gDeg) {
 
 for (const pose of POSES) {
   const q = qFromEulerZXY(pose.alpha, pose.beta, pose.gamma)
+  const includeDownbeat = pose.label === '04-pitch-back-15'
   for (let i = 0; i < 30; i++) {
     if (ws) ws.send(JSON.stringify({
       type: 'orientation',
@@ -79,6 +80,7 @@ for (const pose of POSES) {
       gestureGain: 0.7,
       articulation: 0.5,
       calibrated: true,
+      downbeat: includeDownbeat ? { fired: true, intensity: 0.9 } : null,
       t: performance.now(),
     }))
     await page.waitForTimeout(16)
