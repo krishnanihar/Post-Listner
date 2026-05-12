@@ -11,6 +11,7 @@ import { createContext, useContext, useRef } from 'react'
 import { usePhoneConductor } from '../conductor-codex/usePhoneConductor'
 import ConductorCelestialField from './ConductorCelestialField'
 import SacredGeometryLayer from './SacredGeometryLayer'
+import GhostConductorLayer from './GhostConductorLayer'
 import '../conductor-codex/conduct-codex.css'
 
 const PhoneContext = createContext(null)
@@ -73,6 +74,7 @@ export default function ConductGlb() {
       <main className="conduct-codex-shell">
         <SacredGeometryLayer trailTipRef={trailTipRef} />
         <ConductorCelestialField trailTipRef={trailTipRef} />
+        <GhostConductorLayer />
         <StatusPanel />
       </main>
     </PhoneProvider>
