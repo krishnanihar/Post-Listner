@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import ConductorScene from './ConductorScene'
+import ConstellationOverlay from './ConstellationOverlay'
 import { RELAY_URL } from './motion'
 import { usePhoneConductor } from './usePhoneConductor'
 import './conduct-codex.css'
@@ -41,6 +42,7 @@ export default function ConductCodex() {
 
   return (
     <main className="conduct-codex-shell">
+      <ConstellationOverlay />
       <ConductorScene stateRef={stateRef} />
 
       <section className="conduct-codex-panel conduct-codex-panel--status" aria-label="Conductor status">

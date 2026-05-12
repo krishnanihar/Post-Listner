@@ -355,9 +355,10 @@ function ConductorFigure({ stateRef }) {
 function SceneContents({ stateRef }) {
   return (
     <>
-      <color attach="background" args={[PAPER]} />
-      {/* Fog fades distant geometry into the paper color so the arc of
-          orchestra stands dissolves into the parchment edge. */}
+      {/* No <color attach="background"> — the canvas is transparent so the
+          parchment + constellation overlay underneath show through where
+          the figure / stands don't occlude. Fog still uses PAPER so distant
+          geometry fades cleanly into the paper color matching the shell. */}
       <fog attach="fog" args={[PAPER, 5.5, 11]} />
       {/* Bright, neutral lighting — the figure is meant to read as a flat
           ink silhouette, so we don't sculpt it with directional gradients. */}
@@ -392,7 +393,7 @@ export default function ConductorScene({ stateRef }) {
       // reference framing where the figure is photographed from behind and
       // above, standing on its grassy mound.
       camera={{ position: [0, 2.05, 4.7], fov: 40, near: 0.1, far: 32 }}
-      gl={{ antialias: true, powerPreference: 'high-performance' }}
+      gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
       onCreated={({ camera }) => {
         camera.lookAt(0, 0.95, 0.1)
       }}
