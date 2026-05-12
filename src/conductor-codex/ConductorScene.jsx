@@ -299,10 +299,40 @@ function ConductorFigure({ stateRef }) {
           <sphereGeometry args={[0.175, 24, 12]} />
           <meshStandardMaterial color={INK} roughness={0.95} />
         </mesh>
+        {/* Headphone band — half-torus arcing from one ear over the
+            crown to the other. Default TorusGeometry sits in the XY
+            plane with arc from +X through +Y to -X — exactly what we
+            need for an ear-over-crown-to-ear shape. Radius 0.19 > head
+            radius 0.17 so the band rests just above the skin. */}
+        <mesh castShadow position={[0, 0, -0.01]}>
+          <torusGeometry args={[0.19, 0.014, 8, 28, Math.PI]} />
+          <meshStandardMaterial color={INK} roughness={0.6} metalness={0.15} />
+        </mesh>
+        {/* Earpiece cups — short cylinders flanking the head at the
+            band's anchor points. Cylinder default axis is Y; rotate
+            π/2 around Z so axis becomes X, caps face outward from the
+            skull. */}
+        <mesh castShadow position={[0.18, 0, -0.005]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.055, 0.05, 0.05, 18]} />
+          <meshStandardMaterial color={INK} roughness={0.7} />
+        </mesh>
+        <mesh castShadow position={[-0.18, 0, -0.005]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.05, 0.055, 0.05, 18]} />
+          <meshStandardMaterial color={INK} roughness={0.7} />
+        </mesh>
       </group>
-      <mesh castShadow receiveShadow position={[0, 0.43, 0]}>
-        <cylinderGeometry args={[0.2, 0.34, 0.34, 18]} />
-        <meshStandardMaterial color={INK} roughness={0.9} />
+      {/* Long coat — replaces the small pedestal. Tapered cylinder from
+          waist down to the hem near the floor, flared so the silhouette
+          reads as a person in a knee-/floor-length coat from behind. */}
+      <mesh castShadow receiveShadow position={[0, 0.36, 0]}>
+        <cylinderGeometry args={[0.32, 0.5, 0.7, 24]} />
+        <meshStandardMaterial color={INK} roughness={0.95} />
+      </mesh>
+      {/* Coat hem ring — slight darker band at the bottom for shape
+          definition, matches the etched-illustration line work. */}
+      <mesh receiveShadow position={[0, 0.025, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.42, 0.5, 32]} />
+        <meshBasicMaterial color={INK} />
       </mesh>
       <Segment ref={rightUpperRef} radius={0.052} color={INK} />
       <Segment ref={rightLowerRef} radius={0.045} color={INK} />
