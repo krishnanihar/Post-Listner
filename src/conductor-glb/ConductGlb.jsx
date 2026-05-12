@@ -10,6 +10,7 @@
 import { createContext, useContext } from 'react'
 import { usePhoneConductor } from '../conductor-codex/usePhoneConductor'
 import ConductorCelestialField from './ConductorCelestialField'
+import SacredGeometryLayer from './SacredGeometryLayer'
 import '../conductor-codex/conduct-codex.css'
 
 const PhoneContext = createContext(null)
@@ -68,6 +69,7 @@ export default function ConductGlb() {
   return (
     <PhoneProvider>
       <main className="conduct-codex-shell">
+        <SacredGeometryLayer />
         <ConductorCelestialField />
         <StatusPanel />
       </main>
