@@ -36,6 +36,7 @@ let rotationRateAlpha = 0;
 let rotationRateBeta = 0;
 let rotationRateGamma = 0;
 let rotationRateMag = 0;
+let accelX = 0, accelY = 0, accelZ = 0;
 
 function setStatus(s) {
   statusEl.textContent = s;
@@ -101,6 +102,9 @@ function onMotion(e) {
   const ax = a.x || 0;
   const ay = a.y || 0;
   const az = a.z || 0;
+  accelX = ax;
+  accelY = ay;
+  accelZ = az;
 
   const rms = Math.sqrt(ax * ax + ay * ay + az * az);
   const jerk = Math.abs(rms - prevRms);
@@ -188,6 +192,7 @@ function onOrientation(e) {
         gamma: rotationRateGamma,
         mag: rotationRateMag,
       },
+      accel: { x: accelX, y: accelY, z: accelZ },
       calibrated,
       t: now,
     };

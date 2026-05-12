@@ -244,6 +244,12 @@ export default function ConductorCelestialField() {
         cur.y = SH * 0.5 + Math.sin(tt * 1.8) * SH * 0.28
       }
 
+      // Directional momentum from phone-frame acceleration. Subtle — adds
+      // physicality without overpowering the orientation-driven cursor.
+      const accel = controls.accel || { x: 0, y: 0, z: 0 }
+      cur.x += accel.x * 40  // viewBox px per (1g normalized) push
+      cur.y -= accel.y * 40  // phone +Y is up; SVG Y grows down → invert
+
       sm.x += (cur.x - sm.x) * 0.22
       sm.y += (cur.y - sm.y) * 0.22
 

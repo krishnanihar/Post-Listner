@@ -21,6 +21,8 @@ const POSES = [
   { label: '09-roll-left-30',  alpha: 0, beta: 0,    gamma: -30 },
   { label: '10-fwd-right',     alpha: 0, beta: -20,  gamma: +20 },
   { label: '11-back-left',     alpha: 0, beta: +20,  gamma: -20 },
+  { label: '12-accel-shake',   alpha: 0, beta: 0,    gamma: 0,
+    overrideAccel: { x: 4, y: -4, z: 0 } },
 ]
 
 const browser = await chromium.launch({ headless: true })
@@ -48,6 +50,7 @@ for (let i = 0; i < 20; i++) {
     gestureGain: 0.7,
     articulation: 0.5,
     rotationRate: { alpha: 0, beta: 0, gamma: 0, mag: 250 },
+    accel: { x: 0, y: 0, z: 0 },
     calibrated: true,
     t: performance.now(),
   }))
@@ -81,6 +84,7 @@ for (const pose of POSES) {
       gestureGain: 0.7,
       articulation: 0.5,
       rotationRate: { alpha: 0, beta: 0, gamma: 0, mag: 250 },
+      accel: pose.overrideAccel || { x: 0, y: 0, z: 0 },
       calibrated: true,
       downbeat: includeDownbeat ? { fired: true, intensity: 0.9 } : null,
       t: performance.now(),
@@ -102,6 +106,7 @@ for (let i = 0; i < 5; i++) {
     gestureGain: 0.7,
     articulation: 0.5,
     rotationRate: { alpha: 0, beta: 0, gamma: 0, mag: 250 },
+    accel: { x: 0, y: 0, z: 0 },
     calibrated: true,
     downbeat: { fired: true, intensity: 0.9 },
     t: performance.now(),
