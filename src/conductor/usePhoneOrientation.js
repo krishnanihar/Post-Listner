@@ -32,6 +32,13 @@ export function usePhoneOrientation(url) {
     beta: FILTER_BETA,
   }))
 
+  // Beat / gesture-size signals from phone DeviceMotion. lastDownbeat is the
+  // most recent fired event; consumers compare its timestamp against an
+  // already-handled cursor to detect new beats.
+  const lastDownbeat = useRef({ firedAt: 0, intensity: 0 })
+  const gestureGain = useRef(0)
+  const articulation = useRef(0)
+
   useEffect(() => {
     let ws = null
     let cancelled = false
@@ -55,6 +62,8 @@ export function usePhoneOrientation(url) {
         setConnected(false)
         // Reset the filter so a long gap doesn't poison the next stream
         filter.current.reset()
+        gestureGain.current = 0
+        articulation.current = 0
         reconnectTimer = setTimeout(connect, RECONNECT_DELAY_MS)
       })
 
@@ -63,15 +72,34 @@ export function usePhoneOrientation(url) {
       ws.addEventListener('message', (e) => {
         try {
           const msg = JSON.parse(e.data)
-          if (msg.type === 'orientation' && Array.isArray(msg.q) && msg.q.length === 4) {
-            const t = typeof msg.t === 'number' ? msg.t : performance.now()
-            const f = filter.current.filter(msg.q[0], msg.q[1], msg.q[2], msg.q[3], t)
-            targetQuat.current.set(f.x, f.y, f.z, f.w)
-            if (msg.raw) lastRaw.current = { ...msg.raw, t }
-            if (typeof msg.calibrated === 'boolean' && msg.calibrated !== calibrated) {
-              setCalibrated(msg.calibrated)
+          // Accept both the legacy 'orientation' messages and the new
+          // 'gesture' messages from phone.js (which add downbeat,
+          // gestureGain, articulation alongside the same q payload).
+          const isMotion = (msg.type === 'orientation' || msg.type === 'gesture')
+            && Array.isArray(msg.q) && msg.q.length === 4
+          if (!isMotion) return
+
+          // Timestamp samples locally. The phone-side `msg.t` is the phone's
+          // performance.now(), which resets if the phone page reloads or a
+          // different phone connects to the same relay. The OneEuroQuaternion
+          // filter freezes when dt <= 0, so using msg.t can stall motion
+          // after a reload. Local timestamps are guaranteed monotonic.
+          const t = performance.now()
+          const f = filter.current.filter(msg.q[0], msg.q[1], msg.q[2], msg.q[3], t)
+          targetQuat.current.set(f.x, f.y, f.z, f.w)
+          if (msg.raw) lastRaw.current = { ...msg.raw, t }
+          if (typeof msg.calibrated === 'boolean' && msg.calibrated !== calibrated) {
+            setCalibrated(msg.calibrated)
+          }
+          if (msg.downbeat && msg.downbeat.fired) {
+            lastDownbeat.current = {
+              firedAt: typeof msg.downbeat.t === 'number' ? msg.downbeat.t : t,
+              intensity: typeof msg.downbeat.intensity === 'number'
+                ? msg.downbeat.intensity : 1,
             }
           }
+          if (typeof msg.gestureGain === 'number') gestureGain.current = msg.gestureGain
+          if (typeof msg.articulation === 'number') articulation.current = msg.articulation
         } catch {}
       })
     }
@@ -97,6 +125,9 @@ export function usePhoneOrientation(url) {
     targetQuat,
     currentQuat,
     lastRaw,
+    lastDownbeat,
+    gestureGain,
+    articulation,
     advance,
   }
 }
