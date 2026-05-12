@@ -462,6 +462,24 @@ export default function ConductorCelestialField({ trailTipRef }) {
         tCtx.arc(tip.x, tip.y, tip.hw * 2.2, 0, Math.PI * 2)
         tCtx.fill()
       }
+      if (trace.length >= 2) {
+        // Ink-blob "pen" at the leading tip — the source the trail flows from.
+        // Slight wobble on a slow sine so it feels organic. Size scales with
+        // current ribbon width so a fast stroke gives a small drop; a held
+        // stroke gives a fat blob ready to dispense more ink.
+        const tip = trace[trace.length - 1]
+        const wob = Math.sin(performance.now() * 0.012)
+        const blobR = Math.max(4, tip.hw * 1.3 + wob * 0.8)
+        // Two-layer ink-blob: a saturated dark core + a slightly softer halo.
+        tCtx.fillStyle = `rgba(${INK[0]},${INK[1]},${INK[2]},0.85)`
+        tCtx.beginPath()
+        tCtx.arc(tip.x, tip.y, blobR, 0, Math.PI * 2)
+        tCtx.fill()
+        tCtx.fillStyle = `rgba(${INK_WET[0]},${INK_WET[1]},${INK_WET[2]},0.55)`
+        tCtx.beginPath()
+        tCtx.arc(tip.x + wob * 1.2, tip.y - wob * 0.9, blobR * 0.55, 0, Math.PI * 2)
+        tCtx.fill()
+      }
     }
 
     const ro = new ResizeObserver(resize)
