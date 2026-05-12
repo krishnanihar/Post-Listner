@@ -77,7 +77,10 @@ function MetatronCube({ trailTipRef }) {
         const arr = obj.geometry.attributes.position.array
         for (let i = 0; i < arr.length; i++) positions.push(arr[i])
       } else if (obj.isMesh && obj.geometry) {
-        const eg = new THREE.EdgesGeometry(obj.geometry, 15)
+        // Threshold 45° keeps only sharp/outer edges; 15° included every
+        // internal face of the Metatron's Cube model and made the
+        // background read as a chaotic wireframe cage.
+        const eg = new THREE.EdgesGeometry(obj.geometry, 45)
         const arr = eg.attributes.position.array
         for (let i = 0; i < arr.length; i++) positions.push(arr[i])
       }
@@ -202,7 +205,7 @@ function MetatronCube({ trailTipRef }) {
   return (
     <group ref={groupRef}>
       <lineSegments ref={linesRef} geometry={lineGeometry}>
-        <lineBasicMaterial vertexColors transparent opacity={0.85} />
+        <lineBasicMaterial vertexColors transparent opacity={0.55} />
       </lineSegments>
       {stemNodes.map((v, i) => (
         <StemNode key={i} position={v} pulseRef={stemPulseRef} stemIndex={i} />

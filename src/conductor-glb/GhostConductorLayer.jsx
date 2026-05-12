@@ -18,7 +18,7 @@ import { usePhone } from './ConductGlb'
 const FIGURE_URL = '/conductor/conductor.glb'
 useGLTF.preload(FIGURE_URL)
 
-const GHOST_OPACITY = 0.12
+const GHOST_OPACITY = 0.06             // per-mesh; composites higher due to layered meshes
 const BREATH_PERIOD_S = 4.0
 const BREATH_AMPLITUDE = 0.015         // ±1.5 % of group Y scale
 const HEAD_YAW_MAX_DEG = 5             // ±5° of head yaw with phone yaw
@@ -79,9 +79,13 @@ function GhostFigure() {
     const t = elapsedRef.current
 
     // Breath: scale group Y by a small sinusoidal modulation.
+    // The 180° Y rotation keeps the back of the head facing the camera —
+    // otherwise the GLB's default pose faces +Z and the camera at +Z
+    // would render the face, which reads as a horror-movie ghost.
     if (groupRef.current) {
       const breath = 1 + Math.sin(t * (2 * Math.PI / BREATH_PERIOD_S)) * BREATH_AMPLITUDE
       groupRef.current.scale.set(1, breath, 1)
+      groupRef.current.rotation.y = Math.PI
     }
 
     // Head yaw: subtle response to phone yaw (compass alpha delta).
