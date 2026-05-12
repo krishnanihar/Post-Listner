@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Conductor Relay</title>
+    <style>
+      html, body {
+        margin: 0; padding: 0; height: 100%;
+        background: #F2EBD8; color: #1C1814;
+        font-family: 'Iowan Old Style', 'Palatino', serif;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .card {
+        max-width: 540px; padding: 40px 48px;
+        text-align: center; line-height: 1.6;
+      }
+      h1 { font-style: italic; font-weight: 400; margin: 0 0 24px; }
+      code {
+        background: rgba(28, 24, 20, 0.08);
+        padding: 2px 8px; border-radius: 4px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 14px;
+      }
+      p { margin: 12px 0; }
+      .muted { opacity: 0.7; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Conductor relay</h1>
+      <p>This server hosts the WebSocket relay and the phone page.</p>
+      <p>The desktop view is on the Vite dev server at <code>http://localhost:5174/conduct</code>.</p>
+      <p>Open <code>/phone</code> on your phone to start streaming orientation.</p>
+      <p class="muted">WebSocket: <code>wss://&lt;this-host&gt;/?role=desktop</code></p>
+    </div>
+  </body>
+</html>
