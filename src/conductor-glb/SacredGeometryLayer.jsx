@@ -17,11 +17,12 @@
  * Later tasks add:
  *   - Stem-reactive node pulses (Task 5)
  */
-import { Suspense, useEffect, useMemo, useRef } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import { pointToSegmentDistance } from './edgeMath.js'
+import { usePhone } from './ConductGlb'
 
 const GEOMETRY_URL = '/conductor/sacred-metatron.glb'
 useGLTF.preload(GEOMETRY_URL)
@@ -31,12 +32,39 @@ const EDGE_DECAY_PER_S = 1.5   // activation decays at this rate per second
 const COLOR_REST = new THREE.Color('#7a5a30')   // soft amber
 const COLOR_ACTIVE = new THREE.Color('#FFD888') // bright gold
 
+function StemNode({ position, pulseRef, stemIndex }) {
+  const meshRef = useRef()
+  const matRef = useRef()
+  useFrame(() => {
+    const p = pulseRef.current[stemIndex] || 0
+    if (meshRef.current) {
+      const s = 0.05 + p * 0.10
+      meshRef.current.scale.set(s, s, s)
+    }
+    if (matRef.current) {
+      matRef.current.opacity = 0.35 + p * 0.55
+    }
+  })
+  return (
+    <mesh ref={meshRef} position={position}>
+      <sphereGeometry args={[1, 16, 12]} />
+      <meshBasicMaterial ref={matRef} color="#FFD888" transparent opacity={0.35} />
+    </mesh>
+  )
+}
+
 function MetatronCube({ trailTipRef }) {
   const groupRef = useRef()
   const linesRef = useRef()
   const colorAttrRef = useRef()
   const activationsRef = useRef([])
   const segmentsRef = useRef([])
+  const stemNodesRef = useRef([])
+  const [stemNodes, setStemNodes] = useState([])
+
+  const { stateRef } = usePhone()
+  const stemPulseRef = useRef([0, 0, 0, 0])
+  const lastDownbeatSeenRef = useRef(0)
 
   const { scene } = useGLTF(GEOMETRY_URL)
   const { camera, size } = useThree()
@@ -79,6 +107,23 @@ function MetatronCube({ trailTipRef }) {
     }
     colorAttr.needsUpdate = true
     colorAttrRef.current = colorAttr
+  }, [lineGeometry])
+
+  // Pick 4 prominent vertices — farthest from origin in XY — for stem nodes.
+  useEffect(() => {
+    const segs = segmentsRef.current
+    if (!segs.length) return
+    const uniq = new Map()
+    const key = (v) => `${v.x.toFixed(3)},${v.y.toFixed(3)},${v.z.toFixed(3)}`
+    for (const [a, b] of segs) {
+      uniq.set(key(a), a)
+      uniq.set(key(b), b)
+    }
+    const verts = [...uniq.values()]
+    verts.sort((a, b) => Math.hypot(b.x, b.y) - Math.hypot(a.x, a.y))
+    const picked = verts.slice(0, 4).map((v) => v.clone())
+    stemNodesRef.current = picked
+    setStemNodes(picked)
   }, [lineGeometry])
 
   const tmpA = useMemo(() => new THREE.Vector3(), [])
@@ -127,6 +172,31 @@ function MetatronCube({ trailTipRef }) {
       colorAttr.setXYZ(vi + 1, r, g, b)
     }
     colorAttr.needsUpdate = true
+
+    // Stem pulse update — simulate the 4 stems from phone signals until
+    // the Orchestra phase wires real AnalyserNode reads. Each pulse value
+    // is a smoothed 0..1; the nodes render as small spheres scaled by pulse.
+    const state = stateRef.current
+    const ctrl = state.controls
+    const calibrated = state.calibrated
+    const pulses = stemPulseRef.current
+
+    // vocals ← articulation
+    const tgtVocals = calibrated ? (ctrl.articulation || 0) : 0
+    pulses[0] += (tgtVocals - pulses[0]) * 0.20
+    // drums ← downbeat one-shot decay
+    const beatAt = ctrl.lastDownbeatAt || 0
+    if (beatAt && beatAt !== lastDownbeatSeenRef.current) {
+      lastDownbeatSeenRef.current = beatAt
+      pulses[1] = Math.min(1, pulses[1] + (ctrl.downbeatIntensity || 0.8))
+    }
+    pulses[1] = Math.max(0, pulses[1] - delta * 2.5)
+    // bass ← energy
+    const tgtBass = calibrated ? (ctrl.energy || 0) : 0
+    pulses[2] += (tgtBass - pulses[2]) * 0.15
+    // other ← angularSpeed
+    const tgtOther = calibrated ? (ctrl.angularSpeed || 0) : 0
+    pulses[3] += (tgtOther - pulses[3]) * 0.20
   })
 
   return (
@@ -134,6 +204,9 @@ function MetatronCube({ trailTipRef }) {
       <lineSegments ref={linesRef} geometry={lineGeometry}>
         <lineBasicMaterial vertexColors transparent opacity={0.85} />
       </lineSegments>
+      {stemNodes.map((v, i) => (
+        <StemNode key={i} position={v} pulseRef={stemPulseRef} stemIndex={i} />
+      ))}
     </group>
   )
 }
