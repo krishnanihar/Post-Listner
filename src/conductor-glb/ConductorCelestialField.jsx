@@ -22,6 +22,7 @@
  */
 import { useEffect, useRef } from 'react'
 import { usePhone } from './ConductGlb'
+import { computeMetatronNodes, computeMetatronEdges } from './metatronGeometry.js'
 
 // Logical canvas dimensions — the same coords the original HTML uses.
 // Everything inside is laid out in this space; the canvas elements are
@@ -60,6 +61,18 @@ const HINT_CONSTELLATIONS = [
   [[60,490],[110,520],[45,560]],
   [[625,295],[582,345],[638,395]],
 ]
+
+// Metatron geometry — drawn into the same viewBox the stars live in.
+// Center at (SW/2, SH/2 + 10). Inner hex radius 110, outer hex at 220.
+// Drawn as a faint watermark behind the stars + a foreground layer of
+// nodes that activate when the trail tip passes near them.
+const METATRON_CX = SW / 2
+const METATRON_CY = SH / 2 + 10           // matches the existing background-circle center
+const METATRON_INNER_RADIUS = 110
+const NODE_HIT_PX = 20                    // proximity for node activation
+const NODE_DEFAULT_RADIUS = 4             // resting node visual size
+const NODE_ACTIVE_RADIUS_BOOST = 7        // additional radius when fully activated
+const WATERMARK_RGBA = 'rgba(70,46,24,0.07)'   // faint amber, slightly darker than dust
 
 export default function ConductorCelestialField() {
   const rootRef = useRef(null)
@@ -106,6 +119,14 @@ export default function ConductorCelestialField() {
         stars[i].base += 0.18
       }
     }
+
+    // Compute Metatron nodes once. Scaled into viewBox coords.
+    const metatronNodesLocal = computeMetatronNodes(METATRON_INNER_RADIUS).map((n) => ({
+      x: METATRON_CX + n.x,
+      y: METATRON_CY + n.y,
+      act: 0,                                  // activation 0..1, same pattern as stars
+    }))
+    const metatronEdgesLocal = computeMetatronEdges(13)
 
     // Viewport scaling — fit the logical SW×SH inside the available
     // root rectangle, preserving aspect.
@@ -161,6 +182,19 @@ export default function ConductorCelestialField() {
       bCtx.arc(SW / 2, SH / 2 + 10, 330, 0, Math.PI * 2)
       bCtx.stroke()
       bCtx.restore()
+      // Metatron watermark — faint amber lines connecting every node pair.
+      // Painted into bg once at resize, so it sits under the stars + glyphs
+      // like a structural chalk trace under the parchment.
+      bCtx.strokeStyle = WATERMARK_RGBA
+      bCtx.lineWidth = 0.4
+      for (const [i, j] of metatronEdgesLocal) {
+        const a = metatronNodesLocal[i]
+        const b = metatronNodesLocal[j]
+        bCtx.beginPath()
+        bCtx.moveTo(a.x, a.y)
+        bCtx.lineTo(b.x, b.y)
+        bCtx.stroke()
+      }
       bCtx.strokeStyle = 'rgba(70,46,24,0.18)'
       bCtx.lineWidth = 0.55
       for (const c of HINT_CONSTELLATIONS) {
@@ -389,6 +423,23 @@ export default function ConductorCelestialField() {
           fCtx.fillStyle = `rgba(245,210,150,${s.act * 0.85})`
           fCtx.beginPath()
           fCtx.arc(s.x, s.y, sz * 0.5, 0, Math.PI * 2)
+          fCtx.fill()
+        }
+      }
+      // Metatron nodes — faint dots at the 13 Fruit-of-Life positions.
+      // Activation comes from trail-tip proximity in the next task; for now
+      // they're static dim circles.
+      for (const n of metatronNodesLocal) {
+        const baseOpacity = 0.25 + n.act * 0.65
+        const radius = NODE_DEFAULT_RADIUS + n.act * NODE_ACTIVE_RADIUS_BOOST
+        fCtx.fillStyle = `rgba(${INK[0]},${INK[1]},${INK[2]},${baseOpacity})`
+        fCtx.beginPath()
+        fCtx.arc(n.x, n.y, radius, 0, Math.PI * 2)
+        fCtx.fill()
+        if (n.act > 0.3) {
+          fCtx.fillStyle = `rgba(${GLOW[0]},${GLOW[1]},${GLOW[2]},${n.act * 0.6})`
+          fCtx.beginPath()
+          fCtx.arc(n.x, n.y, radius * 1.8, 0, Math.PI * 2)
           fCtx.fill()
         }
       }
