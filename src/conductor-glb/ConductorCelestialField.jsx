@@ -23,6 +23,8 @@
 import { useEffect, useRef } from 'react'
 import { usePhone } from './ConductGlb'
 import { computeMetatronNodes, computeMetatronEdges } from './metatronGeometry.js'
+import { useAmbientAudio } from './useAmbientAudio'
+import { bandAverage, detectBassBeat } from './audioBands.js'
 
 // Logical canvas dimensions — the same coords the original HTML uses.
 // Everything inside is laid out in this space; the canvas elements are
@@ -41,6 +43,12 @@ const W_MAX = 14
 const V_SAT = 620             // px/s — saturating velocity for ribbon width
 const STAR_HIT = 32           // px — proximity for activation
 const STAR_LINK = 240         // px — max distance to link sequential stars
+
+const AUDIO_SRC = '/music/hearth-keeper_acoustic-soft-2000s.mp3'
+const BASS_BIN_START = 0
+const BASS_BIN_END = 3
+const BEAT_THRESHOLD = 0.55              // bass band level that triggers a beat
+const BREATH_AMPLITUDE = 0.05            // ±5% global opacity breath on inscribed
 
 const STAR_POSITIONS = [
   [60,68],[110,105],[160,80],[55,160],[120,180],[78,220],
@@ -80,6 +88,11 @@ export default function ConductorCelestialField() {
   const fgRef = useRef(null)
   const trailRef = useRef(null)
   const { stateRef } = usePhone()
+  const audio = useAmbientAudio({ src: AUDIO_SRC })
+  // Stable ref so the rAF closure always sees the latest audio object
+  // without re-running the effect when audio's render-object identity changes.
+  const audioRef = useRef(audio)
+  useEffect(() => { audioRef.current = audio })
 
   useEffect(() => {
     const root = rootRef.current
@@ -136,6 +149,24 @@ export default function ConductorCelestialField() {
     const canonicalEdgeKeys = new Set(
       metatronEdgesLocal.map(([i, j]) => `${i},${j}`),
     )
+
+    // Audio-reactive state — hoisted so update() and drawFg() share them.
+    let prevBass = 0
+    let beatRefractoryEnd = 0
+    let expectedNextNodeIdx = -1
+    let expectedPulseT = 0
+    let bass = 0    // hoisted so drawFg() can read what update() computed
+
+    function recomputeExpectedNext() {
+      for (const [i, j] of metatronEdgesLocal) {
+        const key = `${i},${j}`
+        if (!inscribedMetatronEdges.has(key)) {
+          expectedNextNodeIdx = i
+          return
+        }
+      }
+      expectedNextNodeIdx = -1
+    }
 
     // Viewport scaling — fit the logical SW×SH inside the available
     // root rectangle, preserving aspect.
@@ -254,6 +285,17 @@ export default function ConductorCelestialField() {
     }
 
     function update(dt, t) {
+      audioRef.current.pollFrequency()
+      const freq = audioRef.current.freqDataRef.current
+      bass = bandAverage(freq, BASS_BIN_START, BASS_BIN_END)
+      const beat = detectBassBeat(bass, prevBass, BEAT_THRESHOLD, beatRefractoryEnd, performance.now())
+      beatRefractoryEnd = beat.nextRefractoryEnd
+      if (beat.fired && expectedNextNodeIdx >= 0) {
+        expectedPulseT = 1
+      }
+      prevBass = bass
+      expectedPulseT = Math.max(0, expectedPulseT - dt * 1.8)
+
       // Phone-driven target: pitch/roll map cur to a point centered on
       // the canvas. Full deflection (±1) reaches ~35% of canvas extent
       // in each axis, so the baton tip can sweep most of the field.
@@ -377,6 +419,7 @@ export default function ConductorCelestialField() {
               const key = `${a},${b}`
               if (canonicalEdgeKeys.has(key) && !inscribedMetatronEdges.has(key)) {
                 inscribedMetatronEdges.add(key)
+                recomputeExpectedNext()
               }
             }
             lastActMetatronNodeIdx = i
@@ -459,10 +502,10 @@ export default function ConductorCelestialField() {
           fCtx.fill()
         }
       }
-      // Inscribed Metatron edges — permanent once drawn, rendered in
-      // bright gold over the watermark. The user is gradually "uncovering"
-      // the cube as they sweep the trail through the nodes.
-      fCtx.strokeStyle = `rgba(${GLOW[0]},${GLOW[1]},${GLOW[2]},0.85)`
+      // Inscribed Metatron edges — bright gold with a subtle bass-driven
+      // breath. Audio absent → opacity ~0.85; full bass kick → ~0.95.
+      const breathOpacity = 0.85 + (bass - 0.5) * BREATH_AMPLITUDE * 2
+      fCtx.strokeStyle = `rgba(${GLOW[0]},${GLOW[1]},${GLOW[2]},${Math.max(0.6, Math.min(1, breathOpacity))})`
       fCtx.lineWidth = 1.6
       for (const key of inscribedMetatronEdges) {
         const [i, j] = key.split(',').map(Number)
@@ -475,17 +518,20 @@ export default function ConductorCelestialField() {
       }
 
       // Metatron nodes — faint dots at the 13 Fruit-of-Life positions.
-      // Activation comes from trail-tip proximity in the next task; for now
-      // they're static dim circles.
-      for (const n of metatronNodesLocal) {
-        const baseOpacity = 0.25 + n.act * 0.65
-        const radius = NODE_DEFAULT_RADIUS + n.act * NODE_ACTIVE_RADIUS_BOOST
-        fCtx.fillStyle = `rgba(${INK[0]},${INK[1]},${INK[2]},${baseOpacity})`
+      // The expected-next node (first endpoint of first uninscribed canonical
+      // edge) gets an extra brightness pulse on each detected bass beat.
+      for (let nodeIdx = 0; nodeIdx < metatronNodesLocal.length; nodeIdx++) {
+        const n = metatronNodesLocal[nodeIdx]
+        const pulseBoost = (nodeIdx === expectedNextNodeIdx ? expectedPulseT : 0)
+        const baseOpacity = 0.25 + n.act * 0.65 + pulseBoost * 0.45
+        const radius = NODE_DEFAULT_RADIUS + n.act * NODE_ACTIVE_RADIUS_BOOST + pulseBoost * 4
+        fCtx.fillStyle = `rgba(${INK[0]},${INK[1]},${INK[2]},${Math.min(1, baseOpacity)})`
         fCtx.beginPath()
         fCtx.arc(n.x, n.y, radius, 0, Math.PI * 2)
         fCtx.fill()
-        if (n.act > 0.3) {
-          fCtx.fillStyle = `rgba(${GLOW[0]},${GLOW[1]},${GLOW[2]},${n.act * 0.6})`
+        const glowAmount = n.act * 0.6 + pulseBoost * 0.5
+        if (glowAmount > 0.18) {
+          fCtx.fillStyle = `rgba(${GLOW[0]},${GLOW[1]},${GLOW[2]},${Math.min(1, glowAmount)})`
           fCtx.beginPath()
           fCtx.arc(n.x, n.y, radius * 1.8, 0, Math.PI * 2)
           fCtx.fill()
@@ -570,6 +616,8 @@ export default function ConductorCelestialField() {
         tCtx.fill()
       }
     }
+
+    recomputeExpectedNext()
 
     const ro = new ResizeObserver(resize)
     ro.observe(root)
