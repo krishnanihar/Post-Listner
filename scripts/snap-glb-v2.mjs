@@ -45,6 +45,7 @@ for (let i = 0; i < 20; i++) {
     type: 'orientation',
     q: [0, 0, 0, 1],
     raw: { alpha: 0, beta: 0, gamma: 0 },
+    gestureGain: 0.7,
     calibrated: true,
     t: performance.now(),
   }))
@@ -74,6 +75,7 @@ for (const pose of POSES) {
       type: 'orientation',
       q,
       raw: { alpha: pose.alpha, beta: pose.beta, gamma: pose.gamma },
+      gestureGain: 0.7,
       calibrated: true,
       t: performance.now(),
     }))
@@ -91,6 +93,7 @@ for (let i = 0; i < 5; i++) {
     type: 'orientation',
     q: [0, 0, 0, 1],
     raw: { alpha: 0, beta: -25, gamma: 0 },
+    gestureGain: 0.7,
     calibrated: true,
     downbeat: { fired: true, intensity: 0.9 },
     t: performance.now(),

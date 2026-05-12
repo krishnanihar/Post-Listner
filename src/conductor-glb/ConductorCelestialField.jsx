@@ -110,6 +110,9 @@ export default function ConductorCelestialField() {
     let fCtx = fg.getContext('2d')
     let tCtx = trail.getContext('2d')
 
+    // Energy smoothing for glow halo response
+    let energySmoothed = 0
+
     function applyT(ctx) {
       ctx.setTransform(1, 0, 0, 1, 0, 0)
       ctx.scale(dpr, dpr)
@@ -208,7 +211,11 @@ export default function ConductorCelestialField() {
       const calibrated = state.calibrated
       const pitch = calibrated ? controls.pitch : 0
       const roll = calibrated ? controls.roll : 0
+      const energy = controls.energy || 0
       const phoneActive = calibrated && (Math.abs(pitch) > 0.02 || Math.abs(roll) > 0.02)
+
+      // Smooth energy for halo glow response
+      energySmoothed += (energy - energySmoothed) * 0.22
 
       if (phoneActive) {
         cur.x = SW / 2 + roll * SW * 0.40
@@ -348,7 +355,8 @@ export default function ConductorCelestialField() {
         const lf = 1 - age / TRACE_LIFE
         if (lf <= 0) continue
         const hw0 = p0.hw * 2.6, hw1 = p1.hw * 2.6
-        tCtx.fillStyle = `rgba(${GLOW[0]},${GLOW[1]},${GLOW[2]},${lf * 0.16})`
+        const haloOpacity = 0.10 + energySmoothed * 0.28
+        tCtx.fillStyle = `rgba(${GLOW[0]},${GLOW[1]},${GLOW[2]},${lf * haloOpacity})`
         tCtx.beginPath()
         tCtx.moveTo(p0.x + p0.nx * hw0, p0.y + p0.ny * hw0)
         tCtx.lineTo(p1.x + p1.nx * hw1, p1.y + p1.ny * hw1)
