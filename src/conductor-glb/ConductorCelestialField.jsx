@@ -112,6 +112,8 @@ export default function ConductorCelestialField() {
 
     // Energy smoothing for glow halo response
     let energySmoothed = 0
+    // Articulation smoothing for ink wet/dry character
+    let articulationSmoothed = 0
 
     function applyT(ctx) {
       ctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -216,6 +218,10 @@ export default function ConductorCelestialField() {
 
       // Smooth energy for halo glow response
       energySmoothed += (energy - energySmoothed) * 0.22
+
+      // Smooth articulation for ink wet/dry character
+      const articulation = controls.articulation || 0
+      articulationSmoothed += (articulation - articulationSmoothed) * 0.18
 
       if (phoneActive) {
         cur.x = SW / 2 + roll * SW * 0.40
@@ -371,11 +377,13 @@ export default function ConductorCelestialField() {
         const age = now - (p0.t + p1.t) / 2
         const lf = 1 - age / TRACE_LIFE
         if (lf <= 0) continue
-        const wet = Math.max(0, 1 - age / 450)
+        const wetRaw = Math.max(0, 1 - age / 450)
+        // Articulation biases drying: a snappy stroke (high jerk) drops wet fast.
+        const wet = wetRaw * (1 - articulationSmoothed * 0.7)
         const r = INK[0] * (1 - wet) + INK_WET[0] * wet
         const gC = INK[1] * (1 - wet) + INK_WET[1] * wet
         const b = INK[2] * (1 - wet) + INK_WET[2] * wet
-        const a = lf * (0.62 + wet * 0.28)
+        const a = lf * (0.62 + wet * 0.28 + articulationSmoothed * 0.10)
         tCtx.fillStyle = `rgba(${r | 0},${gC | 0},${b | 0},${a})`
         tCtx.beginPath()
         tCtx.moveTo(p0.x + p0.nx * p0.hw, p0.y + p0.ny * p0.hw)
