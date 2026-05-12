@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useMemo, useRef } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { MathUtils, PCFShadowMap, Vector3 } from 'three'
+import { MathUtils, PCFShadowMap, Quaternion, Vector3 } from 'three'
 import { createStarfieldMaterial } from './starfieldMaterial'
 
 // PostListener score-page palette — cream parchment with ink figure.
@@ -135,6 +135,37 @@ function ConductorFigure({ stateRef }) {
   const starfieldMat = useMemo(() => createStarfieldMaterial(), [])
   useEffect(() => () => starfieldMat.dispose(), [starfieldMat])
 
+  // Additional refs for the Phase 6 polish geometry.
+  const coatGroupRef = useRef(null)
+  const rightElbowRef = useRef(null)
+  const leftElbowRef = useRef(null)
+
+  // Precomputed transforms for the vertical pleat lines on the coat.
+  // Each fold spans from waist (y=0.71, r=0.32) to hem (y=0.01, r=0.5)
+  // at a fixed azimuth. Distributed over the back-facing half of the
+  // coat (theta from ~0 to ~π via +Z) since that's what the camera sees.
+  const COAT_FOLDS = useMemo(() => {
+    const COUNT = 7
+    const up = new Vector3(0, 1, 0)
+    const out = []
+    for (let i = 0; i < COUNT; i += 1) {
+      const t = (i + 0.5) / COUNT
+      const theta = t * Math.PI                       // 0 → π (XZ angle, +Z half)
+      const top = new Vector3(0.32 * Math.cos(theta), 0.71, 0.32 * Math.sin(theta))
+      const bot = new Vector3(0.5 * Math.cos(theta),  0.01, 0.5 * Math.sin(theta))
+      const dir = new Vector3().subVectors(bot, top)
+      const length = dir.length()
+      const mid = new Vector3().addVectors(top, bot).multiplyScalar(0.5)
+      const quat = new Quaternion().setFromUnitVectors(up, dir.clone().normalize())
+      out.push({
+        position: [mid.x, mid.y, mid.z],
+        quaternion: [quat.x, quat.y, quat.z, quat.w],
+        length,
+      })
+    }
+    return out
+  }, [])
+
   const scratchRef = useRef({
     up: new Vector3(0, 1, 0),
     direction: new Vector3(),
@@ -242,6 +273,18 @@ function ConductorFigure({ stateRef }) {
 
     if (rightHandRef.current) rightHandRef.current.position.copy(scratch.rightHand)
     if (leftHandRef.current) leftHandRef.current.position.copy(scratch.leftHand)
+    if (rightElbowRef.current) rightElbowRef.current.position.copy(scratch.rightElbow)
+    if (leftElbowRef.current) leftElbowRef.current.position.copy(scratch.leftElbow)
+
+    // Coat sway — phone roll tilts the hem, pitch leans the coat slightly
+    // forward/back. Tiny amplitudes so it reads as cloth response, not
+    // figure rotation. Beat impulse adds a brief downward pulse for
+    // downbeats — coat "settles" on the beat.
+    if (coatGroupRef.current) {
+      coatGroupRef.current.rotation.z = current.roll * -0.06
+      coatGroupRef.current.rotation.x = -current.pitch * 0.04
+      coatGroupRef.current.position.y = -downStroke * 0.015
+    }
     if (batonTipRef.current) {
       batonTipRef.current.position.copy(scratch.batonTip)
       batonTipRef.current.scale.setScalar(1 + beatAlpha * 0.9)
@@ -296,6 +339,13 @@ function ConductorFigure({ stateRef }) {
       <mesh castShadow receiveShadow position={[0, 1.29, 0.035]} scale={[1.4, 0.22, 0.18]} material={starfieldMat}>
         <sphereGeometry args={[0.27, 24, 12]} />
       </mesh>
+      {/* Neck — short cylinder bridging the shoulder bar and the head.
+          Kept vertical (not coupled to head's chin-tuck) so the junction
+          to the shoulder stays clean; head's slight forward tilt makes
+          the neck-head joint read naturally enough at the camera angle. */}
+      <mesh castShadow position={[0, 1.42, 0.025]} material={starfieldMat}>
+        <cylinderGeometry args={[0.08, 0.085, 0.14, 16]} />
+      </mesh>
       {/* Head + hair tuft on the back of the skull. Group is the parent so
           headRef yaw/roll in useFrame rotates the hair with the head.
           Initial rotation.x tilts the head forward (chin to chest) —
@@ -334,20 +384,36 @@ function ConductorFigure({ stateRef }) {
           <meshStandardMaterial color={INK} roughness={0.7} />
         </mesh>
       </group>
-      {/* Long coat — replaces the small pedestal. Tapered cylinder from
-          waist down to the hem near the floor, flared so the silhouette
-          reads as a person in a knee-/floor-length coat from behind.
-          Same starfield material so the cosmos extends down through
-          the coat too. */}
-      <mesh castShadow receiveShadow position={[0, 0.36, 0]} material={starfieldMat}>
-        <cylinderGeometry args={[0.32, 0.5, 0.7, 24]} />
-      </mesh>
-      {/* Coat hem ring — slight darker band at the bottom for shape
-          definition, matches the etched-illustration line work. */}
-      <mesh receiveShadow position={[0, 0.025, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.42, 0.5, 32]} />
-        <meshBasicMaterial color={INK} />
-      </mesh>
+      {/* Coat group — the coat body + hem + vertical pleat folds, all
+          children so that coat-sway in useFrame rotates them together. */}
+      <group ref={coatGroupRef}>
+        {/* Long coat — tapered cylinder from waist down to flared hem.
+            Starfield material so the cosmos extends down through the coat. */}
+        <mesh castShadow receiveShadow position={[0, 0.36, 0]} material={starfieldMat}>
+          <cylinderGeometry args={[0.32, 0.5, 0.7, 24]} />
+        </mesh>
+        {/* Coat hem ring — line work at the floor, matches the etched
+            illustration's lower contour. */}
+        <mesh receiveShadow position={[0, 0.025, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.42, 0.5, 32]} />
+          <meshBasicMaterial color={INK} />
+        </mesh>
+        {/* Vertical pleat folds — thin ink strips slanting from waist
+            outward to hem along the back-facing half of the coat.
+            Precomputed transforms (COAT_FOLDS) align each strip with
+            the slanted coat surface. */}
+        {COAT_FOLDS.map((fold, i) => (
+          <mesh
+            key={`fold-${i}`}
+            position={fold.position}
+            quaternion={fold.quaternion}
+            scale={[1, fold.length, 1]}
+          >
+            <boxGeometry args={[0.006, 1, 0.005]} />
+            <meshStandardMaterial color={INK} roughness={0.95} />
+          </mesh>
+        ))}
+      </group>
       <Segment ref={rightUpperRef} radius={0.052} material={starfieldMat} />
       <Segment ref={rightLowerRef} radius={0.045} material={starfieldMat} />
       <Segment ref={leftUpperRef} radius={0.047} material={starfieldMat} />
@@ -355,12 +421,53 @@ function ConductorFigure({ stateRef }) {
       {/* Baton stays solid amber — the single warm point of light, must
           not dissolve into the starfield. */}
       <Segment ref={batonRef} radius={0.012} color={AMBER} emissive={AMBER} emissiveIntensity={0.4} />
-      <mesh ref={rightHandRef} castShadow material={starfieldMat}>
-        <sphereGeometry args={[0.072, 20, 12]} />
+      {/* Elbow joint bulges — small spheres at the elbow positions so
+          the arms don't read as straight pipes. Position is updated each
+          frame from scratch.rightElbow / scratch.leftElbow. */}
+      <mesh ref={rightElbowRef} castShadow material={starfieldMat}>
+        <sphereGeometry args={[0.062, 14, 10]} />
       </mesh>
-      <mesh ref={leftHandRef} castShadow material={starfieldMat}>
-        <sphereGeometry args={[0.062, 18, 10]} />
+      <mesh ref={leftElbowRef} castShadow material={starfieldMat}>
+        <sphereGeometry args={[0.054, 14, 10]} />
       </mesh>
+
+      {/* Right hand — flattened palm + 4 finger knuckle bumps. Position
+          (and group transform) tracked via rightHandRef, just like the
+          old plain sphere did. The fingers are small spheres laid in a
+          row on the outer edge of the palm; reads as a hand from the
+          back-view camera. */}
+      <group ref={rightHandRef}>
+        <mesh castShadow material={starfieldMat} scale={[0.95, 0.55, 1.15]}>
+          <sphereGeometry args={[0.075, 16, 12]} />
+        </mesh>
+        {[-0.048, -0.016, 0.016, 0.048].map((x, i) => (
+          <mesh
+            key={`r-finger-${i}`}
+            castShadow
+            material={starfieldMat}
+            position={[x, -0.008, 0.076]}
+          >
+            <sphereGeometry args={[0.018 - i * 0.0015, 10, 8]} />
+          </mesh>
+        ))}
+      </group>
+
+      {/* Left hand — same construction, slightly smaller. */}
+      <group ref={leftHandRef}>
+        <mesh castShadow material={starfieldMat} scale={[0.95, 0.55, 1.15]}>
+          <sphereGeometry args={[0.064, 16, 12]} />
+        </mesh>
+        {[-0.04, -0.013, 0.013, 0.04].map((x, i) => (
+          <mesh
+            key={`l-finger-${i}`}
+            castShadow
+            material={starfieldMat}
+            position={[x, -0.007, 0.063]}
+          >
+            <sphereGeometry args={[0.015 - i * 0.001, 10, 8]} />
+          </mesh>
+        ))}
+      </group>
       <mesh ref={batonTipRef}>
         <sphereGeometry args={[0.06, 24, 12]} />
         <meshStandardMaterial color="#FFE8B3" emissive={AMBER} emissiveIntensity={1.45} />
