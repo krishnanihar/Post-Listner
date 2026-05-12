@@ -153,6 +153,8 @@ export default function ConductorCelestialField({ audio }) {
     let expectedNextNodeIdx = -1
     let expectedPulseT = 0
     let bass = 0    // hoisted so drawFg() can read what update() computed
+    let completionFlashT = 0     // 0..1 one-shot envelope, decays after firing
+    let isComplete = false
 
     function recomputeExpectedNext() {
       for (const [i, j] of metatronEdgesLocal) {
@@ -292,6 +294,7 @@ export default function ConductorCelestialField({ audio }) {
       }
       prevBass = bass
       expectedPulseT = Math.max(0, expectedPulseT - dt * 1.8)
+      completionFlashT = Math.max(0, completionFlashT - dt * 0.4)   // ~2.5 s fade-out
 
       // Phone-driven target: pitch/roll map cur to a point centered on
       // the canvas. Full deflection (±1) reaches ~35% of canvas extent
@@ -417,6 +420,10 @@ export default function ConductorCelestialField({ audio }) {
               if (canonicalEdgeKeys.has(key) && !inscribedMetatronEdges.has(key)) {
                 inscribedMetatronEdges.add(key)
                 recomputeExpectedNext()
+                if (!isComplete && inscribedMetatronEdges.size === metatronEdgesLocal.length) {
+                  isComplete = true
+                  completionFlashT = 1
+                }
               }
             }
             lastActMetatronNodeIdx = i
@@ -501,9 +508,13 @@ export default function ConductorCelestialField({ audio }) {
       }
       // Inscribed Metatron edges — bright gold with a subtle bass-driven
       // breath. Audio absent → opacity ~0.85; full bass kick → ~0.95.
+      // On completion, flash brightens to peak gold + thickens stroke.
       const breathOpacity = 0.85 + (bass - 0.5) * BREATH_AMPLITUDE * 2
-      fCtx.strokeStyle = `rgba(${GLOW[0]},${GLOW[1]},${GLOW[2]},${Math.max(0.6, Math.min(1, breathOpacity))})`
-      fCtx.lineWidth = 1.6
+      const completionBoost = completionFlashT * 0.15
+      const finalEdgeOpacity = Math.max(0.6, Math.min(1, breathOpacity + completionBoost))
+      const finalEdgeWidth = 1.6 + completionFlashT * 2.5
+      fCtx.strokeStyle = `rgba(${GLOW[0]},${GLOW[1]},${GLOW[2]},${finalEdgeOpacity})`
+      fCtx.lineWidth = finalEdgeWidth
       for (const key of inscribedMetatronEdges) {
         const [i, j] = key.split(',').map(Number)
         const a = metatronNodesLocal[i]
