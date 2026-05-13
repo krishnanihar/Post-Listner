@@ -15,7 +15,7 @@ import StemPlayer from '../lib/stemPlayer.js'
 import { scoreArchetype } from '../lib/scoreArchetype.js'
 
 export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx }) {
-  const [phase, setPhase] = useState(() => isPreloadComplete() ? 'briefing' : 'loading') // loading | briefing | experience | closing
+  const [phase, setPhase] = useState(() => isPreloadComplete() ? 'awaiting-tap' : 'loading') // loading | awaiting-tap | briefing | experience | closing
   const [loadProgress, setLoadProgress] = useState(0)
 
   const engineRef = useRef(null)
@@ -63,7 +63,6 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
 
       const conducting = new ConductingEngine()
       conductingRef.current = conducting
-      await conducting.requestPermission()
 
       const engine = new OrchestraEngine(audioCtx)
       engineRef.current = engine
@@ -117,7 +116,7 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
       // the end-fade window opens.
       engine.setSongDuration(songDurationRef.current)
 
-      if (!cancelled) setPhase('briefing')
+      if (!cancelled) setPhase('awaiting-tap')
     }
 
     init()
@@ -133,6 +132,19 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
       if (conductingRef.current) conductingRef.current.stop()
       if (wakeLockRef.current) wakeLockRef.current.release().catch(() => {})
     }
+  }, [])
+
+  // ─── Tap-to-begin — iOS motion permission MUST be requested from a
+  //     synchronous user-gesture handler, not from a useEffect. ───────────
+  const handleTapToBegin = useCallback(() => {
+    const conducting = conductingRef.current
+    if (!conducting) return
+    // Call requestPermission synchronously — its promise resolves after
+    // iOS shows (and the user dismisses) the permission dialog. Don't await
+    // here; React state transition handles the wait.
+    conducting.requestPermission().then(() => {
+      setPhase('briefing')
+    })
   }, [])
 
   // ─── Briefing complete → start Bloom + Throne ────────────────────────────
@@ -253,6 +265,30 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
                 transition={{ duration: 0.3 }}
               />
             </div>
+          </motion.div>
+        )}
+
+        {phase === 'awaiting-tap' && (
+          <motion.div
+            key="awaiting-tap"
+            className="h-full w-full flex flex-col items-center justify-center cursor-pointer"
+            style={{ background: '#F2EBD8', touchAction: 'none' }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.5 }}
+            onClick={handleTapToBegin}
+            onTouchStart={handleTapToBegin}
+          >
+            <p
+              className="font-serif italic"
+              style={{
+                fontSize: '20px',
+                color: '#1C1814',
+                opacity: 0.8,
+                letterSpacing: '0.02em',
+              }}
+            >
+              tap to begin
+            </p>
           </motion.div>
         )}
 
