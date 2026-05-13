@@ -7,15 +7,27 @@ export { SessionRoom } from './SessionRoom.js'
 
 // Allowed origins for production AND dev. Localhost is intentionally
 // included so `wrangler dev` flows + Vite dev server (5173/4173) work
-// against this same Worker without special-casing environment.
+// against this same Worker without special-casing environment. Any
+// *.vercel.app HTTPS subdomain is also allowed so Vercel preview deploys
+// (with their per-branch URLs) connect without manual allowlist edits.
 const ALLOWED_ORIGINS = new Set([
-  'https://post-listner.vercel.app',
   'https://post-listner.com',
   'http://localhost:5173',
   'https://localhost:5173',
   'http://localhost:4173',
   'https://localhost:4173',
 ])
+
+function isAllowedOrigin(origin) {
+  if (!origin) return true  // non-browser clients (wscat, curl) don't send Origin
+  if (ALLOWED_ORIGINS.has(origin)) return true
+  // Allow any Vercel deploy URL — production + previews
+  try {
+    const u = new URL(origin)
+    if (u.protocol === 'https:' && u.hostname.endsWith('.vercel.app')) return true
+  } catch { /* malformed Origin header */ }
+  return false
+}
 
 // Crockford base32, no ambiguous chars (matches src/lib/sessionId.js)
 const SESSION_ID_REGEX = /^[0-9A-HJ-NP-TV-Z]{8}$/
@@ -36,7 +48,7 @@ export default {
     // Origin check — always enforced. A missing Origin header is treated
     // as allowed (non-browser WS clients like wscat don't always send one).
     const origin = request.headers.get('Origin')
-    if (origin && !ALLOWED_ORIGINS.has(origin)) {
+    if (!isAllowedOrigin(origin)) {
       return new Response('Origin not allowed', { status: 403 })
     }
 
