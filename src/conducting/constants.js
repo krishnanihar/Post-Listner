@@ -42,7 +42,7 @@ export const RESEARCH_PARAMS = {
 }
 
 // Feature flags — flip to true in step 5/6, default false through steps 1-4.
-export const USE_RESEARCH_CONDUCTING_PARAMS = false
+export const USE_RESEARCH_CONDUCTING_PARAMS = true
 export const ENABLE_GYRO_ENERGY_COUPLING    = false
 
 export function activeParams() {
