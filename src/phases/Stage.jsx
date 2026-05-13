@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { QRCodeSVG } from 'qrcode.react'
 import RelayClient from '../lib/relayClient.js'
 import { generateSessionId } from '../lib/sessionId.js'
+import StageCosmos from './StageCosmos.jsx'
 
 /**
  * Stage — desktop landing for QR-paired conducting sessions.
@@ -14,6 +15,9 @@ import { generateSessionId } from '../lib/sessionId.js'
  */
 export default function Stage() {
   const [stage, setStage] = useState('waiting')
+  // Most recent FFT array from {type:'audio'} messages — passed to StageCosmos
+  // for the cosmos canvas. Updated on every message during Orchestra phase.
+  const [latestFreq, setLatestFreq] = useState(null)
   const sessionId = useMemo(() => generateSessionId(), [])
   const relayRef = useRef(null)
   // Latest conductor phase tracked in a ref — needed by onMessage callback
@@ -43,6 +47,10 @@ export default function Stage() {
           // Normal rite completion — return to waiting state.
           setStage('waiting')
           conductorPhaseRef.current = null
+        } else if (msg.type === 'audio' && Array.isArray(msg.freq)) {
+          // FFT samples from the phone during Orchestra phase. Drives the
+          // cosmos canvas visualization.
+          setLatestFreq(msg.freq)
         }
       },
     })
@@ -140,16 +148,11 @@ export default function Stage() {
         {stage === 'orchestra' && (
           <motion.div
             key="orchestra"
-            className="h-full w-full flex items-center justify-center"
+            className="h-full w-full"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             transition={{ duration: 1.5 }}
           >
-            <p
-              className="font-serif italic"
-              style={{ fontSize: '20px', color: '#1C1814', opacity: 0.6 }}
-            >
-              (cosmos canvas — Step 7 wires this)
-            </p>
+            <StageCosmos sessionId={sessionId} latestFreq={latestFreq} />
           </motion.div>
         )}
       </AnimatePresence>
