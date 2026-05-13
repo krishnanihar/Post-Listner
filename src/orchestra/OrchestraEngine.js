@@ -12,6 +12,7 @@ import {
 } from './constants.js'
 import { HALL_IR_FILE, AUDIENCE_FILES } from './scripts.js'
 import { lerp, clamp, sphericalToCartesian } from '../chamber/utils/math.js'
+import { ENABLE_GYRO_ENERGY_COUPLING } from '../conducting/index.js'
 
 const STEM_NAMES = ['VOCALS', 'DRUMS', 'BASS', 'OTHER']
 
@@ -329,12 +330,19 @@ export default class OrchestraEngine {
     if (!params) return
     const now = this.ctx.currentTime
     const t = this._lastT
-    const { pan, filterNorm, gestureGain, articulation, downbeat } = params
+    const { pan, filterNorm, gestureGain, articulation, downbeat, yaw, rotationRate } = params
 
-    // Pan offset → user's facing direction in world degrees.
-    // pan=0.5 → 0°; pan=0 → -90°; pan=1 → +90°.
-    const panOffset = (pan - 0.5) * 2
-    const facingDeg = panOffset * 90
+    // facingDeg = which direction the user is "facing". Research §3.5 says
+    // this should come from compass heading (alpha/yaw), not roll. Gate
+    // behind ENABLE_GYRO_ENERGY_COUPLING so legacy behavior is recoverable.
+    let facingDeg
+    if (ENABLE_GYRO_ENERGY_COUPLING && yaw != null) {
+      // alpha is 0..360°. Map to -180..180° so spatial math works.
+      facingDeg = yaw > 180 ? yaw - 360 : yaw
+    } else {
+      const panOffset = (pan - 0.5) * 2
+      facingDeg = panOffset * 90
+    }
 
     for (const name of STEM_NAMES) {
       const stem = this.stems[name]
