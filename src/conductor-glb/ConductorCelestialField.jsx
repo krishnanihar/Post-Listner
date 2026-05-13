@@ -21,7 +21,6 @@
  * is the conducting *experience*, full-screen.
  */
 import { useEffect, useRef } from 'react'
-import { usePhone } from './ConductGlb'
 import { computeMetatronNodes, computeMetatronEdges } from './metatronGeometry.js'
 import { bandAverage, detectBassBeat } from './audioBands.js'
 
@@ -80,12 +79,12 @@ const NODE_DEFAULT_RADIUS = 4             // resting node visual size
 const NODE_ACTIVE_RADIUS_BOOST = 7        // additional radius when fully activated
 const WATERMARK_RGBA = 'rgba(70,46,24,0.07)'   // faint amber, slightly darker than dust
 
-export default function ConductorCelestialField({ audio }) {
+export default function ConductorCelestialField({ audio, phone }) {
   const rootRef = useRef(null)
   const bgRef = useRef(null)
   const fgRef = useRef(null)
   const trailRef = useRef(null)
-  const { stateRef } = usePhone()
+  const { stateRef } = phone
   // Stable ref so the rAF closure always sees the latest audio object
   // without re-running the effect when audio's render-object identity changes.
   const audioRef = useRef(audio)

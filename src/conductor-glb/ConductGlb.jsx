@@ -95,11 +95,15 @@ function BeginOverlay({ onBegin }) {
 
 export default function ConductGlb() {
   const audio = useAmbientAudio({ src: AUDIO_SRC })
+  // Call usePhoneConductor here so we can pass it as a prop to
+  // ConductorCelestialField, which no longer reads PhoneContext directly.
+  // StatusPanel still consumes PhoneContext via usePhone() inside PhoneProvider.
+  const phone = usePhoneConductor('DEV00000')
 
   return (
     <PhoneProvider>
       <main className="conduct-codex-shell">
-        <ConductorCelestialField audio={audio} />
+        <ConductorCelestialField audio={audio} phone={phone} />
         <StatusPanel />
         {audio.needsGesture && <BeginOverlay onBegin={audio.tryStart} />}
       </main>
