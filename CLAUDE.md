@@ -177,6 +177,18 @@ Auto-calibration runs once for 2 seconds on Throne entry — averages baseline b
 
 Each Spectrum word-pair carries explicit `coordL` / `coordR` AVD coordinates in `src/lib/spectrumPairs.js`. The lean position interpolates between the two coordinate sets. Spectrum also tracks `reversalCount`, `confidence`, `hoveredButNotChosen[]` for downstream signal weighting.
 
+### QR-paired desktop canvas (added 2026-05-13)
+
+Optional flow: desktop visitor sees a QR code, scans with phone, runs the rite on phone, desktop becomes the cosmos canvas during Orchestra.
+
+- **Routing**: `src/main.jsx` picks the root at runtime — desktop without `?s=` → `Stage`; everything else → `App`. Device detection via `useDeviceMode` (`matchMedia('(pointer: coarse)')`).
+- **Session ID**: 8-char Crockford base32 from `src/lib/sessionId.js`, generated client-side on desktop, embedded in QR URL.
+- **Relay**: Cloudflare Worker + Durable Object at `relay.post-listner.com` (or the `*.workers.dev` default). One DO instance per session ID, routed via `env.SESSION_ROOM.idFromName(sessionId).get()`. Conductor messages broadcast to all viewers. Single-conductor enforcement (new conductor closes the old socket). 5-second grace period via DO Alarms (hibernation-safe).
+- **Local dev**: `conduct-relay/server.cjs` at `wss://localhost:8443` with the same `?s=<id>&role=<conductor|viewer>` protocol. Backwards-compat: also accepts the legacy `role=phone|desktop`.
+- **WS protocol**: see `src/lib/relayProtocol.js`. 4 conductor→viewer message types: `gesture`, `phase`, `audio`, `session:end`. Relay-generated: `conductor:lost`, `conductor:resumed`.
+- **Phone bundle**: `conduct-relay/src/phone.js` builds via esbuild to `conduct-relay/public/phone.bundle.js` and imports `GestureCore` + `RelayClient` from the main project. Session ID via `?s=` URL param or the dev session input field.
+- **Cosmos audio**: phone sends 128-byte FFT magnitude arrays at 30 fps over WS during Orchestra phase. Desktop reads them into a `Uint8Array(128)` and feeds the existing `ConductorCelestialField` canvas as if it were a local AnalyserNode. Guarantees what user hears matches what desktop visualizes.
+
 ## Environment
 
 `.env.local` env vars:
@@ -205,8 +217,17 @@ npm run dev                          # Start dev server (Vite + /api middleware)
 npm run build                        # Production build
 npm run lint                         # ESLint
 npm run preview                      # Preview production build
-npm test                             # Run vitest suite (125 tests)
+npm test                             # Run vitest suite (218 tests)
 npm run test:watch                   # Watch mode
+
+# Local conducting relay (Node, dev only — for /conduct-* routes + QR pairing dev)
+npm run relay                        # Builds phone bundle + launches Node WS relay at :8443
+
+# Cloudflare Worker relay (production)
+cd relay && npx wrangler login          # One-time OAuth (browser opens)
+cd relay && npm run dev                 # Local Worker via wrangler dev (port 8787)
+cd relay && npm run deploy              # Deploy to *.workers.dev + relay.post-listner.com
+cd relay && npm run tail                # Live-tail Worker logs
 
 node scripts/generate-suno-prompts.js   # Generate 24 Suno V5.5 prompts → docs/suno-prompts.{md,json}
 bash scripts/run-demucs.sh              # Stem-split public/music/*.mp3 → public/stems/{archetype}/{variation}/ via htdemucs on MPS (idempotent)
