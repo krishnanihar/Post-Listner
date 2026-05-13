@@ -126,7 +126,7 @@ function App() {
     autobio: <Autobio onNext={nextPhase} avd={avdEngine} />,
     reflection: <Reflection onNext={nextPhase} avd={avdEngine} />,
     reveal: <Reveal onNext={nextPhase} avd={avdEngine} sessionData={{ ...sessionData, stemsBundle: stemsBundleRef.current }} revealAudioRef={revealAudioRef} getAudioCtx={getAudioCtx} />,
-    orchestra: <Orchestra avd={avdEngine} revealAudioRef={revealAudioRef} goToPhase={goToPhase} getAudioCtx={getAudioCtx} />,
+    orchestra: <Orchestra avd={avdEngine} revealAudioRef={revealAudioRef} goToPhase={goToPhase} getAudioCtx={getAudioCtx} relayRef={relayRef} />,
   }
 
   return (

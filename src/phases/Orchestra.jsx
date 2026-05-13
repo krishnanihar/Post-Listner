@@ -14,7 +14,7 @@ import {
 import StemPlayer from '../lib/stemPlayer.js'
 import { scoreArchetype } from '../lib/scoreArchetype.js'
 
-export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx }) {
+export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx, relayRef }) {
   const [phase, setPhase] = useState(() => isPreloadComplete() ? 'awaiting-tap' : 'loading') // loading | awaiting-tap | briefing | experience | closing
   const [loadProgress, setLoadProgress] = useState(0)
 
@@ -157,6 +157,17 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
     if (!engine || !audioCtx) return
 
     if (conducting) conducting.start()
+
+    // Set up an AnalyserNode tap for sharing audio with desktop viewers via WS.
+    const analyserNode = audioCtxRef.current.createAnalyser()
+    analyserNode.fftSize = 256  // → 128 frequency bins
+    analyserNode.smoothingTimeConstant = 0.8
+    // Tap the directBus (the engine's pre-compressor sum). Connecting an analyser
+    // doesn't affect the audio path — analyser is a passthrough on its output side.
+    if (engine.directBus) engine.directBus.connect(analyserNode)
+    const freqBuf = new Uint8Array(analyserNode.frequencyBinCount)
+    let lastFftSent = 0
+
     engine.startAudience()
 
     if (navigator.wakeLock) {
@@ -188,6 +199,16 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx 
       const t = elapsed + PHASES.BLOOM_START
 
       engine.tick(t, songDuration)
+
+      // Stream FFT samples to viewers at ~30 fps (33ms cadence)
+      if (relayRef?.current && timestamp - lastFftSent > 33) {
+        analyserNode.getByteFrequencyData(freqBuf)
+        relayRef.current.send({
+          type: 'audio',
+          freq: Array.from(freqBuf),  // 128 numbers, 0..255
+        })
+        lastFftSent = timestamp
+      }
 
       if (conducting) {
         const gesture = conducting.getData()
