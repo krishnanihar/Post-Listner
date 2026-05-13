@@ -250,6 +250,74 @@ The score-v2 redesign was executed in three phases. Plans live at:
 
 The Orchestra v3 redesign (4-stem spatial graph + 3-phase voice-free experience + R2 hosting) was executed 2026-05-09 to 2026-05-10. No formal plan doc — captured in this file.
 
+## Experimental conducting routes
+
+Three routes prototype the visual layer for the Orchestra phase. **None are wired into the 9-phase production flow yet** — they're standalone explorations of what phase 8 could look like:
+
+| Route | Folder | Status |
+|---|---|---|
+| `/conduct` | `src/conductor/` | First-attempt 3D conductor figure with Rigify GLB rig + IK. Phone-as-baton drives bone rotations. Works mechanically but motion never felt right — see `docs/conductor-handoff.md` for the post-mortem. |
+| `/conduct-codex` | `src/conductor-codex/` | Stick-figure 2.5D R3F scene with starfield-shader silhouette, parchment background, constellation overlay. Phone hook (`usePhoneConductor`) lives here — reused by `/conduct-glb`. |
+| `/conduct-glb` | `src/conductor-glb/` | **Current direction.** Pure 2D canvas + Web Audio. No R3F. See below. |
+
+### /conduct-glb — canvas conducting cosmos
+
+A 2D canvas experience where the conducting gesture draws an ink trail through a parchment cosmos, activating stars and inscribing canonical edges of a programmatic Metatron's Cube. Ambient audio reacts the geometry. The plans/`2026-05-13-conductor-programmatic-geometry.md` and `2026-05-12-conductor-richer-signals.md` document the buildout.
+
+**Five files (everything else under `src/conductor-glb/` was deleted in the 2026-05-13 hygiene pass):**
+
+| File | Role |
+|---|---|
+| `ConductGlb.jsx` | Top-level composition. Calls `useAmbientAudio`, renders `ConductorCelestialField` + `StatusPanel` + tap-to-begin overlay (when audio autoplay is blocked). |
+| `ConductorCelestialField.jsx` | The entire 2D canvas system: 3 stacked canvases (bg/fg/trail). Owns the render loop, phone-state subscription, audio polling, geometry rendering, ink trail, and constellation completion logic. |
+| `metatronGeometry.js` | Pure functions: `computeMetatronNodes(radius)` returns 13 Fruit-of-Life node positions (1 center + 6 inner hex at radius r + 6 outer hex at 2r, all on the same 60° rays). `computeMetatronEdges(nodeCount)` returns the 78-edge complete graph. 8 vitest tests. |
+| `audioBands.js` | Pure functions: `bandAverage(freqData, startBin, endBin)` averages a slice of an AnalyserNode Uint8Array, normalized to 0..1 against 255. `detectBassBeat()` edge-triggered threshold crossing with 250ms refractory — same shape as the phone-side downbeat detector. 7 vitest tests. |
+| `useAmbientAudio.js` | React hook. Loads an MP3 via HTMLAudioElement, lazily creates AudioContext + AnalyserNode (fftSize 256 → 128 bins) on first user gesture. Returns `{ needsGesture, playing, error, tryStart, pause, pollFrequency, freqDataRef }`. |
+
+**Phone integration:** reuses `usePhoneConductor` from `/conduct-codex`. All phone signals available: `pitch`, `roll`, `yaw`, `energy` (acceleration RMS), `articulation` (jerk), `downbeatIntensity` + `lastDownbeatAt`, `angularSpeed` (gyro magnitude), `accel.{x,y,z}` (per-axis acceleration). The phone payload was expanded in the 2026-05-12 richer-signals plan to carry `rotationRate` and `accel` fields beyond the original orientation-only set.
+
+**Visual layer stack (back to front):**
+
+1. **Parchment** — DOM background, radial gradient (`#d8c5a0` family)
+2. **bg canvas** — concentric circles + 6 zodiac glyphs (☉☽♃♄♂♀) + 300 dust dots + 4 hint constellations + Metatron watermark (faint amber, painted once at resize)
+3. **fg canvas** — every frame: 30 stars with activation, inscribed constellation lines (between consecutive activated stars), inscribed Metatron edges (bright gold, with bass-driven breath), 13 Metatron nodes (per-node activation state)
+4. **trail canvas** — every frame: tapered ink ribbon (width modulated by phone angular speed + screen velocity) + two-layer ink-blob "pen" at the leading tip
+
+**Reactivity model — per-element activation pattern shared across all interactive elements:**
+- Each element has `act ∈ [0..1]`. Trail-tip proximity bumps it (`+dt*5`), otherwise decays (`-dt*0.55`).
+- Color + size + glow scale with activation.
+- Discrete events (star bursts, edge inscription) trigger on the activation transition (`act < 0.4 && this !== lastActivated`).
+
+**Phone signal → visual:**
+| Phone signal | Visual effect |
+|---|---|
+| `pitch` / `roll` | Cursor X/Y position (40% of viewBox per ±1 unit) |
+| `accel.{x,y}` | Subtle directional cursor nudge (40px per 1g normalized) |
+| `angularSpeed` (gyro) | Ribbon width (high speed → narrow ink) |
+| `energy` (RMS) | Trail glow halo intensity |
+| `articulation` (jerk) | Ink wet/dry character (sharp gestures dry faster) |
+| `lastDownbeatAt` | Star burst within 180px + inscribed constellation line between two closest stars |
+
+**Audio signal → visual:**
+- Default song: `hearth-keeper_acoustic-soft-2000s.mp3` (hardcoded; experimental route, not env-driven yet)
+- Bass band (bins 0-3) → ±5% breath on inscribed Metatron segments
+- Bass-peak beat detection (rising-edge threshold 0.55, 250ms refractory) → pulses the "expected next" Metatron node
+- "Expected next" = first endpoint of the first uninscribed canonical edge (currently always node 0 until all 12 center-spokes are inscribed; documented as item to refine)
+
+**Constellation completion mechanic:**
+- 13 Fruit-of-Life nodes activate when the trail tip passes within 20px
+- When two consecutive node activations form a canonical Metatron edge, that edge inscribes permanently (Set keyed by `'i,j'`)
+- All 78 edges inscribed → one-shot completion flash (2.5s decay, edges thicken to 4.1px + opacity peaks) + `isComplete` flag persists for the rest of the session
+- 78-edge completion is intentionally hard — the inscribed pattern is a slow background reward, not a session goal
+
+**Tap-to-begin:** browsers block `AudioContext.resume()` and `HTMLAudioElement.play()` until a user gesture. `BeginOverlay` is rendered while `audio.needsGesture` is true; a click anywhere calls `audio.tryStart()` which lazily constructs the audio graph and starts playback.
+
+**Tests:** 15 vitest tests (8 geometry, 7 audio bands). The hook + canvas rendering are visually verified via `scripts/snap-glb-v2.mjs` (Playwright + WebSocket-intercept harness for synthetic phone gestures).
+
+**Performance:** Zero WebGL contexts on the route (was 5 mid-iteration when R3F layers were stacked). Three 2D canvases. ~60fps on modern devices, ~30 on low-end mobile under sustained gesture.
+
+**Not yet:** wiring to the actual Orchestra-phase audio (currently independent MP3 playback, not the matched-archetype stem player). When integrated, the simulated stem signals in this route become real `AnalyserNode` reads on the existing `StemPlayer` sources.
+
 ## Parked for later
 
 Items deliberately deferred. Loop back here when picking these up.
