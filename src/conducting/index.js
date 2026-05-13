@@ -4,3 +4,5 @@ export { quatFromEulerZXY, quatMul, quatConj, unwrapAngle }
 export { LEGACY_PARAMS, RESEARCH_PARAMS, activeParams,
          USE_RESEARCH_CONDUCTING_PARAMS, ENABLE_GYRO_ENERGY_COUPLING }
   from './constants.js'
+export { createState, processMotion, processOrientation, calibrate, read }
+  from './GestureCore.js'
