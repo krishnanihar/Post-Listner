@@ -1,0 +1,17 @@
+name = "post-listner-relay"
+main = "src/index.js"
+compatibility_date = "2026-04-07"
+compatibility_flags = ["nodejs_compat"]
+
+# Durable Object binding — each session is one DO instance.
+[[durable_objects.bindings]]
+name = "SESSION_ROOM"
+class_name = "SessionRoom"
+
+# First DO migration — register the class.
+[[migrations]]
+tag = "v1"
+new_classes = ["SessionRoom"]
+
+# Production routes — added in Task 3.2 when custom domain is set up.
+# For now, the Worker is reachable at https://post-listner-relay.<account>.workers.dev.
