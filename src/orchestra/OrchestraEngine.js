@@ -373,9 +373,22 @@ export default class OrchestraEngine {
       const finalGain = clamp(trackAGain * dynamicsGain * spotlightLin, 0, 1.5)
       stem.gain.gain.setTargetAtTime(finalGain, now, CONDUCTING.INTENSITY_TC)
 
-      // Per-stem conducting filter cutoff
-      const cutoff = 200 + filterNorm * 3800
+      // Per-stem conducting filter cutoff. Base cutoff comes from pitch (filterNorm).
+      // When gyro coupling is on, fast rotational motion brightens the spectrum —
+      // implements the "Energy/Brightness" macro-dimension from research §3.1.
+      const gyroMag = (rotationRate && rotationRate.mag) || 0
+      const gyroBoost = ENABLE_GYRO_ENERGY_COUPLING
+        ? Math.min(2000, gyroMag * 4)   // 500°/s gyro → +2 kHz cutoff lift
+        : 0
+      const cutoff = 200 + filterNorm * 3800 + gyroBoost
       stem.conductingFilter.frequency.setTargetAtTime(cutoff, now, CONDUCTING.FILTER_FREQ_TC)
+
+      // Reverb send modulation: fast gyro = drier/more present, slow = wetter.
+      if (ENABLE_GYRO_ENERGY_COUPLING) {
+        const baseReverb = STEMS[name].reverbSend
+        const drier = clamp(1 - gyroMag / 600, 0, 1)
+        stem.reverbSend.gain.setTargetAtTime(baseReverb * drier, now, CONDUCTING.FILTER_FREQ_TC)
+      }
 
       // Articulation → Q spike
       if (articulation > CONDUCTING.ARTICULATION_THRESHOLD) {
