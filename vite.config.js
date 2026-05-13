@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import basicSsl from '@vitejs/plugin-basic-ssl'
 import dotenv from 'dotenv'
 import path from 'path'
 
@@ -38,5 +39,5 @@ function apiMiddleware() {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), apiMiddleware()],
+  plugins: [react(), tailwindcss(), apiMiddleware(), basicSsl()],
 })
