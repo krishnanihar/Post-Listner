@@ -194,8 +194,9 @@ Each Spectrum word-pair carries explicit `coordL` / `coordR` AVD coordinates in 
 | `CLOUDFLARE_ACCOUNT_ID` | wrangler (optional) | Bucket admin |
 | `VITE_ELEVENLABS_API_KEY` | `scripts/generate-assets.js`, `scripts/generate-phase2-assets.js` | Generating legacy SFX/voice assets |
 | `ELEVENLABS_API_KEY` | `api/admirer.js` (optional in v3) | Inline admirer voice during phases 0–6. Hook fails silently without it. |
+| `VITE_RELAY_URL` | Runtime (`relayClient.js`, `phone.js`) | WebSocket relay endpoint. Dev: `wss://localhost:8443`. Prod: `wss://relay.post-listner.com`. |
 
-`.env.local` is gitignored via `*.local`. Vercel production needs `VITE_STEMS_BASE_URL` and `VITE_MASTERS_BASE_URL` set on the **Production** environment.
+`.env.local` is gitignored via `*.local`. Vercel production needs `VITE_STEMS_BASE_URL`, `VITE_MASTERS_BASE_URL`, and `VITE_RELAY_URL` set on the **Production** environment.
 
 ## Commands
 
