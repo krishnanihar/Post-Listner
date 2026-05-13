@@ -162,6 +162,7 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
     const analyserNode = audioCtxRef.current.createAnalyser()
     analyserNode.fftSize = 256  // → 128 frequency bins
     analyserNode.smoothingTimeConstant = 0.8
+    let lastGestureSent = 0
     // Tap the directBus (the engine's pre-compressor sum). Connecting an analyser
     // doesn't affect the audio path — analyser is a passthrough on its output side.
     if (engine.directBus) engine.directBus.connect(analyserNode)
@@ -215,6 +216,25 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
         engine.applyConducting(gesture)
         if (gesture.downbeat.fired && navigator.vibrate) {
           navigator.vibrate(15)
+        }
+        // Stream gesture snapshot to viewers at ~60 fps. Shape matches what
+        // src/conductor-codex/motion.js::mapRelayMessage expects: raw α/β/γ
+        // for the desktop-side calibration deltas (q omitted — viewer falls
+        // back to raw deltas when q is absent). calibrated:false so the
+        // desktop's mapRelayMessage doesn't keep resetting rawZero.
+        if (relayRef?.current && timestamp - lastGestureSent > 16) {
+          relayRef.current.send({
+            type: 'gesture',
+            raw: { alpha: gesture.yaw, beta: gesture.beta, gamma: gesture.gamma },
+            gestureGain: gesture.gestureGain,
+            articulation: gesture.articulation,
+            downbeat: gesture.downbeat,
+            rotationRate: gesture.rotationRate,
+            accel: gesture.accel,
+            calibrated: false,
+            t: timestamp,
+          })
+          lastGestureSent = timestamp
         }
       }
 
