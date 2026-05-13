@@ -98,7 +98,7 @@ ElevenLabs API key (`ELEVENLABS_API_KEY`, no VITE_ prefix) stays on the server. 
 
 All Orchestra code lives under **`src/orchestra/`**. The main component is **`src/phases/Orchestra.jsx`**.
 
-- **`src/orchestra/OrchestraEngine.js`** — Master audio graph. Per-stem (mono) chain: `entry → gain → eqFilter → distanceLP → conductingFilter → HRTFPanner → directBus`, with a parallel mono pre-HRTF reverb send into a shared `reverbBus`. Shared `reverbBus` feeds 6 image-source early reflections + a binaural hall IR convolver. Binaural beats (oscL + oscR → ChannelMerger → ctx.destination) bypass the compressor. No Track B, no ovation, no fracture coupling, no return tone (all removed in v3).
+- **`src/orchestra/OrchestraEngine.js`** — Master audio graph. Per-stem (mono) chain: `entry → gain → eqFilter → distanceLP → conductingFilter → HRTFPanner → directBus`, with a parallel mono pre-HRTF reverb send into a shared `reverbBus`. Shared `reverbBus` feeds 6 image-source early reflections + a binaural hall IR convolver. Binaural beats (oscL + oscR → ChannelMerger → ctx.destination) bypass the compressor. No Track B, no ovation, no fracture coupling, no return tone (all removed in v3). Gesture extraction lives in `src/conducting/GestureCore.js` (shared with the relay phone bundle); `ConductingEngine.js` is a thin DOM-binding wrapper.
 - **`src/orchestra/ConductingEngine.js`** — DeviceMotion + DeviceOrientation handler. Downbeat detection (negative-Y zero-crossing), gesture size (RMS peak-to-peak), articulation (jerk), 2-second auto-calibration of orientation baseline. Touch fallback.
 - **`src/orchestra/constants.js`** — 3-phase timing (`BRIEFING_DURATION` 12s, `BLOOM_DURATION` 24s, `END_FADE_DURATION` 4s, `CLOSING_CARD_DURATION` 7s); per-stem spatial layout (`STEMS.{VOCALS, DRUMS, BASS, OTHER}` with azimuth/elevation/distance/reverbSend); image-source `EARLY_REFLECTIONS` for ~5×4×3m room; `YAW_SPOTLIGHT` boost/cut params; flat `GAINS.TRACK_A`, `GAINS.AUDIENCE`, `GAINS.HALL_WET`, constant 10 Hz `GAINS.BINAURAL`. Re-exports `CONDUCTING` from `src/chamber/utils/constants.js`.
 - **`src/orchestra/scripts.js`** — Reduced to ambient bed only: `AUDIENCE_FILES` (2 crowd murmur loops) + `HALL_IR_FILE`. All admirer voices, whispers, ovation, Track B removed.
@@ -334,15 +334,11 @@ Open questions to resolve when starting:
 
 The conducting gaps in §2 below become voice-driven discoverability when this phase happens.
 
-### 2. Conducting gaps (research-grounded)
+### 2. Conducting gaps — addressed 2026-05-13
 
-Current implementation diverges from `Research/gesture-felt-agency-phone-as-baton.md` in three places. None block shipping but each would tighten felt agency. Detail in conversation history (2026-05-09).
+The yaw-on-roll bug, missing One Euro Filter, low downbeat threshold, and gesture-size gain floor identified in `Research/gesture-felt-agency-phone-as-baton.md` were fixed in the conducting refactor (`docs/superpowers/plans/2026-05-13-conducting-refactor.md`). Both the Orchestra phone-native path and the `/conduct-glb` relay path now share a single `src/conducting/GestureCore.js` source of truth, with research-aligned thresholds (4.0 m/s² / 300 ms refractory) and 1€ filtering active. Yaw-spotlight runs on `alpha` (compass), gyro magnitude cross-couples into the "Energy/Brightness" macro-dimension on the per-stem conducting filter + reverb send. Gated behind `USE_RESEARCH_CONDUCTING_PARAMS` and `ENABLE_GYRO_ENERGY_COUPLING` (both now `true`) — flip to `false` in `src/conducting/constants.js` to revert.
 
-| Gap | Fix |
-|---|---|
-| Yaw-quadrant spotlight is wired to **roll (gamma)** instead of compass heading **(alpha)**. Tilting and turning currently behave the same. | Separate `pan` (roll) and `yaw` (alpha) in `ConductingEngine.getData()`. Calibrate alpha baseline alongside beta/gamma. ~30 min. |
-| **No One Euro Filter** on input side. Audio-side `setTargetAtTime` smoothing isn't speed-adaptive. | Add `OneEuroFilter` for gamma/beta/alpha streams (min_cutoff 1.0 Hz, beta 0.007). ~30 min. |
-| **No diegetic error feedback** (Personal Orchestra's "orchestra stops when conducting is too erratic" pattern). | Optional: if `articulation > 0.8` for 3+ seconds, drop master gain and play a settle cue. Depends on voice redesign tone. |
+Still open: diegetic error feedback (Personal Orchestra's "orchestra stops when conducting is too erratic" pattern). Optional, depends on voice-redesign tone.
 
 ### 3. Stem quality
 
