@@ -1,5 +1,3 @@
-export const RELAY_URL = 'wss://localhost:8443/?role=desktop'
-
 const DEFAULT_CONTROLS = {
   pitch: 0,
   roll: 0,

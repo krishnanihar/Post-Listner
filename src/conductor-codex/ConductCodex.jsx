@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import ConductorScene from './ConductorScene'
 import ConstellationOverlay from './ConstellationOverlay'
-import { RELAY_URL } from './motion'
 import { usePhoneConductor } from './usePhoneConductor'
 import './conduct-codex.css'
 
@@ -26,7 +25,9 @@ function Meter({ label, value, bipolar = true }) {
 }
 
 export default function ConductCodex() {
-  const { stateRef, snapshot } = usePhoneConductor()
+  // Default session for the standalone /conduct-codex dev route. Real session
+  // IDs are wired in via the QR pairing flow on the Stage route.
+  const { stateRef, snapshot } = usePhoneConductor('DEV00000')
   const controls = snapshot.controls
   const signalAge = Number.isFinite(snapshot.lastMessageAgeMs)
     ? `${Math.round(snapshot.lastMessageAgeMs)}ms`
@@ -65,7 +66,7 @@ export default function ConductCodex() {
           </div>
         </dl>
         {snapshot.lastError ? <p className="conduct-codex-error">{snapshot.lastError}</p> : null}
-        <p className="conduct-codex-url">{RELAY_URL}</p>
+        <p className="conduct-codex-url">{import.meta.env.VITE_RELAY_URL || 'wss://localhost:8443'} · DEV00000</p>
       </section>
 
       <section className="conduct-codex-panel conduct-codex-panel--meters" aria-label="Gesture readings">

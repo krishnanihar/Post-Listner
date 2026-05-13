@@ -15,7 +15,9 @@ const AUDIO_SRC = '/music/hearth-keeper_acoustic-soft-2000s.mp3'
 const PhoneContext = createContext(null)
 
 function PhoneProvider({ children }) {
-  const phone = usePhoneConductor()
+  // Default session for the standalone /conduct-glb dev route. Real session
+  // IDs are wired in via the QR pairing flow on the Stage route.
+  const phone = usePhoneConductor('DEV00000')
   return <PhoneContext.Provider value={phone}>{children}</PhoneContext.Provider>
 }
 
