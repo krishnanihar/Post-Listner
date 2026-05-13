@@ -22,7 +22,18 @@ export default function StageCosmos({ sessionId, latestFreq }) {
   }, [latestFreq])
 
   const phone = usePhoneConductor(sessionId)
-  const audio = { freqDataRef, playing: true, needsGesture: false }
+  // ConductorCelestialField's rAF loop calls audio.pollFrequency() every
+  // frame to refresh freqDataRef.current from a local AnalyserNode. In our
+  // case the ref is already up to date (the useEffect above sets it on
+  // every {type:'audio'} WS message), so pollFrequency is a no-op. Without
+  // this method, the rAF loop throws TypeError every frame and the canvas
+  // never renders its reactive layers.
+  const audio = {
+    freqDataRef,
+    playing: true,
+    needsGesture: false,
+    pollFrequency: () => {},
+  }
 
   return <ConductorCelestialField audio={audio} phone={phone} />
 }
