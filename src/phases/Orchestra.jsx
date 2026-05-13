@@ -220,8 +220,16 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
         // Stream gesture snapshot to viewers at ~60 fps. Shape matches what
         // src/conductor-codex/motion.js::mapRelayMessage expects: raw α/β/γ
         // for the desktop-side calibration deltas (q omitted — viewer falls
-        // back to raw deltas when q is absent). calibrated:false so the
-        // desktop's mapRelayMessage doesn't keep resetting rawZero.
+        // back to raw deltas when q is absent).
+        //
+        // calibrated:true is required even though we don't run a tap-to-calibrate
+        // flow — the desktop's ConductorCelestialField gates pitch/roll behind
+        // state.calibrated, forcing them to 0 if false (cursor stays at center
+        // → falls through to autonomous Lissajous). Setting true here is safe
+        // because mapRelayMessage's rawZero-reset path requires both
+        // calibrated AND isNearRest(q), and q is null in this code path so
+        // isNearRest returns false. rawZero is captured once on the first
+        // message and never updated, which is what we want.
         if (relayRef?.current && timestamp - lastGestureSent > 16) {
           relayRef.current.send({
             type: 'gesture',
@@ -231,7 +239,7 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
             downbeat: gesture.downbeat,
             rotationRate: gesture.rotationRate,
             accel: gesture.accel,
-            calibrated: false,
+            calibrated: true,
             t: timestamp,
           })
           lastGestureSent = timestamp
