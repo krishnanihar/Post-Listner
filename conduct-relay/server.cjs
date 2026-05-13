@@ -83,44 +83,58 @@ const { key, cert } = loadOrCreateCerts();
 const server = https.createServer({ key, cert }, serveStatic);
 const wss = new WebSocketServer({ server });
 
-const desktops = new Set();
-const phones = new Set();
+const sessions = new Map() // sessionId → { conductor: ws | null, viewers: Set<ws> }
 
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, 'http://x');
+  const sessionId = url.searchParams.get('s') || 'default';
   const role = url.searchParams.get('role');
-  if (role === 'desktop') {
-    desktops.add(ws);
-    console.log(`[ws] desktop connected (${desktops.size} total)`);
-    ws.on('close', () => {
-      desktops.delete(ws);
-      console.log(`[ws] desktop disconnected (${desktops.size} total)`);
-    });
-  } else if (role === 'phone') {
-    phones.add(ws);
+
+  // Backwards compat: the existing phone.js sent role=phone/desktop, the new
+  // protocol uses conductor/viewer. Accept both for dev convenience.
+  const isConductor = role === 'conductor' || role === 'phone';
+  const isViewer    = role === 'viewer'    || role === 'desktop';
+
+  if (!isConductor && !isViewer) {
+    ws.close();
+    return;
+  }
+
+  if (!sessions.has(sessionId)) {
+    sessions.set(sessionId, { conductor: null, viewers: new Set() });
+  }
+  const session = sessions.get(sessionId);
+
+  if (isConductor) {
+    session.conductor = ws;
+    console.log(`[ws] conductor connected to session ${sessionId}`);
     let msgCount = 0;
-    let relayCount = 0;
-    console.log(`[ws] phone connected (${phones.size} total)`);
     ws.on('message', (data, isBinary) => {
       msgCount++;
-      let sent = 0;
-      for (const d of desktops) {
-        if (d.readyState === WebSocket.OPEN) {
-          d.send(data, { binary: isBinary });
-          sent++;
-        }
+      for (const v of session.viewers) {
+        if (v.readyState === WebSocket.OPEN) v.send(data, { binary: isBinary });
       }
-      relayCount += sent;
       if (msgCount === 1 || msgCount % 60 === 0) {
-        console.log(`[ws] phone msg #${msgCount} → ${sent} desktops (cumulative relayed: ${relayCount})`);
+        console.log(`[ws] session ${sessionId} conductor msg #${msgCount} → ${session.viewers.size} viewers`);
       }
     });
     ws.on('close', () => {
-      phones.delete(ws);
-      console.log(`[ws] phone disconnected (${phones.size} total, sent ${msgCount} msgs)`);
+      if (session.conductor === ws) session.conductor = null;
+      console.log(`[ws] conductor disconnected from session ${sessionId}`);
+      if (!session.conductor && session.viewers.size === 0) {
+        sessions.delete(sessionId);
+      }
     });
   } else {
-    ws.close();
+    session.viewers.add(ws);
+    console.log(`[ws] viewer connected to session ${sessionId} (${session.viewers.size} total)`);
+    ws.on('close', () => {
+      session.viewers.delete(ws);
+      console.log(`[ws] viewer disconnected from session ${sessionId} (${session.viewers.size} remaining)`);
+      if (!session.conductor && session.viewers.size === 0) {
+        sessions.delete(sessionId);
+      }
+    });
   }
 });
 
