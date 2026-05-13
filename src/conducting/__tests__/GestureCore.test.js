@@ -78,9 +78,11 @@ describe('GestureCore — gesture size (LEGACY)', () => {
 
   it('saturates at GESTURE_SIZE_RANGE (5.0 m/s²) peak-to-peak', () => {
     const s = createState({ params: PARAMS })
-    // Build a 0 → 5 m/s² peak-to-peak over 200ms (well inside the 2s window)
+    // Alternate between zero motion and 5 m/s² single-axis motion so the
+    // RMS sliding window sees peak=5.0 and trough=0, giving peak-to-peak=5.0
+    // which saturates gestureGain at 1.0.
     for (let i = 0; i < 12; i++) {
-      const ax = i % 2 === 0 ? 2.5 : -2.5  // ±2.5 → mag 2.5 each
+      const ax = i % 2 === 0 ? 5.0 : 0
       processMotion(s, makeMotion({ ax }), i * 16)
     }
     expect(read(s, 200).gestureGain).toBeCloseTo(1.0, 1)

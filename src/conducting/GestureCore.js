@@ -106,11 +106,8 @@ export function processMotion(state, e, now) {
   }
   state.prevY = ay
 
-  // Gesture size — peak-to-peak signed excursion in rolling window.
-  // Track signed sum so that opposite-direction strokes (ax=+2.5 vs ax=-2.5)
-  // produce measurable range even when 3D RMS is constant.
-  const signedMag = ax + ay + az
-  state.magBuffer.push({ mag: signedMag, t: now })
+  // Gesture size — peak-to-peak RMS excursion in rolling window.
+  state.magBuffer.push({ mag: rms, t: now })
   const magCutoff = now - P.GESTURE_SIZE_WINDOW_MS
   while (state.magBuffer.length && state.magBuffer[0].t < magCutoff) state.magBuffer.shift()
   let minMag = Infinity, maxMag = -Infinity
