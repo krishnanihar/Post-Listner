@@ -82,13 +82,22 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     })
   }, [connect])
 
-  // Stop the fragment audio if the phase unmounts.
+  // Stop the fragment audio and any orphaned StemPlayer if the phase unmounts
+  // before commitEntry handed ownership of the running player to Orchestra.
   useEffect(() => {
     return () => {
       if (fragmentAudioRef.current) {
         try { fragmentAudioRef.current.pause() } catch { /* ignore */ }
         fragmentAudioRef.current = null
       }
+      // If revealAudioRef still points at our player, Orchestra never took it —
+      // stop it. If Orchestra picked it up, revealAudioRef has been mutated by
+      // Orchestra's detachAndGetSources() and we don't touch it.
+      const player = playerRef.current
+      if (player && revealAudioRef?.current === player) {
+        try { player.stop?.() } catch { /* ignore */ }
+      }
+      playerRef.current = null
     }
   }, [])
 
