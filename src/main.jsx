@@ -1,4 +1,3 @@
-import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
@@ -31,8 +30,9 @@ function pickRoot() {
 
 const Root = pickRoot()
 
-createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <Root />
-  </StrictMode>,
-)
+// StrictMode intentionally removed for the musicking branch: ElevenLabs
+// Conversational AI agents can't survive React's dev-mode double-mount
+// (mount → cleanup tears the LiveKit session down → remount races into
+// a still-disconnecting SDK). Re-enable once the hook has a session
+// registry that absorbs StrictMode cleanly.
+createRoot(document.getElementById('root')).render(<Root />)

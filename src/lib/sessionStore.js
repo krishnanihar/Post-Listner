@@ -86,6 +86,11 @@ export function getTimeOfDay(now = new Date()) {
 
 // Build the flat object passed to the agent as dynamicVariables.
 // Keep keys exactly matching the brief Section X "Dynamic variables".
+//
+// ElevenLabs Conversational AI dynamic variables only accept primitive
+// types (string, number, boolean). Arrays get silently rejected and
+// terminate the conversation immediately after connect. Every value
+// here MUST be a primitive — collections are joined into strings.
 export function buildDynamicVariables() {
   const entries = getEntries()
   const lexiconObj = getLexicon()
@@ -103,7 +108,8 @@ export function buildDynamicVariables() {
       .slice(-5)
       .map(e => e.summary)
       .join(' | '),
-    restricted_repertoires: getRestricted(),
+    // Comma-separated string — array values break the SDK.
+    restricted_repertoires: getRestricted().join(', '),
   }
 }
 
