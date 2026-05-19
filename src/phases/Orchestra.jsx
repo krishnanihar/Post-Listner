@@ -273,7 +273,7 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
   // ─── Closing card complete → return to entry ─────────────────────────────
 
   const handleClosingComplete = useCallback(() => {
-    goToPhase('entry')
+    goToPhase('settle')
   }, [goToPhase])
 
   // ─── Touch handlers (fallback conducting) ─────────────────────────────────
