@@ -75,11 +75,14 @@ const patch = {
       // Was: "normal". Eager makes the agent commit to responding faster
       // once it has decided the user is done.
       turn_eagerness: 'eager',
-      // Was: false. Speculative-turn lets the LLM start generating before
-      // the user has fully stopped speaking; result is discarded if the
-      // user keeps going. This is the single biggest perceived-latency
-      // win for voice agents.
-      speculative_turn: true,
+      // DISABLED — speculative_turn produced verbatim duplicate responses
+      // when the user paused mid-thought or went briefly silent ("..."
+      // user turns triggered a second full agent response identical to
+      // the previous one). The latency benefit isn't worth the doubling
+      // for an intimate voice register that already tolerates 2-3s gaps.
+      // Verified in conv_5901ks0y99eceetbgvtn35knpqaf (turns 06/10 and
+      // 17/25 doubled).
+      speculative_turn: false,
       // Keep existing
       mode: 'turn',
       turn_model: 'turn_v2',
@@ -116,7 +119,7 @@ console.log(`  system prompt:     ${SYSTEM_PROMPT.length} chars synced from crea
 console.log('  llm:               gemini-2.5-flash-lite')
 console.log('  turn_timeout:      3.0')
 console.log('  turn_eagerness:    eager')
-console.log('  speculative_turn:  true')
+console.log('  speculative_turn:  false  (was true; caused duplicate utterances)')
 console.log('  tts.speed:         1.05')
 console.log('')
 console.log('No client-side changes needed. Hard-refresh the browser and test.')
