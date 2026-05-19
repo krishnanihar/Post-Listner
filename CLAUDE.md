@@ -207,6 +207,7 @@ Optional flow: desktop visitor sees a QR code, scans with phone, runs the rite o
 | `VITE_ELEVENLABS_API_KEY` | `scripts/generate-assets.js`, `scripts/generate-phase2-assets.js` | Generating legacy SFX/voice assets |
 | `ELEVENLABS_API_KEY` | `api/admirer.js` (optional in v3) | Inline admirer voice during phases 0–6. Hook fails silently without it. |
 | `VITE_RELAY_URL` | Runtime (`relayClient.js`, `phone.js`) | WebSocket relay endpoint. Dev: `wss://localhost:8443`. Prod: `wss://relay.post-listner.com`. |
+| `VITE_ELEVENLABS_AGENT_ID` | Runtime (`useAdmirerAgent`) | The Admirer agent (musicking branch). Set on Production environment in Vercel. |
 
 `.env.local` is gitignored via `*.local`. Vercel production needs `VITE_STEMS_BASE_URL`, `VITE_MASTERS_BASE_URL`, and `VITE_RELAY_URL` set on the **Production** environment.
 
