@@ -258,7 +258,12 @@ const body = {
       voice_id: VOICE_ID,
     },
     agent: {
-      first_message: 'welcome.',
+      // Full threshold opening, delivered automatically on session connect.
+      // Lands the unhurried tone, names the push-to-talk affordance, ends
+      // on the grand-tour question (Spradley 1979) so the user has a clear
+      // thing to respond to. Length ~18s of speech at the agent's default
+      // pacing.
+      first_message: "welcome. this first one is the slow one — we're starting from nothing, so we have to do it that way. there's no rush. when you're ready, press and hold the button to speak. tell me about the music that has been around you.",
       language: 'en',
       prompt: {
         prompt: SYSTEM_PROMPT,

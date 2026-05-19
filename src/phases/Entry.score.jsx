@@ -9,7 +9,6 @@ export default function Entry({ onNext }) {
   const [name, setName] = useState('')
 
   const videoRef = useRef(null)
-  const audioRef = useRef(null)
   const droneStopRef = useRef(null)
   const tailTimerRef = useRef(null)
 
@@ -23,23 +22,26 @@ export default function Entry({ onNext }) {
       droneStopRef.current = audioEngine.playDrone(60, 0.04)
     }
 
-    // Play video + voice synchronously inside the user gesture so iOS Safari
-    // and other strict autoplay browsers honor it.
+    // Play the video silently — the Admirer's voice has taken over the
+    // role the intro voice.mp3 used to play.
     if (videoRef.current) {
       videoRef.current.currentTime = 0
       videoRef.current.play().catch(() => { /* ignore */ })
     }
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0
-      audioRef.current.play().catch(() => { /* ignore */ })
-    }
 
     setStage('video')
+
+    // Auto-advance to name input after a short atmospheric beat. The full
+    // 29s video is too long without voice — 8s lands the visual without
+    // dragging. video.onEnded is kept as a fallback in case the timer
+    // somehow fails (e.g. video paused by OS background switch).
+    if (tailTimerRef.current) clearTimeout(tailTimerRef.current)
+    tailTimerRef.current = setTimeout(() => setStage('name'), 8000)
   }, [stage])
 
-  // Video is 29s, voice is ~23.8s. We let the voice finish, then the cosmic
-  // tail (~5s of silent video) breathes before advancing on video.onEnded.
   const onVideoEnded = () => {
+    // Fallback path: if the video runs to its full 29s without our timer
+    // firing, still advance gracefully.
     if (tailTimerRef.current) clearTimeout(tailTimerRef.current)
     tailTimerRef.current = setTimeout(() => setStage('name'), 400)
   }
@@ -106,12 +108,6 @@ export default function Entry({ onNext }) {
           }}
         />
       )}
-
-      <audio
-        ref={audioRef}
-        src="/intro/voice.mp3"
-        preload="auto"
-      />
 
       <AnimatePresence>
         {stage === 'intro' && (

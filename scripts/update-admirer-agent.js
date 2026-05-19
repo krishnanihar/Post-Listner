@@ -50,13 +50,29 @@ function loadSystemPrompt() {
   return m[1].replace(/\\`/g, '`')
 }
 
+// Extract the first_message string from the create script's body so it
+// also can't drift. The line is unambiguous (single double-quoted string
+// preceded by the literal `first_message: `).
+function loadFirstMessage() {
+  const src = readFileSync(resolve(__dirname, 'create-admirer-agent.js'), 'utf8')
+  const m = src.match(/first_message:\s*"((?:\\.|[^"\\])*)"/)
+  if (!m) throw new Error('Could not find first_message in create script')
+  return m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+}
+
 const SYSTEM_PROMPT = loadSystemPrompt()
+const FIRST_MESSAGE = loadFirstMessage()
 
 // Patch payload. Each commit to this script should describe WHY a value
 // changed, not just what it is. Defaults are listed for comparison.
 const patch = {
   conversation_config: {
     agent: {
+      // Was: "welcome." (1 word). Extended to the full threshold opening
+      // so the Admirer's first utterance lands the tone, names the
+      // push-to-talk affordance, and ends on the grand-tour question —
+      // giving the user a clear thing to respond to instead of silence.
+      first_message: FIRST_MESSAGE,
       prompt: {
         // Source-of-truth system prompt. Currently versioned by the
         // commit history of scripts/create-admirer-agent.js.
@@ -115,6 +131,7 @@ if (!res.ok) {
 }
 
 console.log('Agent updated.')
+console.log(`  first_message:     ${FIRST_MESSAGE.length} chars`)
 console.log(`  system prompt:     ${SYSTEM_PROMPT.length} chars synced from create script`)
 console.log('  llm:               gemini-2.5-flash-lite')
 console.log('  turn_timeout:      3.0')
