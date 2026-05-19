@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { useConversationControls, useConversationStatus } from '@elevenlabs/react'
 import { buildAdmirerTools } from '../lib/admirerTools.js'
 import { buildDynamicVariables } from '../lib/sessionStore.js'
@@ -18,12 +18,16 @@ export function useAdmirerAgent({ sessionStage = 'opening', callbacks = {} } = {
   const { startSession, endSession } = useConversationControls()
   const { status } = useConversationStatus()
   const startedRef = useRef(false)
+  const callbacksRef = useRef(callbacks)
+  useLayoutEffect(() => {
+    callbacksRef.current = callbacks
+  })
 
   const connect = useCallback(async () => {
     if (startedRef.current) return
     startedRef.current = true
 
-    const clientTools = buildAdmirerTools(callbacks)
+    const clientTools = buildAdmirerTools(callbacksRef.current)
     const dynamicVariables = {
       ...buildDynamicVariables(),
       session_stage: sessionStage,
@@ -47,7 +51,7 @@ export function useAdmirerAgent({ sessionStage = 'opening', callbacks = {} } = {
       console.error('[admirer] startSession threw:', e)
       startedRef.current = false
     }
-  }, [callbacks, sessionStage, startSession])
+  }, [sessionStage, startSession])
 
   const disconnect = useCallback(async () => {
     if (!startedRef.current) return
