@@ -1,22 +1,25 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
-import { useConversationControls, useConversationStatus } from '@elevenlabs/react'
+import { useConversation } from '@elevenlabs/react'
 import { buildAdmirerTools } from '../lib/admirerTools.js'
 import { buildDynamicVariables } from '../lib/sessionStore.js'
 
 // Thin wrapper around the SDK. Each phase calls connect() once on mount
 // and disconnect() on unmount. The phase passes its own callbacks for
 // onPlayFragment/onStartGeneration/onCommitEntry so it can react to
-// tool invocations (e.g. start the StemPlayer, advance to orchestra).
+// tool invocations.
+//
+// Push-to-talk: on connect, we immediately call setMuted(true) so the
+// session starts with the mic closed. Holding the speak button calls
+// setMuted(false); releasing calls setMuted(true). This eliminates the
+// duplicate-on-silence problem from voice-activated turn detection,
+// and gives the user full agency over pacing.
 //
 // sessionStage:
 //   'opening' — Admirer phase: arrival + biography + locate + generation
 //   'closing' — Settle phase: brief settle/close
-//
-// The agent reads sessionStage as a dynamic variable so its system prompt
-// can branch on it (see admirer-agent-dashboard.md).
 export function useAdmirerAgent({ sessionStage = 'opening', callbacks = {} } = {}) {
-  const { startSession, endSession } = useConversationControls()
-  const { status } = useConversationStatus()
+  const conv = useConversation()
+  const { startSession, endSession, setMuted } = conv
   const startedRef = useRef(false)
   const callbacksRef = useRef(callbacks)
   useLayoutEffect(() => {
@@ -39,6 +42,9 @@ export function useAdmirerAgent({ sessionStage = 'opening', callbacks = {} } = {
         dynamicVariables,
         onConnect: ({ conversationId }) => {
           console.log(`[admirer] connected (${sessionStage}):`, conversationId)
+          // Push-to-talk: start muted. Setting after connect so the SDK
+          // has fully wired up the audio track before we mute it.
+          try { setMuted?.(true) } catch (e) { console.warn('[admirer] setMuted threw:', e) }
         },
         onError: (message) => {
           console.error('[admirer] error:', message)
@@ -51,7 +57,7 @@ export function useAdmirerAgent({ sessionStage = 'opening', callbacks = {} } = {
       console.error('[admirer] startSession threw:', e)
       startedRef.current = false
     }
-  }, [sessionStage, startSession])
+  }, [sessionStage, startSession, setMuted])
 
   const disconnect = useCallback(async () => {
     if (!startedRef.current) return
@@ -74,5 +80,13 @@ export function useAdmirerAgent({ sessionStage = 'opening', callbacks = {} } = {
     }
   }, [endSession])
 
-  return { connect, disconnect, status }
+  return {
+    connect,
+    disconnect,
+    status: conv.status,
+    isSpeaking: !!conv.isSpeaking,
+    isListening: !!conv.isListening,
+    isMuted: !!conv.isMuted,
+    setMuted: conv.setMuted,
+  }
 }
