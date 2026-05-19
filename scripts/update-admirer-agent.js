@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 // scripts/update-admirer-agent.js
 //
-// PATCHes the existing Admirer agent on ElevenLabs with latency tunings.
-// Re-run any time you want to adjust LLM / turn-detection / TTS settings
-// without rebuilding the agent from scratch.
+// PATCHes the existing Admirer agent on ElevenLabs with the current
+// system prompt and latency/turn-detection settings. The source-of-truth
+// system prompt lives in scripts/create-admirer-agent.js; this script
+// re-uses that text so the create and update paths can never drift.
+//
+// Re-run any time the brief or system prompt evolves.
 //
 // Run with: node scripts/update-admirer-agent.js
 // Requires: ELEVENLABS_API_KEY in .env.local, VITE_ELEVENLABS_AGENT_ID set.
@@ -34,12 +37,30 @@ const AGENT_ID = env.VITE_ELEVENLABS_AGENT_ID
 if (!API_KEY) { console.error('Missing ELEVENLABS_API_KEY'); process.exit(1) }
 if (!AGENT_ID) { console.error('Missing VITE_ELEVENLABS_AGENT_ID'); process.exit(1) }
 
-// Latency tunings. Each commit to this script should describe WHY a value
+// Extract the SYSTEM_PROMPT from the create script so the two paths
+// cannot drift. We don't import — that would re-trigger the create
+// flow's side effects. The prompt is a backtick template literal that
+// itself contains escaped backticks for words like `session_stage`,
+// so we match lazily up to the next top-level declaration (the
+// FRAGMENT_IDS constant) and unescape \` → ` afterward.
+function loadSystemPrompt() {
+  const src = readFileSync(resolve(__dirname, 'create-admirer-agent.js'), 'utf8')
+  const m = src.match(/const SYSTEM_PROMPT = `([\s\S]*?)`\s*\n\s*const FRAGMENT_IDS/)
+  if (!m) throw new Error('Could not find SYSTEM_PROMPT in create script')
+  return m[1].replace(/\\`/g, '`')
+}
+
+const SYSTEM_PROMPT = loadSystemPrompt()
+
+// Patch payload. Each commit to this script should describe WHY a value
 // changed, not just what it is. Defaults are listed for comparison.
 const patch = {
   conversation_config: {
     agent: {
       prompt: {
+        // Source-of-truth system prompt. Currently versioned by the
+        // commit history of scripts/create-admirer-agent.js.
+        prompt: SYSTEM_PROMPT,
         // Was: gemini-2.5-flash. Lite is materially faster for our prompt
         // size and the quality drop is invisible for a voice register that
         // already wants short, restrained replies.
@@ -91,11 +112,11 @@ if (!res.ok) {
 }
 
 console.log('Agent updated.')
-console.log('Applied tunings:')
-console.log('  llm:               gemini-2.5-flash → gemini-2.5-flash-lite')
-console.log('  turn_timeout:      7.0 → 3.0')
-console.log('  turn_eagerness:    normal → eager')
-console.log('  speculative_turn:  false → true')
-console.log('  tts.speed:         1.0 → 1.05')
+console.log(`  system prompt:     ${SYSTEM_PROMPT.length} chars synced from create script`)
+console.log('  llm:               gemini-2.5-flash-lite')
+console.log('  turn_timeout:      3.0')
+console.log('  turn_eagerness:    eager')
+console.log('  speculative_turn:  true')
+console.log('  tts.speed:         1.05')
 console.log('')
 console.log('No client-side changes needed. Hard-refresh the browser and test.')
