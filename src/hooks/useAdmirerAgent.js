@@ -59,11 +59,16 @@ export function useAdmirerAgent({ sessionStage = 'opening', callbacks = {} } = {
     try { await endSession() } catch (e) { console.warn('[admirer] endSession threw:', e) }
   }, [endSession])
 
-  // Auto-cleanup if the host unmounts mid-session.
+  // Auto-cleanup if the host unmounts mid-session. The SDK's endSession
+  // returns void synchronously in some versions (not a Promise) so we
+  // can't .catch() on it. Wrap in try/catch and tolerate either shape.
   useEffect(() => {
     return () => {
       if (startedRef.current) {
-        endSession().catch(() => {})
+        try {
+          const r = endSession()
+          if (r && typeof r.catch === 'function') r.catch(() => {})
+        } catch { /* ignore — already disconnected */ }
         startedRef.current = false
       }
     }
