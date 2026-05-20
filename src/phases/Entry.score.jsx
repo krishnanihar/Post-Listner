@@ -22,6 +22,16 @@ export default function Entry({ onNext }) {
     // 60 Hz felt anchor under the rite, started inside the user gesture.
     audioEngine.init()
     audioEngine.resume()
+
+    // iOS gates device-motion behind a permission prompt that must be
+    // requested inside a user gesture — this tap is that gesture. Phase 1
+    // uses orientation to place the Admirer's voice in the room and to draw
+    // the glyph. Fire-and-forget: if denied, both simply stay centred.
+    if (typeof DeviceMotionEvent !== 'undefined' &&
+        typeof DeviceMotionEvent.requestPermission === 'function') {
+      DeviceMotionEvent.requestPermission().catch(() => { /* denied — fine */ })
+    }
+
     if (!droneStopRef.current) {
       droneStopRef.current = audioEngine.playDrone(60, 0.04)
     }
