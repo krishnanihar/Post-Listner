@@ -177,7 +177,7 @@ export default class AdmirerRoom {
   // Connect a captured voice source node into the room's mono entry.
   // Idempotent: a prior source (if any) is detached first.
   connectVoice(sourceNode) {
-    if (!sourceNode || !this.monoGain) return
+    if (this._disposed || !sourceNode || !this.monoGain) return
     if (this.voiceSource) {
       try { this.voiceSource.disconnect(this.monoGain) } catch { /* ignore */ }
     }

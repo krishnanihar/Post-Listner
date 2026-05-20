@@ -47,7 +47,9 @@ export function useAdmirerRoom({ getAudioCtx, status }) {
         room.connectVoice(captureAdmirerVoice(ctx))
         capturedRef.current = true
       } catch {
-        if (tries++ < 20) {
+        // ~6 s of retries (40 × 150 ms) — generous enough for a slow first
+        // connection on mobile, where the SDK's <audio> element can be late.
+        if (tries++ < 40) {
           timer = setTimeout(attempt, 150)
         } else {
           console.warn('[admirer-room] voice capture gave up — voice stays unspatialised')
