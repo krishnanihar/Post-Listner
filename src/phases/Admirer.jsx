@@ -8,6 +8,7 @@ import StemPlayer from '../lib/stemPlayer.js'
 import { addLexiconWord } from '../lib/liveSession.js'
 import HoldToSpeak from './HoldToSpeak'
 import FragmentControls from './FragmentControls'
+import { useAdmirerRoom } from '../hooks/useAdmirerRoom.js'
 
 const AGENT_ID = import.meta.env.VITE_ELEVENLABS_AGENT_ID
 
@@ -23,6 +24,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   const [hasError, setHasError] = useState(false)
   const [fragmentPlaying, setFragmentPlaying] = useState(false)
   const [awaitingRating, setAwaitingRating] = useState(false)
+  const [generationStarted, setGenerationStarted] = useState(false)
   const stemsBundleRef = useRef(null)
   const playerRef = useRef(null)
   const fragmentAudioRef = useRef(null)
@@ -89,6 +91,8 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     clearFragmentPlayback()
     setFragmentPlaying(false)
     setAwaitingRating(false)
+    // The conversation has resolved — let the room begin to open.
+    setGenerationStarted(true)
     stemsBundleRef.current = bundle
     const ctx = getAudioCtx?.()
     if (!ctx) {
@@ -135,6 +139,17 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     sessionStage: 'opening',
     callbacks: { onPlayFragment, onStartGeneration, onCommitEntry, onRecordLexicon },
   })
+
+  // Build A — the spatial room. Routes the agent's voice through an HRTF
+  // room and opens it at the phase-1 → phase-2 handoff.
+  const beginExpansion = useAdmirerRoom({ getAudioCtx, status })
+
+  // When the agent commits a direction, open the room. The room's expansion
+  // is the phase-1 → phase-2 transition — the closed conversation room
+  // audibly widening into the orchestra under the agent's closing words.
+  useEffect(() => {
+    if (generationStarted) beginExpansion()
+  }, [generationStarted, beginExpansion])
 
   // Called by Yes/No buttons. Sends the answer as a user turn and clears
   // the rating prompt immediately — no need to wait for the agent's reply.
