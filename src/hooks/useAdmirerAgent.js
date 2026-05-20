@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { useConversation } from '@elevenlabs/react'
 import { buildAdmirerTools } from '../lib/admirerTools.js'
 import { buildDynamicVariables } from '../lib/sessionStore.js'
+import { addTranscriptLine } from '../lib/liveSession.js'
 
 // Thin wrapper around the SDK. Each phase calls connect() once on mount
 // and disconnect() on unmount. The phase passes its own callbacks for
@@ -51,6 +52,14 @@ export function useAdmirerAgent({ sessionStage = 'opening', callbacks = {} } = {
         },
         onDisconnect: () => {
           console.log('[admirer] disconnected')
+        },
+        // Mirror every conversation turn into the live-session store so
+        // the reflection surface can show the transcript. SDK MessagePayload
+        // is { message, role: "user"|"ai", ... }; anything not "user" is the
+        // agent. addTranscriptLine already trims and ignores empty text.
+        onMessage: (payload) => {
+          const role = payload?.role === 'user' ? 'user' : 'agent'
+          addTranscriptLine(role, payload?.message)
         },
       })
     } catch (e) {
