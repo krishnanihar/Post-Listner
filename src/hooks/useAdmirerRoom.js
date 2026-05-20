@@ -60,16 +60,23 @@ export function useAdmirerRoom({ getAudioCtx, status }) {
     return () => { if (timer) clearTimeout(timer) }
   }, [status, getAudioCtx])
 
-  // Feed phone roll → room azimuth each frame.
+  // Feed phone roll → room azimuth each frame. The phone's resting position
+  // at the start of the phase is the neutral baseline; the voice swings
+  // relative to it, so however the user happens to hold the phone, "centred"
+  // is wherever they started.
   useEffect(() => {
     let raf = 0
     let mounted = true
+    let baselineRoll = null
     const tick = () => {
       if (!mounted) return
       const room = roomRef.current
       if (room) {
         const m = readMotion()
-        room.setAzimuthOffset(rollToAzimuthOffset(m.gamma))
+        if (m.gamma != null && !Number.isNaN(m.gamma)) {
+          if (baselineRoll === null) baselineRoll = m.gamma
+          room.setAzimuthOffset(rollToAzimuthOffset(m.gamma - baselineRoll))
+        }
       }
       raf = requestAnimationFrame(tick)
     }

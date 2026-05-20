@@ -18,26 +18,30 @@ const HALL_IR_URL = '/chamber/hall-ir.wav'
 const VOICE_ELEVATION_DEG = 5
 const VOICE_DISTANCE_M = 1.6
 
-// Largest azimuth swing the phone's roll can give the voice. Small on
-// purpose — the voice has a place; the phone turns you within the room,
-// it is not a video-game pan.
-export const MAX_AZIMUTH_OFFSET_DEG = 20
-const ROLL_DEADZONE_DEG = 4
+// Largest azimuth swing the phone's roll can give the voice. Wide enough to
+// be clearly heard — a comfortable wrist roll carries the voice most of the
+// way to one side; the voice still has a place, it just has a big one.
+export const MAX_AZIMUTH_OFFSET_DEG = 75
+const ROLL_DEADZONE_DEG = 3
+// Roll this far past the resting baseline gives the full swing — a ~40°
+// wrist roll, not the full 90°, so the whole range is comfortably reachable.
+const ROLL_FULL_DEG = 40
 
 function dbToLinear(db) {
   return Math.pow(10, db / 20)
 }
 
-// Map device roll (gamma, degrees, nominally -90..90) to a gentle azimuth
-// offset for the voice. A small deadzone keeps a still hand from nudging it.
-// Pure — unit-tested.
-export function rollToAzimuthOffset(gamma) {
-  if (gamma == null || Number.isNaN(gamma)) return 0
-  const clamped = Math.max(-90, Math.min(90, gamma))
+// Map a baseline-relative device roll (degrees — the caller subtracts the
+// phone's resting position) to an azimuth offset for the voice. A small
+// deadzone keeps a still hand from nudging it; past ROLL_FULL_DEG the swing
+// saturates. Pure — unit-tested.
+export function rollToAzimuthOffset(relRoll) {
+  if (relRoll == null || Number.isNaN(relRoll)) return 0
+  const clamped = Math.max(-ROLL_FULL_DEG, Math.min(ROLL_FULL_DEG, relRoll))
   const mag = Math.abs(clamped)
   if (mag < ROLL_DEADZONE_DEG) return 0
   const sign = clamped < 0 ? -1 : 1
-  const past = (mag - ROLL_DEADZONE_DEG) / (90 - ROLL_DEADZONE_DEG)
+  const past = (mag - ROLL_DEADZONE_DEG) / (ROLL_FULL_DEG - ROLL_DEADZONE_DEG)
   return sign * past * MAX_AZIMUTH_OFFSET_DEG
 }
 

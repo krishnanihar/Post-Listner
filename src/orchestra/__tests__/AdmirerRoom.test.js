@@ -7,25 +7,25 @@ describe('rollToAzimuthOffset', () => {
   })
 
   it('returns 0 inside the deadzone', () => {
-    expect(rollToAzimuthOffset(3)).toBe(0)
-    expect(rollToAzimuthOffset(-3)).toBe(0)
+    expect(rollToAzimuthOffset(2)).toBe(0)
+    expect(rollToAzimuthOffset(-2)).toBe(0)
   })
 
-  it('reaches the max offset at full roll', () => {
+  it('reaches the max offset at the full-roll angle', () => {
+    expect(rollToAzimuthOffset(40)).toBeCloseTo(MAX_AZIMUTH_OFFSET_DEG, 5)
+    expect(rollToAzimuthOffset(-40)).toBeCloseTo(-MAX_AZIMUTH_OFFSET_DEG, 5)
+  })
+
+  it('clamps roll beyond the full-roll angle', () => {
     expect(rollToAzimuthOffset(90)).toBeCloseTo(MAX_AZIMUTH_OFFSET_DEG, 5)
     expect(rollToAzimuthOffset(-90)).toBeCloseTo(-MAX_AZIMUTH_OFFSET_DEG, 5)
   })
 
-  it('clamps roll beyond ±90°', () => {
-    expect(rollToAzimuthOffset(180)).toBeCloseTo(MAX_AZIMUTH_OFFSET_DEG, 5)
-    expect(rollToAzimuthOffset(-180)).toBeCloseTo(-MAX_AZIMUTH_OFFSET_DEG, 5)
-  })
-
   it('is signed and strictly between 0 and the max in the active range', () => {
-    expect(rollToAzimuthOffset(45)).toBeGreaterThan(0)
-    expect(rollToAzimuthOffset(45)).toBeLessThan(MAX_AZIMUTH_OFFSET_DEG)
-    expect(rollToAzimuthOffset(-45)).toBeLessThan(0)
-    expect(rollToAzimuthOffset(-45)).toBeGreaterThan(-MAX_AZIMUTH_OFFSET_DEG)
+    expect(rollToAzimuthOffset(20)).toBeGreaterThan(0)
+    expect(rollToAzimuthOffset(20)).toBeLessThan(MAX_AZIMUTH_OFFSET_DEG)
+    expect(rollToAzimuthOffset(-20)).toBeLessThan(0)
+    expect(rollToAzimuthOffset(-20)).toBeGreaterThan(-MAX_AZIMUTH_OFFSET_DEG)
   })
 
   it('treats null and NaN as 0', () => {
