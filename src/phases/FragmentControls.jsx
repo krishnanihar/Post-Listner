@@ -1,24 +1,18 @@
 // FragmentControls — presentational component for fragment playback feedback
-// and Yes/No rating buttons. No SDK or audio logic lives here; all wiring is
-// in Admirer.jsx.
+// and Yes/No rating buttons. No SDK, audio, or state-machine logic lives
+// here; Admirer.jsx owns all of that and passes down ready-to-render flags.
 //
 // Props:
-//   fragmentPlaying  boolean — true while the fragment HTMLAudioElement is playing
-//   awaitingRating   boolean — true after a fragment ends; cleared by button tap or
-//                             agent speaking again / next fragment starting
-//   isSpeaking       boolean — true while the ElevenLabs agent is speaking
+//   fragmentPlaying  boolean — true while a fragment plays (shows the indicator)
+//   showButtons      boolean — true when the Yes/No buttons should be on screen
 //   onRate(answer)   function — called with "yes" or "no" when a button is tapped
 
 import { motion, AnimatePresence } from 'framer-motion'
 import { COLORS, FONTS } from '../score/tokens'
 
-export default function FragmentControls({ fragmentPlaying, awaitingRating, isSpeaking, onRate }) {
+export default function FragmentControls({ fragmentPlaying, showButtons, onRate }) {
   // Show the playing indicator while a fragment is in flight.
   const showPlaying = fragmentPlaying
-
-  // Show Yes/No only once the fragment has ended AND the agent is not
-  // currently speaking (it needs to finish asking "did you like that?").
-  const showButtons = awaitingRating && !isSpeaking && !fragmentPlaying
 
   return (
     <>
