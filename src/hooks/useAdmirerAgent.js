@@ -55,8 +55,9 @@ export function useAdmirerAgent({ sessionStage = 'opening', callbacks = {} } = {
         },
         // Mirror every conversation turn into the live-session store so
         // the reflection surface can show the transcript. SDK MessagePayload
-        // is { message, role: "user"|"ai", ... }; anything not "user" is the
-        // agent. addTranscriptLine already trims and ignores empty text.
+        // is { message, role: "user"|"agent", ... }; the ternary is a
+        // null-safe normalizer. addTranscriptLine already trims and ignores
+        // empty text.
         onMessage: (payload) => {
           const role = payload?.role === 'user' ? 'user' : 'agent'
           addTranscriptLine(role, payload?.message)
