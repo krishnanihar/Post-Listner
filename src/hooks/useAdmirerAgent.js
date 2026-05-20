@@ -88,5 +88,6 @@ export function useAdmirerAgent({ sessionStage = 'opening', callbacks = {} } = {
     isListening: !!conv.isListening,
     isMuted: !!conv.isMuted,
     setMuted: conv.setMuted,
+    sendUserMessage: conv.sendUserMessage,
   }
 }

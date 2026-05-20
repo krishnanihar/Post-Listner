@@ -6,6 +6,7 @@ import { COLORS, FONTS } from '../score/tokens'
 import { useAdmirerAgent } from '../hooks/useAdmirerAgent.js'
 import StemPlayer from '../lib/stemPlayer.js'
 import HoldToSpeak from './HoldToSpeak'
+import FragmentControls from './FragmentControls'
 
 const AGENT_ID = import.meta.env.VITE_ELEVENLABS_AGENT_ID
 
@@ -13,6 +14,8 @@ const AGENT_ID = import.meta.env.VITE_ELEVENLABS_AGENT_ID
 // useConversation hook.
 function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   const [hasError, setHasError] = useState(false)
+  const [fragmentPlaying, setFragmentPlaying] = useState(false)
+  const [awaitingRating, setAwaitingRating] = useState(false)
   const stemsBundleRef = useRef(null)
   const playerRef = useRef(null)
   const fragmentAudioRef = useRef(null)
@@ -20,6 +23,9 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   // Play a locate-phase fragment. We use a plain HTMLAudioElement so it
   // doesn't fight with the StemPlayer's AudioContext routing.
   const onPlayFragment = useCallback((fragment) => {
+    // Starting a new fragment clears any prior rating prompt.
+    setFragmentPlaying(true)
+    setAwaitingRating(false)
     try {
       if (fragmentAudioRef.current) {
         fragmentAudioRef.current.pause()
@@ -27,10 +33,18 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
       }
       const audio = new Audio(fragment.url)
       audio.volume = 0.55
-      audio.play().catch(() => { /* autoplay may be blocked */ })
+      audio.addEventListener('ended', () => {
+        setFragmentPlaying(false)
+        setAwaitingRating(true)
+      }, { once: true })
+      audio.play().catch(() => {
+        // Autoplay blocked — still mark not-playing so we don't get stuck.
+        setFragmentPlaying(false)
+      })
       fragmentAudioRef.current = audio
     } catch (e) {
       console.warn('[admirer] playFragment failed:', e)
+      setFragmentPlaying(false)
     }
   }, [])
 
@@ -71,10 +85,22 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     isSpeaking,
     isMuted,
     setMuted,
+    sendUserMessage,
   } = useAdmirerAgent({
     sessionStage: 'opening',
     callbacks: { onPlayFragment, onStartGeneration, onCommitEntry },
   })
+
+  // Called by Yes/No buttons. Sends the answer as a user turn and clears
+  // the rating prompt immediately — no need to wait for the agent's reply.
+  const handleRate = useCallback((answer) => {
+    setAwaitingRating(false)
+    try {
+      sendUserMessage?.(answer)
+    } catch (e) {
+      console.warn('[admirer] sendUserMessage threw:', e)
+    }
+  }, [sendUserMessage])
 
   // Connect on mount.
   useEffect(() => {
@@ -110,6 +136,16 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     try { setMuted(true) } catch (e) { console.warn('[admirer] setMuted(true) threw:', e) }
   }, [setMuted])
 
+  // When the agent starts speaking it heard the user's voice answer —
+  // defer-clear awaitingRating so the buttons don't re-appear after the
+  // agent finishes its reply. setTimeout defers the setState past the
+  // render cycle, satisfying the react-hooks/set-state-in-effect rule.
+  useEffect(() => {
+    if (isSpeaking && awaitingRating) {
+      setTimeout(() => setAwaitingRating(false), 0)
+    }
+  }, [isSpeaking, awaitingRating])
+
   // Derive the visible state label from SDK signals.
   // Note: we infer "you speaking" from !isMuted because with push-to-talk
   // the user is only sending audio while the button is held.
@@ -124,6 +160,9 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   } else if (isSpeaking) {
     stateLabel = 'speaking'
     stateKey = 'agent-speaking'
+  } else if (fragmentPlaying) {
+    stateLabel = 'listening'
+    stateKey = 'fragment-playing'
   } else if (!isMuted) {
     stateLabel = 'I’m listening'
     stateKey = 'user-speaking'
@@ -191,6 +230,26 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
             </motion.div>
           </AnimatePresence>
         </div>
+
+        {/* Fragment controls: playing indicator + Yes/No rating buttons */}
+        {!hasError && (
+          <div style={{
+            flex: '0 0 auto',
+            marginTop: 40,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 24,
+            minHeight: 60,
+          }}>
+            <FragmentControls
+              fragmentPlaying={fragmentPlaying}
+              awaitingRating={awaitingRating}
+              isSpeaking={isSpeaking}
+              onRate={handleRate}
+            />
+          </div>
+        )}
 
         {/* Spacer */}
         <div style={{ flex: 1 }} />
