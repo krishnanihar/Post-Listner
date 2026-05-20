@@ -76,7 +76,9 @@ export default class AdmirerRoom {
     const ctx = this.ctx
     const r = roomAt(0)
 
-    // Master: directBus → masterLowpass → destination
+    // Master: directBus → masterLowpass → destination. Unlike OrchestraEngine
+    // there is no master compressor — one quiet voice plus its reflections
+    // will not clip, so the extra stage would only add coloration.
     this.directBus = ctx.createGain()
     this.directBus.gain.value = 1.0
     this.masterLowpass = ctx.createBiquadFilter()
@@ -173,8 +175,12 @@ export default class AdmirerRoom {
   }
 
   // Connect a captured voice source node into the room's mono entry.
+  // Idempotent: a prior source (if any) is detached first.
   connectVoice(sourceNode) {
     if (!sourceNode || !this.monoGain) return
+    if (this.voiceSource) {
+      try { this.voiceSource.disconnect(this.monoGain) } catch { /* ignore */ }
+    }
     this.voiceSource = sourceNode
     try {
       sourceNode.connect(this.monoGain)
