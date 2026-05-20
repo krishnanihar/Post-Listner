@@ -5,6 +5,7 @@ const KEYS = {
   ENTRIES: 'musicking_entries',
   LEXICON: 'musicking_lexicon',
   RESTRICTED: 'musicking_restricted',
+  USER_NAME: 'musicking_user_name',
 }
 
 function readJson(key, fallback) {
@@ -60,6 +61,25 @@ export function addRestricted(repertoire) {
   writeJson(KEYS.RESTRICTED, r)
 }
 
+// The user's name — captured as a typed field on the Entry screen.
+// Stored as a plain string (not JSON) for textual personalization only:
+// the Entry "welcome back" line now, the journal later. It is deliberately
+// NOT passed to the voice agent and never spoken — text-to-speech would
+// mispronounce non-Western names, and a wrong name is worse than no name.
+export function getUserName() {
+  try {
+    return localStorage.getItem(KEYS.USER_NAME) || ''
+  } catch {
+    return ''
+  }
+}
+
+export function setUserName(name) {
+  const trimmed = (name || '').trim()
+  if (!trimmed) return
+  try { localStorage.setItem(KEYS.USER_NAME, trimmed) } catch { /* quota */ }
+}
+
 // Coarse human recency phrase from the most recent entry's timestamp.
 // "first time" if no entries; otherwise rough buckets matching the brief.
 export function getRecencySummary() {
@@ -94,6 +114,8 @@ export function getTimeOfDay(now = new Date()) {
 export function buildDynamicVariables() {
   const entries = getEntries()
   const lexiconObj = getLexicon()
+  // user_name is intentionally omitted — the agent never speaks the name
+  // (TTS mispronunciation risk); it is used only in the React UI.
   return {
     is_first_session: entries.length === 0,
     session_count: entries.length,

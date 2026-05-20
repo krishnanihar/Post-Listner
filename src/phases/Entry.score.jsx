@@ -3,10 +3,14 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Paper from '../score/Paper'
 import { COLORS, FONTS } from '../score/tokens'
 import { audioEngine } from '../engine/audio'
+import { getUserName, setUserName } from '../lib/sessionStore.js'
 
 export default function Entry({ onNext }) {
   const [stage, setStage] = useState('intro')
   const [name, setName] = useState('')
+  // Captured once, reused on every return — text-only personalization
+  // (the Admirer's voice never speaks the name).
+  const [returningName] = useState(() => getUserName())
 
   const videoRef = useRef(null)
   const droneStopRef = useRef(null)
@@ -54,10 +58,14 @@ export default function Entry({ onNext }) {
   }, [stage])
 
   const handleNameSubmit = () => {
-    if (!name.trim()) return
-    try {
-      localStorage.setItem('postlistener_name', name.trim())
-    } catch { /* storage unavailable */ }
+    const trimmed = name.trim()
+    // Empty is allowed — the user may begin without a name.
+    if (trimmed) {
+      setUserName(trimmed)
+      try {
+        localStorage.setItem('postlistener_name', trimmed)
+      } catch { /* storage unavailable */ }
+    }
     advance()
   }
 
@@ -167,46 +175,72 @@ export default function Entry({ onNext }) {
                 alignItems: 'center', justifyContent: 'center',
                 gap: 28, padding: '0 32px',
               }}>
-                <div style={{
-                  fontFamily: FONTS.serif, fontStyle: 'italic',
-                  fontSize: 18, color: COLORS.inkCream, textAlign: 'center',
-                }}>
-                  what should i call you?
-                </div>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleNameSubmit() }}
-                  placeholder="your name"
-                  autoFocus
-                  style={{
-                    width: 220,
-                    padding: '12px 16px',
-                    border: `1px solid ${COLORS.inkCreamSecondary}`,
-                    background: 'transparent',
-                    color: COLORS.inkCream,
-                    fontFamily: FONTS.serif,
-                    fontSize: 16,
-                    outline: 'none',
-                    borderRadius: 4,
-                    textAlign: 'center',
-                  }}
-                />
-                <button
-                  onClick={handleNameSubmit}
-                  disabled={!name.trim()}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: name.trim() ? COLORS.scoreAmber : COLORS.inkCreamSecondary,
-                    fontFamily: FONTS.serif, fontStyle: 'italic',
-                    fontSize: 14,
-                    cursor: name.trim() ? 'pointer' : 'default',
-                  }}
-                >
-                  continue
-                </button>
+                {returningName ? (
+                  <>
+                    <div style={{
+                      fontFamily: FONTS.serif, fontStyle: 'italic',
+                      fontSize: 18, color: COLORS.inkCream, textAlign: 'center',
+                    }}>
+                      welcome back, {returningName}
+                    </div>
+                    <button
+                      onClick={advance}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: COLORS.scoreAmber,
+                        fontFamily: FONTS.serif, fontStyle: 'italic',
+                        fontSize: 14,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      continue
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{
+                      fontFamily: FONTS.serif, fontStyle: 'italic',
+                      fontSize: 18, color: COLORS.inkCream, textAlign: 'center',
+                    }}>
+                      what should i call you?
+                    </div>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleNameSubmit() }}
+                      placeholder="your name"
+                      autoFocus
+                      maxLength={40}
+                      style={{
+                        width: 220,
+                        padding: '12px 16px',
+                        border: `1px solid ${COLORS.inkCreamSecondary}`,
+                        background: 'transparent',
+                        color: COLORS.inkCream,
+                        fontFamily: FONTS.serif,
+                        fontSize: 16,
+                        outline: 'none',
+                        borderRadius: 4,
+                        textAlign: 'center',
+                      }}
+                    />
+                    <button
+                      onClick={handleNameSubmit}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: name.trim() ? COLORS.scoreAmber : COLORS.inkCreamSecondary,
+                        fontFamily: FONTS.serif, fontStyle: 'italic',
+                        fontSize: 14,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {name.trim() ? 'continue' : 'begin without a name'}
+                    </button>
+                  </>
+                )}
               </div>
             </Paper>
           </motion.div>
