@@ -4,16 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # PostListener + The Orchestra
 
-A two-part experience: PostListener profiles a user's musical identity through a 9-phase rite, then The Orchestra uses that identity to play a pre-recorded archetype-matched song through a 4-stem spatial audio graph the user conducts with their phone. The user's matched song begins under the Reveal Mirror beat and continues unbroken into the Orchestra phase, where it materializes spatially around the listener.
+A two-act experience. **Act 1 — the Admirer:** an ElevenLabs Conversational AI voice has a ~5-minute conversation about the user's musical life and chooses a matched song. **Act 2 — The Orchestra:** that pre-recorded archetype-matched song plays through a 4-stem spatial audio graph the user conducts with their phone. The matched song is loaded silently during the conversation and continues unbroken into the Orchestra, where it materializes spatially around the listener.
 
-Both halves are a single React app, one Vite project, one Vercel deploy. Audio assets are hosted on Cloudflare R2.
+Both acts are a single React app, one Vite project, one Vercel deploy. Audio assets are hosted on Cloudflare R2.
+
+> **Branch note.** `main` runs the original 9-phase profiling rite (`entry → spectrum → depth → gems → moment → autobio → reflection → reveal → orchestra`). This branch — **`musicking`** — replaces phases 1–7 with the single Admirer conversation: the flow is `entry → admirer → orchestra → settle`. The 9-phase `*.score.jsx` files remain on disk, unrouted. The sections below describe the `musicking` flow; the Orchestra, conducting, audio engine, R2, and relay infrastructure are shared and unchanged from `main`.
 
 ## Tech Stack
 
 - **React 19** + **Vite 7** (ES modules)
 - **Tailwind CSS v4** via `@tailwindcss/vite` plugin
 - **Framer Motion** for animations and transitions
-- **Vitest 4** + **jsdom** for pure-function unit tests (125 tests across `src/lib/__tests__/`)
+- **Vitest 4** + **jsdom** for pure-function unit tests (265 tests across `src/lib/__tests__/`, `src/orchestra/__tests__/`, `src/conductor-glb/`)
 - **Web Audio API** — raw nodes only, no external audio libraries
   - PostListener: `src/engine/audio.js` (synthesis, MP3 playback for Spectrum/Moment)
   - Orchestra (v3): `src/orchestra/OrchestraEngine.js` (4-stem spatial graph, per-stem mono filter chain → HRTF panner with pre-HRTF mono reverb send, 6 image-source early reflections, binaural hall IR convolver, constant 10 Hz alpha binaural beats bypassing the compressor)
@@ -21,37 +23,63 @@ Both halves are a single React app, one Vite project, one Vercel deploy. Audio a
   - Legacy Chamber (v1): `src/chamber/engine/` (still on disk, not routed)
 - **Audio assets** hosted on **Cloudflare R2** (free egress, $0/month at our scale). Runtime base URLs are env-driven (`VITE_STEMS_BASE_URL`, `VITE_MASTERS_BASE_URL`); local fallback is `/public/stems` and `/public/music` (gitignored).
 - **Demucs (htdemucs)** via Python venv at `~/.venvs/demucs` for offline 4-stem separation (vocals/drums/bass/other) of the 24 Suno-generated archetype masters.
-- **Server-side ElevenLabs proxy** in `api/` (still wired but voices are now optional — admirer hook fails silently):
-  - `POST /api/admirer` → ElevenLabs TTS (`eleven_v3`). Accepts `{ lineId }`, server resolves canonical text from allowlist (`api/_admirerLines.js`).
-  - `POST /api/compose` → ElevenLabs Music API (`music_v1`) — **deprecated in v3**, no longer called from runtime (replaced by pre-recorded Suno tracks). File kept on disk; safe to delete.
-- **DeviceMotionEvent / DeviceOrientationEvent** for phone-as-baton conducting (Spectrum, Depth, Moment, Orchestra)
+- **ElevenLabs Conversational AI** via **`@elevenlabs/react`** — the Admirer (Act 1) is a live conversational agent. Config lives in `scripts/create-admirer-agent.js`. See **The Admirer (musicking — Act 1)** below.
+- **Server-side ElevenLabs proxy** in `api/` — the older per-line TTS path (`POST /api/admirer`, `eleven_v3`). Superseded on `musicking` by the Conversational AI agent; still on disk for `main`. `POST /api/compose` (Music API) is deprecated and unused.
+- **DeviceMotionEvent / DeviceOrientationEvent** — phone-as-baton conducting (Orchestra) + the Build-A room azimuth and the glyph (Admirer). Permission is requested on the Entry "begin" tap.
 
 ## Architecture
 
 ### Phase Flow
-The app progresses through 9 sequential phases:
 
-`entry → spectrum → depth → gems → moment → autobio → reflection → reveal → orchestra`
+`musicking` runs four phases — `src/App.jsx` holds `PHASES = ['entry', 'admirer', 'orchestra', 'settle']`:
 
-PostListener phases (0–7) collect interaction data, build an AVD vector + 6×4 archetype/variation, and resolve the matched archetype's pre-recorded 4-stem set. The Orchestra phase (8) plays those stems through a 3-phase voice-free spatial audio graph that the user conducts.
+`entry → admirer → orchestra → settle`
 
-The active phase components live in `src/phases/*.score.jsx` (the cream-paper "score" redesign). Pre-redesign components (`Entry.jsx`, `Spectrum.jsx`, `Moment.jsx`, etc.) remain on disk but are not routed.
+- **entry** — headphones prompt, intro video, typed name capture, device-motion permission request.
+- **admirer** — a ~5-minute conversation with the Admirer (ElevenLabs Conversational AI). It elicits a musical direction and, via the `startGeneration` tool, resolves the matched archetype + variation's 4-stem set and silently loads the `StemPlayer`. See **The Admirer (musicking — Act 1)** below.
+- **orchestra** — the 3-phase voice-free spatial conducting experience (unchanged — see the Orchestra v3 sections below).
+- **settle** — the brief closing card after the song ends; routes back to entry.
 
-### Audio Continuity (v3)
+The 9-phase profiling rite (`spectrum/depth/gems/moment/autobio/reflection/reveal`) and its AVD vector + 6×4 archetype scoring still exist on disk and on `main`, but are not in the `musicking` flow — the Admirer replaces them. Active phase components live in `src/phases/*.score.jsx`; pre-redesign components remain on disk, unrouted.
 
-When **Autobio** completes its third prompt, `recordSong` runs `scoreArchetype(avd, phaseData)` to pick the archetype + variation, then `getStems(archetypeId, variationId)` resolves the 4 R2 stem URLs and `getMasterUrl(...)` resolves the single-master fallback. The bundle is passed forward as `onNext({ stemsBundle: { kind, stems, masterUrl, archetypeId, variationId } })`.
+### Audio Continuity
 
-**`Reveal`** receives the bundle, calls `StemPlayer.load(ctx, stems, masterUrl)`:
-- Tries to fetch + decode all 4 stems in parallel
-- If any stem fetch fails, falls back to a single duplicated buffer (master fanned to all 4 stem positions)
-- Returns a `StemPlayer` with the 4 sources running sample-aligned via `start(when)` with `loop=true`
-- Reveal exposes the player via `revealAudioRef` for handoff to Orchestra
+During the **admirer** phase, when the Admirer calls the `startGeneration` tool, `Admirer.jsx`'s `onStartGeneration` runs `mapDescriptorsToStems(descriptors)` (`src/lib/descriptorsToStems.js`) to pick the archetype + variation, resolves the 4 R2 stem URLs + single-master fallback, calls `StemPlayer.load(ctx, stems, masterUrl)`, starts the player **silent** (`setVolume(0, 0)`), and exposes it via `revealAudioRef`. The `stemsBundle` is carried to the Orchestra phase by `onCommitEntry → onNext`.
 
-`StemPlayer.setVolume(target, fadeMs)` controls the simple sum-bus gain during Reveal (sub-audible during Mirror, full volume during listening).
+`StemPlayer.load` fetches + decodes the 4 stems in parallel, falling back to a single duplicated buffer (master fanned to all 4 positions) if any fetch fails; the 4 sources run sample-aligned via `start(when)` with `loop=true`.
 
-**`Orchestra`** picks up the same player without restarting the sources. `StemPlayer.detachAndGetSources()` disconnects each `BufferSourceNode` from Reveal's sum bus and returns them; `engine.connectStems({vocals, drums, bass, other})` routes each into the per-stem mono chain → HRTF panner with pre-HRTF mono reverb send. The song never restarts and stays sample-aligned across the handoff.
+**`Orchestra`** picks up the same already-running player without restarting the sources. `StemPlayer.detachAndGetSources()` disconnects each `BufferSourceNode` and returns them; `engine.connectStems({vocals, drums, bass, other})` routes each into the per-stem mono chain → HRTF panner with pre-HRTF mono reverb send. The song stays sample-aligned across the handoff. Song duration is read from the longest stem buffer; engine envelopes (`tick(t, songDuration)`) use it directly.
 
-Song duration is read from the longest stem buffer; engine envelopes (`tick(t, songDuration)`) and the closing-card transition use this directly.
+(On `main` the handoff runs Autobio → Reveal instead — see git history. `musicking` keeps the `revealAudioRef` prop name for continuity.)
+
+### The Admirer (musicking — Act 1)
+
+The **admirer** phase is a ~5-minute spoken conversation with "the Admirer" — an **ElevenLabs Conversational AI agent**. It elicits the user's musical direction and picks the matched song.
+
+**Agent config — all in code.**
+- `scripts/create-admirer-agent.js` — **source of truth**: `SYSTEM_PROMPT`, `first_message` (the Arrival speech), the 6 client tools, the `turn` config. Run once to create the agent.
+- `scripts/update-admirer-agent.js` — PATCHes the live agent's prompt + `turn` + `tts`, regex-extracted from the create script so the two can't drift. Re-run after any prompt change.
+- `docs/admirer-agent-dashboard.md` — a human-readable mirror of the config; keep it in sync.
+- Agent ID → `VITE_ELEVENLABS_AGENT_ID`. LLM `gemini-2.5-flash-lite`. `speculative_turn: false` is mandatory (it caused duplicate utterances). `turn_timeout: 7` / `turn_eagerness: normal` (a 3s/eager setting cut off thinking pauses).
+
+**Client wiring.**
+- `src/hooks/useAdmirerAgent.js` — wraps `@elevenlabs/react` `useConversation` (under a `ConversationProvider`). **Push-to-talk**: the mic starts muted; holding the `HoldToSpeak` button unmutes (`setMuted`). Forwards conversation messages into `liveSession` (Build B).
+- `src/lib/admirerTools.js` — `buildAdmirerTools(callbacks)` builds the 6 client tools the agent calls: `recordLexicon`, `commitArtifact`, `markRestricted`, `playFragment`, `startGeneration`, `commitEntry`. Host callbacks live in `Admirer.jsx`.
+- `src/lib/sessionStore.js` — cross-session state: the typed user name (never spoken — TTS would mispronounce it), the verbatim lexicon, restricted repertoires, prior entries. `buildDynamicVariables()` builds the per-session dynamic variables (primitives only — arrays silently kill the conversation).
+- `src/phases/Settle.jsx` — the brief closing phase after the song.
+
+**The listening run — the blocking `playFragment`.** Mid-conversation the Admirer plays ~3 short musical fragments; the user rates each Yes/No. `playFragment` is a **blocking** client tool (`expects_response: true`, `response_timeout_secs: 30`, `disable_interruptions: true` — set on the tool record): the agent calls it and waits, silent, while the client plays the clip and the user **taps** Yes/No. `Admirer.jsx`'s `onPlayFragment` returns a Promise that resolves with the rating (`"yes"`/`"no"`/`"none"`) — that string is the tool result the agent reads to choose the next fragment. `src/phases/FragmentControls.jsx` renders the playing indicator + Yes/No buttons; `src/lib/fragmentBank.js` holds the 8 fragments (each a full archetype master, capped client-side at `FRAGMENT_DURATION_MS` = 14s). Rating is tap-only during the run. See `docs/admirer-blocking-tool-spike.md`.
+
+**Build A — the shared spatial room.** The Admirer's voice is routed through a Web-Audio HRTF "room" so it externalizes; the room then expands into the orchestra as the act-1 → act-2 transition.
+- `src/orchestra/AdmirerRoom.js` — an HRTF room for one source (mirrors `OrchestraEngine`'s per-source chain): captured voice → mono → HRTF panner + pre-HRTF reverb send → 6 early reflections + hall-IR convolver → master lowpass. `setExpansion(t)` / `beginExpansion()` interpolate `INTIMATE ↔ EXPANDED`. The voice is captured from the SDK's hidden `<audio>` element via `createMediaStreamSource` (`captureAdmirerVoice` — the SDK exposes no output node; see `docs/admirer-spatial-spike.md`).
+- `src/lib/roomPresets.js` — pure `INTIMATE`/`EXPANDED` acoustic presets + `roomAt(t)` interpolation. Unit-tested.
+- `src/hooks/usePhoneMotion.js` — device-orientation hook over `src/conducting/GestureCore.js`. iOS permission is requested in `Entry.score.jsx`'s "begin" tap.
+- `src/hooks/useAdmirerRoom.js` — owns the `AdmirerRoom` lifecycle: builds it, captures the voice on connect, feeds phone roll → room azimuth, exposes `beginExpansion()` (fired when the agent calls `startGeneration`).
+
+**Build B — the reflection surface.** A calm, peripheral, ignorable visual layer shown unbroken across the admirer + orchestra phases.
+- `src/lib/liveSession.js` — an in-memory, subscribable store of the current session's transcript + accumulating lexicon. Reset on entry. Unit-tested.
+- `src/phases/ReflectionSurface.jsx` — renders the Admirer's latest line + the lexicon words faintly at the bottom; mounted in `App.jsx` **outside** the phase-swap `AnimatePresence` so it persists across the act transition.
+- `src/phases/GlyphCanvas.jsx` — a faint ink-trail glyph drawn from phone orientation (`usePhoneMotion`).
 
 ### Score-v2 lib modules (`src/lib/`)
 
@@ -85,8 +113,11 @@ ElevenLabs API key (`ELEVENLABS_API_KEY`, no VITE_ prefix) stays on the server. 
 
 ### Hooks
 
-- **`src/hooks/useAdmirer.js`** — `useAdmirer().play(lineId)` and `.preload(lineId)`. Caches Blob URLs by lineId in-memory across the session. Mount-guard prevents stale resolutions from playing in a later phase. **Fails silently** if `/api/admirer` returns an error — voice is enhancement, not gating.
+- **`src/hooks/useAdmirerAgent.js`** — wraps `@elevenlabs/react` `useConversation`; runs the Admirer agent with push-to-talk and forwards messages into `liveSession`. See **The Admirer (musicking — Act 1)**.
+- **`src/hooks/useAdmirerRoom.js`** — owns the Build-A `AdmirerRoom` lifecycle (build, voice capture, roll→azimuth, expansion).
+- **`src/hooks/usePhoneMotion.js`** — device-orientation snapshots via `GestureCore` (Build A + the glyph).
 - **`src/hooks/useInputMode.js`** — Detects mouse vs touch input.
+- **`src/hooks/useAdmirer.js`** — the *old* per-line TTS hook (`/api/admirer`). Not used in `musicking` — superseded by `useAdmirerAgent`. Still on disk for `main`.
 
 ### Key Modules — Engine
 
@@ -115,19 +146,16 @@ Original chamber code under `src/chamber/`:
 - **`src/chamber/utils/math.js`** — `lerp`, `clamp`, `sphericalToCartesian`, `sigmoid`.
 - **`src/chamber/data/CollectiveStore.js`** — localStorage store with 20 seed AVD vectors (was used by v2 ReturnScreen, now unused).
 
-### Phases
+### Phases (`musicking`)
 
 | # | Phase | File | What it does |
 |---|-------|------|-------------|
-| 0 | Entry (Threshold rite) | `Entry.score.jsx` | Headphones → name capture → 6s held-tap → 2 × 6s exhales → voiced threshold statement → "begin" |
-| 1 | Spectrum | `Spectrum.score.jsx` | 9 polar word-pair lean-and-hold choices (3s commit). Logs hover-without-commit. Operational-transparency comment after pair 4. |
-| 2 | Depth | `Depth.score.jsx` | Tap to add layers (1–8) over a layered build. Equivoque framing copy. |
-| 3 | Gems | `Gems.score.jsx` | 3 × 15s GEMS excerpts + 6-tile multi-select fade (nostalgic / awed / tender / melancholic / defiant / peaceful). Falls back to 4s silent listening when audio missing. |
-| 4 | Moment | `Moment.score.jsx` | 30s build-and-drop with phone-as-baton conducting (downbeats + tactus drawing). Hurley liking probe (`hedonic: true \| false \| null`) before advancing. |
-| 5 | Autobio | `Autobio.score.jsx` | 3 Rathbone "I am…" prompts with iTunes Search autocomplete + free-text fallback. **Resolves the matched archetype + variation's stem URLs from `stemsCatalog`** and pre-warms fetch via low-priority browser cache hint. Hands `stemsBundle` forward via `onNext`. |
-| 6 | Reflection | `Reflection.score.jsx` | 5 lines (spectrum / depth / gems / moment / autobio) fade in sequentially on cream paper. ~12s total. |
-| 7 | Reveal | `Reveal.score.jsx` | Loads 4 stems via `StemPlayer.load(ctx, stems, masterUrl)`, starts them sample-aligned. **Mirror beat (~25s)**: archetype reveal → variation microgenre → "because you…" attribution → 3-sentence Forer paragraph → memory callback → temporal frame. Then full-volume listening for ~25s of song body before handing off to Orchestra. No voice cues in v3. |
-| 8 | Orchestra | `Orchestra.jsx` | 3-phase song-driven experience (Briefing 12s + Bloom 24s + Throne for the rest of the song + 4s end fade + 7s closing card). Voice-free. |
+| 0 | Entry | `Entry.score.jsx` | Headphones prompt → intro video → typed name capture → device-motion permission (the "begin" tap) → routes to Admirer. |
+| 1 | Admirer | `Admirer.jsx` | ~5-min ElevenLabs Conversational AI conversation — arrival, a boundary object, ~2 questions, the 3-fragment listening run, then `startGeneration`. Loads the matched `StemPlayer` silently. See **The Admirer (musicking — Act 1)**. |
+| 2 | Orchestra | `Orchestra.jsx` | 3-phase song-driven spatial conducting experience (Briefing 12s + Bloom 24s + Throne for the rest of the song + 4s end fade + 7s closing card). Voice-free. See **Orchestra Timeline (v3)**. |
+| 3 | Settle | `Settle.jsx` | Brief closing card after the song ends; routes back to entry. |
+
+The 9-phase `*.score.jsx` files (Spectrum, Depth, Gems, Moment, Autobio, Reflection, Reveal) and the pre-redesign `Entry.jsx`-era components remain on disk for `main` but are **not routed** in `musicking`.
 
 ### Orchestra Timeline (v3)
 
@@ -218,7 +246,7 @@ npm run dev                          # Start dev server (Vite + /api middleware)
 npm run build                        # Production build
 npm run lint                         # ESLint
 npm run preview                      # Preview production build
-npm test                             # Run vitest suite (218 tests)
+npm test                             # Run vitest suite (265 tests)
 npm run test:watch                   # Watch mode
 
 # Local conducting relay (Node, dev only — for /conduct-* routes + QR pairing dev)
@@ -272,6 +300,13 @@ The score-v2 redesign was executed in three phases. Plans live at:
 - `docs/superpowers/plans/2026-05-08-phase3-elevenlabs-voice-music.md` — ElevenLabs server proxy + Threshold rite + per-session music generation + hedonic bias
 
 The Orchestra v3 redesign (4-stem spatial graph + 3-phase voice-free experience + R2 hosting) was executed 2026-05-09 to 2026-05-10. No formal plan doc — captured in this file.
+
+The **`musicking`** redesign — Act 1 = the Admirer conversation; Build A = the shared room; Build B = the reflection surface — was executed 2026-05-19 to 2026-05-21:
+
+- `docs/superpowers/plans/2026-05-19-musicking-phase-a-admirer.md` — the Admirer agent, the 6 client tools, the conversation
+- `docs/superpowers/plans/2026-05-20-five-minute-admirer-shared-world.md` — 5-minute compression, the fragment listening run, Build B
+- `docs/superpowers/plans/2026-05-20-build-a-room-integration.md` — Build A: the HRTF room, phone motion, the glyph, the expansion transition
+- `docs/admirer-spatial-spike.md`, `docs/admirer-tap-to-agent-spike.md`, `docs/admirer-blocking-tool-spike.md` — SDK spikes (audio capture, the tap→agent path, the blocking-tool semantics)
 
 ## Experimental conducting routes
 
