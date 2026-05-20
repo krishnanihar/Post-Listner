@@ -235,6 +235,101 @@ Record the measured time in the commit message of the next phase or in `todo.md`
 
 ---
 
+## Phase 1B — Fragment Interaction (added 2026-05-20, from the Task 4 smoke test)
+
+The Task 4 smoke test showed fragments play with no voiced lead-in and no visible interaction — music starts cold and the user doesn't know what it is or what to do (transcript `conv_7401ks2wwneberptj9w063nb5b3f`: a two-word echo, then `playFragment` fired). The fix, decided with the project lead: replace the silently-woven, metaphor-framed fragments with a short, plainly-labelled **listening run** — the Admirer says, simply, "i'm going to play you a few short pieces, tell me yes or no after each," plays ~3 fragments, and after each the user rates it Yes/No by voice or by an on-screen button. The "playing" indicator and the Yes/No buttons are Build-B-style visual UI for the Admirer phase, built here because the smoke test made them urgent.
+
+Execution order: **4a** (prompt — independent; ships the clarity fix voice-only) → **4b** (spike) → **4c** (UI — depends on 4b).
+
+### Task 4a — Prompt: plain fragment framing + the listening run
+
+**Files:** Modify `scripts/create-admirer-agent.js` — the `SYSTEM_PROMPT` constant, section `2. THE CONVERSATION`.
+
+- [ ] **Step 1:** Locate `2. THE CONVERSATION` inside the `is_first_session = true` block. It currently weaves fragments invisibly between questions.
+
+- [ ] **Step 2:** Replace the entire section — from the `2. THE CONVERSATION` heading through the end of its `startGeneration` descriptor block, stopping before `3. TRANSITION` — with exactly:
+
+```
+2. THE CONVERSATION (~3 minutes — keep it moving). Two short parts: a few
+   questions, then a short run of music to react to.
+
+   Open with the boundary object: "is there a piece you can play me, or hum, or
+   just describe? something that's been near you lately. it doesn't have to mean
+   anything yet." When the user shares it, call commitArtifact with a short
+   label and give one small observation — not interpretation.
+
+   Then ask about TWO short questions, present-tense and concrete, from this
+   list (in order of preference):
+   - "Who was the loudest music in the house, growing up?"
+   - "What's playing in the rooms you're in now — yours, or other people's?"
+   - "What music is around you now that surprises you?"
+   - "Is there an instrument or a sound you'd know anywhere?"
+   Only if the user has clearly warmed may you ask ONE lineage question in place
+   of a second one: "Whose music did you grow up inside — was there someone it
+   came from?" Never ask about music the user has lost, places they can't
+   return to, or music they've walked away from — those are deferred to the
+   closing refusal-to-know. If the user marks anything as closed or restricted,
+   call markRestricted.
+
+   THE LISTENING RUN. After the questions, say plainly, in one line: "i'm going
+   to play you a few short pieces. after each, tell me if you liked it — yes or
+   no." Then play three fragments, one at a time:
+   - Call playFragment for one fragmentId.
+   - When it finishes, ask simply: "did you like that one?" — then wait. The
+     user answers yes or no. If they are silent, take that as no signal and
+     move on.
+   - Give at most a flat one-word acknowledgment ("mm", "okay"). Then say
+     "here's the next —" and call playFragment for the next fragmentId.
+   Choose each next fragment to move away from anything the user disliked and
+   toward what they liked. After about three, you have enough.
+
+   Never let a fragment begin before you have spoken its line — the framing
+   line first, then the playFragment call.
+
+   playFragment fragmentIds: warm-acoustic-now, warm-folk-recent,
+   shadow-piano-late, shadow-synth-old, lifted-cinematic, lifted-postclassical,
+   patient-glow, tense-postrock.
+
+   PACING — aim for about three minutes here: the boundary object, two
+   questions, the three-fragment run. A few real beats is enough; you are NOT
+   running an interview. Extend only if the user is visibly engaged; never pad.
+
+   When the run is done, name the direction back in the user's own words
+   ("somewhere warm, slower than the second piece, with the strings staying"),
+   then call startGeneration with descriptors:
+   { tempo: "slow"|"medium"|"fast",
+     mood: "warm"|"shadowed"|"lifted"|"tense"|"patient"|"expansive",
+     era: <year>,
+     instrumentation: "acoustic"|"synth"|"orchestral"|"ensemble"|"electronic" }.
+```
+
+- [ ] **Step 3:** Run `node --check scripts/create-admirer-agent.js` — expect exit 0.
+
+- [ ] **Step 4:** Commit (`feat(musicking): plain fragment framing + yes/no listening run`).
+
+After this task the controller pushes the prompt (`node scripts/update-admirer-agent.js`), curl-verifies, and re-syncs `docs/admirer-agent-dashboard.md` — the same follow-through as Phase 1 Tasks 2–3.
+
+### Task 4b — SPIKE: the tap → agent path
+
+**Why:** when the user *taps* a Yes/No button rather than speaking, the ElevenLabs agent — which only hears audio — must be told. The route is unknown.
+
+**Files:** Create `docs/admirer-tap-to-agent-spike.md`.
+
+- [ ] **Step 1:** Inspect `@elevenlabs/react`. Read `node_modules/@elevenlabs/react/dist/*.d.ts` and the underlying `@elevenlabs/client`. Look for a method on `useConversation` to send the agent a turn programmatically — e.g. `sendUserMessage`, `sendUserActivity`, `sendContextualUpdate`, or a text-input path.
+- [ ] **Step 2:** Write `docs/admirer-tap-to-agent-spike.md`: what the SDK exposes; the chosen method to deliver a tapped "yes"/"no" to the agent as a user turn (with the exact call); or, if nothing works, the fallback (voice-only; buttons omitted or decorative — documented as a limitation).
+- [ ] **Step 3:** Commit the spike doc.
+
+### Task 4c — Client UI: playing indicator + Yes/No buttons
+
+Depends on Task 4b. Outline — to be detailed into full steps once 4b resolves the tap→agent method:
+
+- A **playing indicator** in the Admirer phase: while a fragment plays, a calm on-screen cue (e.g. the state label becomes "playing…" with a soft animated mark). `onPlayFragment` in `src/phases/Admirer.jsx` already runs when a fragment starts — it sets a `fragmentPlaying` state; the `HTMLAudioElement`'s `ended` event clears it.
+- **Yes / No buttons** shown when `fragmentPlaying` clears. A tap (a) sends "yes"/"no" to the agent via the Task-4b method and (b) hides the buttons; a spoken "yes"/"no" works natively and also clears the buttons.
+- Files: `src/phases/Admirer.jsx` (state + the `onPlayFragment` handler) plus a small `src/phases/FragmentControls.jsx` for the indicator + buttons. Calm, peripheral styling consistent with the cream Admirer phase.
+- Verify manually: walk the listening run — the indicator shows while a fragment plays, the buttons appear after, a tap drives the agent forward, a spoken yes/no also works.
+
+---
+
 ## Phase 2 — Build B: The Reflection Surface
 
 A calm, peripheral visual layer — the Admirer's current line and the words the user has given — rendered unbroken across the admirer and orchestra phases. It must be *ignorable*: a user who never looks at it loses nothing.
