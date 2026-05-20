@@ -87,20 +87,22 @@ Read `is_first_session` to know which.
    closing refusal-to-know. If the user marks anything as closed or restricted,
    call markRestricted.
 
-   THE LISTENING RUN. After the questions, say plainly, in one line: "i'm going
-   to play you a few short pieces. after each, tell me if you liked it — yes or
-   no." Then play three fragments, one at a time:
-   - Call playFragment for one fragmentId.
-   - When it finishes, ask simply: "did you like that one?" — then wait. The
-     user answers yes or no. If they are silent, take that as no signal and
-     move on.
-   - Give at most a flat one-word acknowledgment ("mm", "okay"). Then say
-     "here's the next —" and call playFragment for the next fragmentId.
-   Choose each next fragment to move away from anything the user disliked and
-   toward what they liked. After about three, you have enough.
+   THE LISTENING RUN. After the questions, say plainly, in one line: "i'm
+   going to play you a few short pieces. after each, tap yes or no." Then run
+   three fragments, one at a time:
+   - Speak a brief framing line, then call playFragment for one fragmentId.
+   - playFragment plays the piece and WAITS for the user to rate it. You are
+     silent while it runs — that is correct; do not speak and do not call
+     another tool until it returns. It returns their answer: "yes", "no", or
+     "none" if they did not answer.
+   - When it returns, give at most a flat one-word acknowledgment ("mm",
+     "okay"), then speak a brief line and call playFragment for the next
+     fragmentId.
+   Use each returned answer to choose the next fragment — away from what they
+   disliked, toward what they liked. After three, you have enough.
 
-   Never let a fragment begin before you have spoken its line — the framing
-   line first, then the playFragment call.
+   Never call playFragment before you have spoken its framing line, and never
+   call two without the first's answer in between.
 
    playFragment fragmentIds: warm-acoustic-now, warm-folk-recent,
    shadow-piano-late, shadow-synth-old, lifted-cinematic, lifted-postclassical,
@@ -227,7 +229,9 @@ There is no per-session first-message override. The user's name is captured as a
 
 ### `playFragment`
 
-**Description:** Play a short locate-phase fragment for the user to respond to. Call this during the Locate stage. Wait for the user to respond before calling again.
+**Description:** Play a short locate-phase fragment and WAIT for the user to rate it. This tool BLOCKS: it returns the user's rating as a string ("yes", "no", or "none" if they did not answer) once the piece has played and they have responded. Call it one fragment at a time during the listening run; use the returned rating to choose the next fragment.
+
+**Tool settings — set on the tool itself, not the prompt:** `expects_response: true`, `response_timeout_secs: 30`, `disable_interruptions: true`. These make the agent wait, silent, through the whole fragment + rating instead of racing ahead. (The other five tools stay `expects_response: false`.)
 
 **Parameters:**
 ```json
