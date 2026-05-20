@@ -12,11 +12,17 @@ import { useAdmirerRoom } from '../hooks/useAdmirerRoom.js'
 
 const AGENT_ID = import.meta.env.VITE_ELEVENLABS_AGENT_ID
 
-// How long a locate-phase fragment plays before we stop it and ask the user
-// to rate it. Fragment URLs resolve to full master tracks (see
+// How long a locate-phase fragment plays before we stop it and raise the
+// rating prompt. Fragment URLs resolve to full master tracks (see
 // fragmentBank.js — they are NOT short clips), so this fixed cap, not the
 // audio element's 'ended' event, is what actually ends a fragment.
 const FRAGMENT_DURATION_MS = 14000
+
+// After a fragment ends, how long the Yes/No buttons wait for a tap before
+// the rating resolves on its own as "none" and the run moves on. Kept so
+// FRAGMENT_DURATION_MS + this stays well under the playFragment tool's
+// response_timeout_secs (30s — see scripts/create-admirer-agent.js).
+const RATING_GRACE_MS = 10000
 
 // Inner component — has to live under ConversationProvider to call the
 // useConversation hook.
@@ -29,10 +35,13 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   const playerRef = useRef(null)
   const fragmentAudioRef = useRef(null)
   const fragmentTimerRef = useRef(null)
-  const ratingButtonsSeenRef = useRef(false)
+  const ratingTimeoutRef = useRef(null)
+  // Holds the resolve() of the in-flight playFragment promise — the agent's
+  // playFragment tool call is blocked on it until the user rates.
+  const pendingRatingRef = useRef(null)
 
   // Tear down the current fragment's audio element + cap timer. Pure
-  // cleanup — does not touch React state; callers set state themselves.
+  // cleanup — does not touch React state or the rating promise.
   const clearFragmentPlayback = useCallback(() => {
     if (fragmentTimerRef.current) {
       clearTimeout(fragmentTimerRef.current)
@@ -44,53 +53,72 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     }
   }, [])
 
-  // The fragment has run its course (cap timer fired, or — for a future
-  // pre-sliced short clip — the audio actually ended). Stop playback and
-  // raise the rating prompt.
+  // Resolve the in-flight playFragment promise with the user's rating
+  // ("yes" | "no" | "none"). This is what unblocks the agent's tool call,
+  // so the listening run is paced by the user, not the agent's clock.
+  const resolveRating = useCallback((answer) => {
+    if (ratingTimeoutRef.current) {
+      clearTimeout(ratingTimeoutRef.current)
+      ratingTimeoutRef.current = null
+    }
+    setAwaitingRating(false)
+    const pending = pendingRatingRef.current
+    pendingRatingRef.current = null
+    if (pending) pending.resolve(answer)
+  }, [])
+
+  // The fragment audio has run its course (cap timer fired, or the audio
+  // ended). Stop playback and raise the Yes/No prompt. If the user does not
+  // tap within RATING_GRACE_MS, the rating resolves on its own as "none".
   const finishFragment = useCallback(() => {
     clearFragmentPlayback()
     setFragmentPlaying(false)
     setAwaitingRating(true)
-  }, [clearFragmentPlayback])
+    if (ratingTimeoutRef.current) clearTimeout(ratingTimeoutRef.current)
+    ratingTimeoutRef.current = setTimeout(() => resolveRating('none'), RATING_GRACE_MS)
+  }, [clearFragmentPlayback, resolveRating])
 
-  // Play a locate-phase fragment. We use a plain HTMLAudioElement so it
-  // doesn't fight with the StemPlayer's AudioContext routing. The fragment
-  // URL is a full master track, so a fixed cap timer — not the audio's
-  // 'ended' event — is what stops it and triggers the rating prompt.
+  // Play a locate-phase fragment. Returns a promise that resolves to the
+  // user's rating ("yes" | "no" | "none") once they tap or the grace window
+  // elapses. The agent's playFragment tool blocks on this promise, so the
+  // agent stays silent for the whole fragment and cannot race ahead.
   const onPlayFragment = useCallback((fragment) => {
-    // Starting a new fragment tears down the previous one and clears any
-    // prior rating prompt.
-    clearFragmentPlayback()
-    ratingButtonsSeenRef.current = false
-    setFragmentPlaying(true)
-    setAwaitingRating(false)
-    try {
-      const audio = new Audio(fragment.url)
-      audio.volume = 0.55
-      // 'ended' is a fallback for a future pre-sliced short clip; for a
-      // full master the cap timer below always fires first.
-      audio.addEventListener('ended', finishFragment, { once: true })
-      audio.play().catch(() => {
-        // Autoplay blocked — drop the cap timer and unstick the UI.
-        setFragmentPlaying(false)
-        clearFragmentPlayback()
-      })
-      fragmentAudioRef.current = audio
-      fragmentTimerRef.current = setTimeout(finishFragment, FRAGMENT_DURATION_MS)
-    } catch (e) {
-      console.warn('[admirer] playFragment failed:', e)
-      setFragmentPlaying(false)
-    }
+    return new Promise((resolve) => {
+      clearFragmentPlayback()
+      // The blocking tool is strictly sequential, so a prior rating should
+      // never still be pending — resolve it "none" if one somehow is.
+      if (pendingRatingRef.current) pendingRatingRef.current.resolve('none')
+      pendingRatingRef.current = { resolve }
+      setFragmentPlaying(true)
+      setAwaitingRating(false)
+      try {
+        const audio = new Audio(fragment.url)
+        audio.volume = 0.55
+        // 'ended' is a fallback for a future pre-sliced short clip; for a
+        // full master the cap timer below always fires first.
+        audio.addEventListener('ended', finishFragment, { once: true })
+        audio.play().catch(() => {
+          // Autoplay blocked — skip straight to the rating prompt so the
+          // tool still resolves and the agent is not left blocked.
+          finishFragment()
+        })
+        fragmentAudioRef.current = audio
+        fragmentTimerRef.current = setTimeout(finishFragment, FRAGMENT_DURATION_MS)
+      } catch (e) {
+        console.warn('[admirer] playFragment failed:', e)
+        finishFragment()
+      }
+    })
   }, [clearFragmentPlayback, finishFragment])
 
   // When the agent confirms a direction, start loading the StemPlayer
   // silently in the background.
   const onStartGeneration = useCallback(async (bundle) => {
-    // The listening run is over — kill any fragment still playing and any
-    // pending rating prompt.
+    // The listening run is over — kill any fragment still playing and
+    // resolve any rating still in flight.
     clearFragmentPlayback()
+    resolveRating('none')
     setFragmentPlaying(false)
-    setAwaitingRating(false)
     // The conversation has resolved — let the room begin to open.
     setGenerationStarted(true)
     stemsBundleRef.current = bundle
@@ -108,17 +136,17 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     } catch (e) {
       console.warn('[admirer] StemPlayer.load failed:', e)
     }
-  }, [getAudioCtx, revealAudioRef, clearFragmentPlayback])
+  }, [getAudioCtx, revealAudioRef, clearFragmentPlayback, resolveRating])
 
   // When the agent finalizes, hand off to orchestra.
   const onCommitEntry = useCallback(() => {
     clearFragmentPlayback()
+    resolveRating('none')
     setFragmentPlaying(false)
-    setAwaitingRating(false)
     setTimeout(() => {
       onNext({ stemsBundle: stemsBundleRef.current })
     }, 600)
-  }, [onNext, clearFragmentPlayback])
+  }, [onNext, clearFragmentPlayback, resolveRating])
 
   // Mirror each verbatim lexicon word the agent records (via the
   // recordLexicon client tool) into the live session, so the reflection
@@ -134,7 +162,6 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     isSpeaking,
     isMuted,
     setMuted,
-    sendUserMessage,
   } = useAdmirerAgent({
     sessionStage: 'opening',
     callbacks: { onPlayFragment, onStartGeneration, onCommitEntry, onRecordLexicon },
@@ -151,16 +178,11 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     if (generationStarted) beginExpansion()
   }, [generationStarted, beginExpansion])
 
-  // Called by Yes/No buttons. Sends the answer as a user turn and clears
-  // the rating prompt immediately — no need to wait for the agent's reply.
+  // A Yes/No button tap — resolves the current fragment's rating, which
+  // unblocks the agent's playFragment tool call and moves the run on.
   const handleRate = useCallback((answer) => {
-    setAwaitingRating(false)
-    try {
-      sendUserMessage?.(answer)
-    } catch (e) {
-      console.warn('[admirer] sendUserMessage threw:', e)
-    }
-  }, [sendUserMessage])
+    resolveRating(answer)
+  }, [resolveRating])
 
   // Connect on mount.
   useEffect(() => {
@@ -170,12 +192,21 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     })
   }, [connect])
 
-  // Stop any fragment audio + cap timer + orphan StemPlayer on unmount.
+  // Stop fragment audio + timers + orphan StemPlayer on unmount, and
+  // resolve any rating still in flight so the tool promise can settle.
   useEffect(() => {
     return () => {
       if (fragmentTimerRef.current) {
         clearTimeout(fragmentTimerRef.current)
         fragmentTimerRef.current = null
+      }
+      if (ratingTimeoutRef.current) {
+        clearTimeout(ratingTimeoutRef.current)
+        ratingTimeoutRef.current = null
+      }
+      if (pendingRatingRef.current) {
+        pendingRatingRef.current.resolve('none')
+        pendingRatingRef.current = null
       }
       if (fragmentAudioRef.current) {
         try { fragmentAudioRef.current.pause() } catch { /* ignore */ }
@@ -200,34 +231,6 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     try { setMuted(true) } catch (e) { console.warn('[admirer] setMuted(true) threw:', e) }
   }, [setMuted])
 
-  // The rating buttons are genuinely on screen only when a fragment has
-  // finished, the agent is silent, and a rating is awaited. awaitingRating
-  // clears on exactly two paths: a button tap (handleRate) or the agent's
-  // next turn (the voice-answer effect below). If neither happens the
-  // buttons simply remain — safe, still tappable; onStartGeneration /
-  // onCommitEntry also reset it when the listening run ends.
-  const ratingButtonsVisible = awaitingRating && !isSpeaking && !fragmentPlaying
-
-  // Once the buttons have actually appeared, remember it — so a later
-  // agent-speech event can be read as "the user voice-answered".
-  useEffect(() => {
-    if (ratingButtonsVisible) ratingButtonsSeenRef.current = true
-  }, [ratingButtonsVisible])
-
-  // Voice-answer path: once the buttons have actually been on screen
-  // (ratingButtonsSeenRef is set only in a render where the agent is
-  // silent — ratingButtonsVisible requires !isSpeaking), a later
-  // agent-speech event means the agent heard the user's spoken yes/no —
-  // clear the prompt so the buttons don't linger. The guard therefore
-  // ignores the agent's own "did you like that?" question, spoken before
-  // the buttons are ever raised. setTimeout defers the setState past the
-  // render cycle, satisfying react-hooks/set-state-in-effect.
-  useEffect(() => {
-    if (isSpeaking && awaitingRating && ratingButtonsSeenRef.current) {
-      setTimeout(() => setAwaitingRating(false), 0)
-    }
-  }, [isSpeaking, awaitingRating])
-
   // Derive the visible state label from SDK signals.
   // Note: we infer "you speaking" from !isMuted because with push-to-talk
   // the user is only sending audio while the button is held.
@@ -245,6 +248,9 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   } else if (fragmentPlaying) {
     stateLabel = 'listening'
     stateKey = 'fragment-playing'
+  } else if (awaitingRating) {
+    stateLabel = 'did you like it?'
+    stateKey = 'awaiting-rating'
   } else if (!isMuted) {
     stateLabel = 'I’m listening'
     stateKey = 'user-speaking'
@@ -252,6 +258,11 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     stateLabel = 'your turn'
     stateKey = 'idle'
   }
+
+  // Push-to-talk is hidden during a fragment and its rating — the user taps
+  // Yes/No there, and the agent cannot hear voice while the blocking
+  // playFragment tool runs anyway.
+  const showHoldToSpeak = !hasError && !fragmentPlaying && !awaitingRating
 
   return (
     <Paper variant="cream">
@@ -326,7 +337,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
           }}>
             <FragmentControls
               fragmentPlaying={fragmentPlaying}
-              showButtons={ratingButtonsVisible}
+              showButtons={awaitingRating}
               onRate={handleRate}
             />
           </div>
@@ -336,7 +347,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
         <div style={{ flex: 1 }} />
 
         {/* Bottom region: hold-to-speak button */}
-        {!hasError && (
+        {showHoldToSpeak && (
           <div style={{
             flex: '0 0 auto',
             marginBottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)',

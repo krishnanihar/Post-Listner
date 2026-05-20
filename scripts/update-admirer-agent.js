@@ -84,13 +84,15 @@ const patch = {
       },
     },
     turn: {
-      // Was: 7.0. The Admirer's brief explicitly tolerates user silence —
-      // a shorter timeout makes the agent feel responsive after a beat
-      // without cutting off a thinking user.
-      turn_timeout: 3.0,
-      // Was: "normal". Eager makes the agent commit to responding faster
-      // once it has decided the user is done.
-      turn_eagerness: 'eager',
+      // 7.0 (was briefly 3.0). The 3s timeout cut users off when they
+      // paused to think — the experience is deliberately unhurried ("this
+      // first time runs slow"), so the agent must wait out a reflective
+      // silence rather than jump into it.
+      turn_timeout: 7.0,
+      // "normal" (was briefly "eager"). Eager made the agent commit to a
+      // turn the instant it guessed the user was done; normal lets a beat
+      // land first.
+      turn_eagerness: 'normal',
       // DISABLED — speculative_turn produced verbatim duplicate responses
       // when the user paused mid-thought or went briefly silent ("..."
       // user turns triggered a second full agent response identical to
@@ -134,8 +136,8 @@ console.log('Agent updated.')
 console.log(`  first_message:     ${FIRST_MESSAGE.length} chars`)
 console.log(`  system prompt:     ${SYSTEM_PROMPT.length} chars synced from create script`)
 console.log('  llm:               gemini-2.5-flash-lite')
-console.log('  turn_timeout:      3.0')
-console.log('  turn_eagerness:    eager')
+console.log('  turn_timeout:      7.0')
+console.log('  turn_eagerness:    normal')
 console.log('  speculative_turn:  false  (was true; caused duplicate utterances)')
 console.log('  tts.speed:         1.05')
 console.log('')

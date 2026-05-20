@@ -42,11 +42,16 @@ export function buildAdmirerTools(callbacks = {}) {
       return { ok: true }
     },
 
-    playFragment: ({ fragmentId } = {}) => {
+    // playFragment BLOCKS the agent (the tool is registered
+    // expects_response: true). The host's onPlayFragment plays the clip,
+    // shows the Yes/No buttons, and resolves with the user's rating; that
+    // string is the tool result the agent reads to pick the next fragment.
+    playFragment: async ({ fragmentId } = {}) => {
       const f = getFragment(fragmentId)
-      if (!f) return { ok: false, reason: `unknown fragmentId: ${fragmentId}` }
-      cb.onPlayFragment?.(f)
-      return { ok: true, fragmentId: f.id }
+      if (!f) return 'error: unknown fragment'
+      if (!cb.onPlayFragment) return 'none'
+      const rating = await cb.onPlayFragment(f)
+      return rating || 'none'
     },
 
     startGeneration: (descriptors = {}) => {

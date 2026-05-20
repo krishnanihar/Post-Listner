@@ -72,7 +72,7 @@ The FIRST words of your response — which already begin with the user's verbati
 
 Fire at most one tool per user turn, MID-response (while you are speaking, not before your first word, not after your last word). If the user names multiple terms in one breath, pick the ONE that most carries their meaning right now and call recordLexicon for only that. Other terms can wait — record them silently on a later turn if they keep mattering.
 
-For playFragment: speak the framing line first, then fire one playFragment call. Do not queue two fragments back-to-back. The user needs space to respond between fragments.
+For playFragment: speak the framing line first, then fire one playFragment call. It BLOCKS until the user has rated the piece and returns their answer — never fire a second one before the first returns.
 
 For commitArtifact, markRestricted, startGeneration, commitEntry: the same shape — begin speaking, fire the tool mid-speech, never afterward.
 
@@ -113,20 +113,22 @@ Read \`is_first_session\` to know which.
    closing refusal-to-know. If the user marks anything as closed or restricted,
    call markRestricted.
 
-   THE LISTENING RUN. After the questions, say plainly, in one line: "i'm going
-   to play you a few short pieces. after each, tell me if you liked it — yes or
-   no." Then play three fragments, one at a time:
-   - Call playFragment for one fragmentId.
-   - When it finishes, ask simply: "did you like that one?" — then wait. The
-     user answers yes or no. If they are silent, take that as no signal and
-     move on.
-   - Give at most a flat one-word acknowledgment ("mm", "okay"). Then say
-     "here's the next —" and call playFragment for the next fragmentId.
-   Choose each next fragment to move away from anything the user disliked and
-   toward what they liked. After about three, you have enough.
+   THE LISTENING RUN. After the questions, say plainly, in one line: "i'm
+   going to play you a few short pieces. after each, tap yes or no." Then run
+   three fragments, one at a time:
+   - Speak a brief framing line, then call playFragment for one fragmentId.
+   - playFragment plays the piece and WAITS for the user to rate it. You are
+     silent while it runs — that is correct; do not speak and do not call
+     another tool until it returns. It returns their answer: "yes", "no", or
+     "none" if they did not answer.
+   - When it returns, give at most a flat one-word acknowledgment ("mm",
+     "okay"), then speak a brief line and call playFragment for the next
+     fragmentId.
+   Use each returned answer to choose the next fragment — away from what they
+   disliked, toward what they liked. After three, you have enough.
 
-   Never let a fragment begin before you have spoken its line — the framing
-   line first, then the playFragment call.
+   Never call playFragment before you have spoken its framing line, and never
+   call two without the first's answer in between.
 
    playFragment fragmentIds: warm-acoustic-now, warm-folk-recent,
    shadow-piano-late, shadow-synth-old, lifted-cinematic, lifted-postclassical,
@@ -200,15 +202,23 @@ const FRAGMENT_IDS = [
 ]
 
 // Helper to build a client tool with parameters as JSON Schema.
-function clientTool({ name, description, properties, required }) {
+// Most tools are fire-and-forget (expects_response false). playFragment
+// overrides this — it BLOCKS the agent until the user has rated the piece.
+function clientTool({
+  name, description, properties, required,
+  expectsResponse = false,
+  responseTimeoutSecs = 1,
+  disableInterruptions = false,
+}) {
   return {
     type: 'client',
     name,
     description,
-    expects_response: false,
+    expects_response: expectsResponse,
     execution_mode: 'immediate',
     pre_tool_speech: 'auto',
-    response_timeout_secs: 1,
+    response_timeout_secs: responseTimeoutSecs,
+    disable_interruptions: disableInterruptions,
     parameters: {
       type: 'object',
       properties,
@@ -246,7 +256,10 @@ const TOOLS = [
   }),
   clientTool({
     name: 'playFragment',
-    description: 'Play a short locate-phase fragment for the user to respond to. Call this during the Locate stage. Wait for the user to respond before calling again.',
+    description: 'Play a short locate-phase fragment and WAIT for the user to rate it. This tool BLOCKS: it returns the user\'s rating as a string ("yes", "no", or "none" if they did not answer) once the piece has played and they have responded. Call it one fragment at a time during the listening run; use the returned rating to choose the next fragment.',
+    expectsResponse: true,
+    responseTimeoutSecs: 30,
+    disableInterruptions: true,
     properties: {
       fragmentId: {
         type: 'string',
@@ -296,6 +309,17 @@ const body = {
   conversation_config: {
     tts: {
       voice_id: VOICE_ID,
+    },
+    // Turn-taking — kept in sync with scripts/update-admirer-agent.js.
+    // turn_timeout 7s + 'normal' eagerness: the experience is deliberately
+    // unhurried ("this first time runs slow"), so the agent must not cut
+    // off a user who pauses to think.
+    turn: {
+      turn_timeout: 7.0,
+      turn_eagerness: 'normal',
+      speculative_turn: false,
+      mode: 'turn',
+      turn_model: 'turn_v2',
     },
     agent: {
       // The Arrival speech, delivered automatically on session connect.
