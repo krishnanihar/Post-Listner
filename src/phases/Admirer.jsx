@@ -5,6 +5,7 @@ import Paper from '../score/Paper'
 import { COLORS, FONTS } from '../score/tokens'
 import { useAdmirerAgent } from '../hooks/useAdmirerAgent.js'
 import StemPlayer from '../lib/stemPlayer.js'
+import { addLexiconWord } from '../lib/liveSession.js'
 import HoldToSpeak from './HoldToSpeak'
 import FragmentControls from './FragmentControls'
 
@@ -115,6 +116,14 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     }, 600)
   }, [onNext, clearFragmentPlayback])
 
+  // Mirror each verbatim lexicon word the agent records (via the
+  // recordLexicon client tool) into the live session, so the reflection
+  // surface can show the user's own words accumulating. addLexiconWord
+  // trims, de-duplicates, and ignores empty input.
+  const onRecordLexicon = useCallback(({ userPhrasing } = {}) => {
+    addLexiconWord(userPhrasing)
+  }, [])
+
   const {
     connect,
     status,
@@ -124,7 +133,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     sendUserMessage,
   } = useAdmirerAgent({
     sessionStage: 'opening',
-    callbacks: { onPlayFragment, onStartGeneration, onCommitEntry },
+    callbacks: { onPlayFragment, onStartGeneration, onCommitEntry, onRecordLexicon },
   })
 
   // Called by Yes/No buttons. Sends the answer as a user turn and clears
