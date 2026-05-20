@@ -177,7 +177,11 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   }, [setMuted])
 
   // The rating buttons are genuinely on screen only when a fragment has
-  // finished, the agent is silent, and a rating is awaited.
+  // finished, the agent is silent, and a rating is awaited. awaitingRating
+  // clears on exactly two paths: a button tap (handleRate) or the agent's
+  // next turn (the voice-answer effect below). If neither happens the
+  // buttons simply remain — safe, still tappable; onStartGeneration /
+  // onCommitEntry also reset it when the listening run ends.
   const ratingButtonsVisible = awaitingRating && !isSpeaking && !fragmentPlaying
 
   // Once the buttons have actually appeared, remember it — so a later
@@ -186,12 +190,14 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     if (ratingButtonsVisible) ratingButtonsSeenRef.current = true
   }, [ratingButtonsVisible])
 
-  // Voice-answer path: if the agent starts speaking AFTER the buttons were
-  // shown, it heard the user's spoken yes/no — clear the prompt so the
-  // buttons don't linger. The ratingButtonsSeenRef guard stops this from
-  // misfiring on the agent's own "did you like that?" question, which is
-  // spoken before the buttons ever appear. setTimeout defers the setState
-  // past the render cycle, satisfying react-hooks/set-state-in-effect.
+  // Voice-answer path: once the buttons have actually been on screen
+  // (ratingButtonsSeenRef is set only in a render where the agent is
+  // silent — ratingButtonsVisible requires !isSpeaking), a later
+  // agent-speech event means the agent heard the user's spoken yes/no —
+  // clear the prompt so the buttons don't linger. The guard therefore
+  // ignores the agent's own "did you like that?" question, spoken before
+  // the buttons are ever raised. setTimeout defers the setState past the
+  // render cycle, satisfying react-hooks/set-state-in-effect.
   useEffect(() => {
     if (isSpeaking && awaitingRating && ratingButtonsSeenRef.current) {
       setTimeout(() => setAwaitingRating(false), 0)

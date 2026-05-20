@@ -11,14 +11,11 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { COLORS, FONTS } from '../score/tokens'
 
 export default function FragmentControls({ fragmentPlaying, showButtons, onRate }) {
-  // Show the playing indicator while a fragment is in flight.
-  const showPlaying = fragmentPlaying
-
   return (
     <>
       {/* Playing indicator */}
       <AnimatePresence>
-        {showPlaying && (
+        {fragmentPlaying && (
           <motion.div
             key="playing-indicator"
             initial={{ opacity: 0 }}
