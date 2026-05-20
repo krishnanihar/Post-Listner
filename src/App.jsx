@@ -8,6 +8,8 @@ import Settle from './phases/Settle'
 import { avdEngine } from './engine/avd'
 import { audioEngine } from './engine/audio'
 import { startOrchestraPreload } from './orchestra/preloader'
+import ReflectionSurface from './phases/ReflectionSurface'
+import { resetLiveSession } from './lib/liveSession.js'
 
 const PHASES = ['entry', 'admirer', 'orchestra', 'settle']
 
@@ -77,6 +79,12 @@ function App() {
     }
   }, [phase])
 
+  // Clear the reflection surface's live store whenever the flow returns to
+  // entry, so each new session starts with an empty transcript + lexicon.
+  useEffect(() => {
+    if (phase === 'entry') resetLiveSession()
+  }, [phase])
+
   const stemsBundleRef = useRef(null)
   const revealAudioRef = useRef(null)
 
@@ -121,6 +129,10 @@ function App() {
           {phaseComponent[phase]}
         </motion.div>
       </AnimatePresence>
+      {/* Build B — the reflection surface persists unbroken across the
+          admirer and orchestra phases. Rendered OUTSIDE the phase-swap
+          AnimatePresence so a phase change does not unmount/remount it. */}
+      {(phase === 'admirer' || phase === 'orchestra') && <ReflectionSurface />}
       <Analytics />
     </div>
   )
