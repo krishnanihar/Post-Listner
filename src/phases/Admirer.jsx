@@ -71,6 +71,9 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   // ended). Stop playback and raise the Yes/No prompt. If the user does not
   // tap within RATING_GRACE_MS, the rating resolves on its own as "none".
   const finishFragment = useCallback(() => {
+    // No-op if the rating was already resolved (a tap, or a lifecycle
+    // teardown) — a late cap/ended callback must not re-raise the prompt.
+    if (!pendingRatingRef.current) return
     clearFragmentPlayback()
     setFragmentPlaying(false)
     setAwaitingRating(true)
@@ -194,6 +197,8 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
 
   // Stop fragment audio + timers + orphan StemPlayer on unmount, and
   // resolve any rating still in flight so the tool promise can settle.
+  // Intentionally inlines clearFragmentPlayback + resolveRating rather than
+  // calling them (keeps this effect's dep array empty) — keep in sync.
   useEffect(() => {
     return () => {
       if (fragmentTimerRef.current) {
