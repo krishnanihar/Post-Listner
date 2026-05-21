@@ -12,13 +12,12 @@ import { supabase } from '../lib/supabaseClient'
  */
 export function useAuth() {
   const [session, setSession] = useState(null)
-  const [loading, setLoading] = useState(true)
+  // loading is true only while there is a session to load — with no Supabase
+  // client there is nothing to wait for, so it starts false.
+  const [loading, setLoading] = useState(() => Boolean(supabase))
 
   useEffect(() => {
-    if (!supabase) {
-      Promise.resolve().then(() => setLoading(false))
-      return
-    }
+    if (!supabase) return
     let active = true
     supabase.auth.getSession().then(({ data }) => {
       if (!active) return
