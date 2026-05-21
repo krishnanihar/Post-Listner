@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { useGLTF, Environment, ContactShadows } from '@react-three/drei'
 import { EffectComposer, Bloom, Vignette, Noise } from '@react-three/postprocessing'
@@ -33,6 +33,11 @@ const BOOK_URL = '/models/journal-book-v2.glb'
 const BG = '#140f09'
 const TRANS_MS = 3800
 const JUMP_MS = 2400
+const RISE_MS = 4200
+
+// the collective sky is heavy (Mapbox GL) — load it only on the first rise
+const CollectiveSky = lazy(() => import('./CollectiveSky.jsx'))
+const HAS_MAPBOX = !!import.meta.env.VITE_MAPBOX_TOKEN
 
 // clip scrub positions (normalised 0..1 of the baked animation).
 // The clip's first ~0.3 is a book-spin intro we never show; the page-turn
@@ -130,6 +135,8 @@ export default function Journal({ entries, onSignOut, newEntryId, sessionId, han
   const [index, setIndex] = useState(0)
   const [pageVisible, setPageVisible] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [skyMounted, setSkyMounted] = useState(false)
+  const [skyPhase, setSkyPhase] = useState('hidden')
 
   const bookRef = useRef({
     clipPos: 0,
@@ -138,6 +145,10 @@ export default function Journal({ entries, onSignOut, newEntryId, sessionId, han
   })
   const veilRef = useRef({ opacity: 0 })
   const transRef = useRef(null)
+  // book↔sky crossfade — applied to the two full-screen wrappers each frame
+  const mixRef = useRef({ book: 1, sky: 0 })
+  const bookWrapRef = useRef(null)
+  const skyWrapRef = useRef(null)
 
   const maxIndex = entries.length - 1
 
@@ -189,6 +200,33 @@ export default function Journal({ entries, onSignOut, newEntryId, sessionId, han
             tr.swapped = true
             setIndex(tr.to)
           }
+        } else if (tr.kind === 'rise') {
+          // book → sky: the veil covers, the wrappers crossfade behind it,
+          // the veil clears onto the user's own cluster
+          veilRef.current.opacity = pulse(t, 0.0, 0.42, 0.58, 1.0)
+          {
+            const mix = smoothstep(0.3, 0.7, t)
+            mixRef.current.book = 1 - mix
+            mixRef.current.sky = mix
+          }
+          if (t >= 0.5 && !tr.swapped) {
+            tr.swapped = true
+            setPageVisible(false)
+            setView('sky')
+          }
+        } else if (tr.kind === 'descend') {
+          // sky → book: the reverse crossfade
+          veilRef.current.opacity = pulse(t, 0.0, 0.42, 0.58, 1.0)
+          {
+            const mix = smoothstep(0.3, 0.7, t)
+            mixRef.current.book = mix
+            mixRef.current.sky = 1 - mix
+          }
+          if (t >= 0.5 && !tr.swapped) {
+            tr.swapped = true
+            setView('page')
+            setPageVisible(true)
+          }
         } else {
           // turn: page turn (visible) -> intense zoom-in (visible) -> cloud -> page.
           // dir is +1 for 'earlier', -1 for 'later'; negate so the page flips
@@ -221,9 +259,13 @@ export default function Journal({ entries, onSignOut, newEntryId, sessionId, han
           b.camTgt.copy(TGT_OVER)
           veilRef.current.opacity = 0
           if (tr.kind === 'open') setView('page')
+          if (tr.kind === 'rise') setSkyPhase('open')
+          if (tr.kind === 'descend') setSkyPhase('hidden')
           setBusy(false)
         }
       }
+      if (bookWrapRef.current) bookWrapRef.current.style.opacity = String(mixRef.current.book)
+      if (skyWrapRef.current) skyWrapRef.current.style.opacity = String(mixRef.current.sky)
       raf = requestAnimationFrame(loop)
     }
     loop()
@@ -261,6 +303,20 @@ export default function Journal({ entries, onSignOut, newEntryId, sessionId, han
     [index, maxIndex],
   )
 
+  const rise = useCallback(() => {
+    if (transRef.current || view !== 'page') return
+    setBusy(true)
+    setSkyMounted(true)
+    setSkyPhase('rising')
+    transRef.current = { kind: 'rise', dur: RISE_MS, start: performance.now() }
+  }, [view])
+
+  const descend = useCallback(() => {
+    if (transRef.current || view !== 'sky') return
+    setBusy(true)
+    transRef.current = { kind: 'descend', dur: RISE_MS, start: performance.now() }
+  }, [view])
+
   // after a rite settles the journal opens itself, turned to the new entry —
   // the desktop "lands on" the page rather than showing the landing screen
   useEffect(() => {
@@ -274,10 +330,11 @@ export default function Journal({ entries, onSignOut, newEntryId, sessionId, han
       // entries are newest-first: turn(+1) = older = earlier in time
       if (view === 'page' && e.key === 'ArrowLeft') turn(1)
       if (view === 'page' && e.key === 'ArrowRight') turn(-1)
+      if (view === 'sky' && e.key === 'Escape') descend()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [view, open, turn])
+  }, [view, open, turn, descend])
 
   // debug hook for the screenshot harness
   useEffect(() => {
@@ -310,7 +367,7 @@ export default function Journal({ entries, onSignOut, newEntryId, sessionId, han
             border: 'none',
             cursor: 'pointer',
             font: 'italic 13px Palatino, Georgia, serif',
-            color: view === 'landing' ? 'rgba(231,222,198,0.4)' : 'rgba(28,24,20,0.4)',
+            color: view === 'page' ? 'rgba(28,24,20,0.4)' : 'rgba(231,222,198,0.4)',
           }}
         >
           sign out
@@ -350,7 +407,7 @@ export default function Journal({ entries, onSignOut, newEntryId, sessionId, han
               font: '300 9px ui-monospace, SFMono-Regular, monospace',
               letterSpacing: '0.22em',
               textTransform: 'uppercase',
-              color: view === 'landing' ? 'rgba(231,222,198,0.5)' : 'rgba(28,24,20,0.45)',
+              color: view === 'page' ? 'rgba(28,24,20,0.45)' : 'rgba(231,222,198,0.5)',
             }}
           >
             begin again
@@ -358,6 +415,7 @@ export default function Journal({ entries, onSignOut, newEntryId, sessionId, han
         </div>
       )}
       <style>{`@keyframes jFadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}`}</style>
+      <div ref={bookWrapRef} style={{ position: 'absolute', inset: 0 }}>
       <Canvas camera={{ position: [0, 3.7, 4.7], fov: 36 }} gl={{ antialias: true }} dpr={[1, 2]}>
         <color attach="background" args={[BG]} />
         {/* warm key */}
@@ -388,6 +446,15 @@ export default function Journal({ entries, onSignOut, newEntryId, sessionId, han
           <Noise opacity={0.03} />
         </EffectComposer>
       </Canvas>
+      </div>
+
+      {skyMounted && (
+        <div ref={skyWrapRef} style={{ position: 'absolute', inset: 0, opacity: 0 }}>
+          <Suspense fallback={null}>
+            <CollectiveSky entries={entries} hand={handStyle} phase={skyPhase} />
+          </Suspense>
+        </div>
+      )}
 
       {pageVisible && <EntryPage entry={entries[index]} handStyle={handStyle} />}
 
@@ -524,6 +591,46 @@ export default function Journal({ entries, onSignOut, newEntryId, sessionId, han
             later →
           </button>
         </div>
+      )}
+      {!busy && view === 'page' && HAS_MAPBOX && (
+        <button
+          onClick={rise}
+          style={{
+            position: 'absolute',
+            top: 28,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 5,
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            font: 'italic 14px Palatino, Georgia, serif',
+            letterSpacing: '0.12em',
+            color: 'rgba(28,24,20,0.42)',
+          }}
+        >
+          ↑ rise to the field
+        </button>
+      )}
+      {!busy && view === 'sky' && (
+        <button
+          onClick={descend}
+          style={{
+            position: 'absolute',
+            bottom: 40,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 5,
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            font: 'italic 14px Palatino, Georgia, serif',
+            letterSpacing: '0.12em',
+            color: 'rgba(231,222,198,0.5)',
+          }}
+        >
+          ↓ return to the book
+        </button>
       )}
     </div>
   )
