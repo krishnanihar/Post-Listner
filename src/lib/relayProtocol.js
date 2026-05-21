@@ -21,6 +21,9 @@
 //                   (closing card → return to entry). Viewers return to
 //                   their waiting state. Distinct from 'conductor:lost'
 //                   (which the relay generates on unexpected disconnect).
+//   'entry'       — Sent by the conductor at settle. The finished journal
+//                   entry { song, summary, glyph }; the desktop viewer
+//                   writes it to Supabase. See useRiteSession.js.
 //
 // Relay-generated → viewer message types (not in MSG_TYPES — emitted by
 // SessionRoom DO, not the conductor):
@@ -32,6 +35,7 @@ export const MSG_TYPES = {
   PHASE:       'phase',
   AUDIO:       'audio',
   SESSION_END: 'session:end',
+  ENTRY:       'entry',
 }
 
 export const ROLES = {
@@ -67,4 +71,18 @@ export function isAudioMessage(m) {
 
 export function isSessionEndMessage(m) {
   return !!m && m.type === MSG_TYPES.SESSION_END
+}
+
+// 'entry' — sent by the conductor at settle. Carries the finished journal
+// entry {song, summary, glyph}; the desktop viewer writes the Supabase row.
+// This is the relay→Supabase boundary, so the guard also checks the glyph's
+// shape (pts must be an array) before the desktop persists or renders it.
+export function isEntryMessage(m) {
+  return (
+    !!m &&
+    m.type === MSG_TYPES.ENTRY &&
+    !!m.glyph &&
+    typeof m.glyph === 'object' &&
+    Array.isArray(m.glyph.pts)
+  )
 }

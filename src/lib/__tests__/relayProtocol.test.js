@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  MSG_TYPES, ROLES, encodeMessage, decodeMessage, isGestureMessage,
+  MSG_TYPES, ROLES, encodeMessage, decodeMessage, isGestureMessage, isEntryMessage,
 } from '../relayProtocol.js'
 
 describe('relayProtocol — constants', () => {
@@ -9,6 +9,10 @@ describe('relayProtocol — constants', () => {
     expect(MSG_TYPES.PHASE).toBe('phase')
     expect(MSG_TYPES.AUDIO).toBe('audio')
     expect(MSG_TYPES.SESSION_END).toBe('session:end')
+  })
+
+  it('exports the entry message type', () => {
+    expect(MSG_TYPES.ENTRY).toBe('entry')
   })
 
   it('exports the two roles', () => {
@@ -48,5 +52,22 @@ describe('relayProtocol — type guards', () => {
     expect(isGestureMessage({ type: 'phase', phase: 'orchestra' })).toBe(false)
     expect(isGestureMessage({})).toBe(false)
     expect(isGestureMessage(null)).toBe(false)
+  })
+
+  it('isEntryMessage accepts a well-formed entry', () => {
+    expect(isEntryMessage({
+      type: 'entry',
+      song: 'hearth-keeper/acoustic-soft-2000s',
+      summary: 'a quiet line',
+      glyph: { v: 1, pts: [[0, 0, 0]], dur: 0 },
+    })).toBe(true)
+  })
+
+  it('isEntryMessage rejects a missing or malformed glyph', () => {
+    expect(isEntryMessage({ type: 'entry', song: 'x', summary: 'y' })).toBe(false)
+    expect(isEntryMessage({ type: 'entry', glyph: {} })).toBe(false)
+    expect(isEntryMessage({ type: 'entry', glyph: { v: 1, dur: 0 } })).toBe(false)
+    expect(isEntryMessage({ type: 'phase', phase: 'orchestra' })).toBe(false)
+    expect(isEntryMessage(null)).toBe(false)
   })
 })
