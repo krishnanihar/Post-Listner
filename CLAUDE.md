@@ -10,13 +10,15 @@ Both acts are a single React app, one Vite project, one Vercel deploy. Audio ass
 
 > **Branch note.** `main` runs the original 9-phase profiling rite (`entry → spectrum → depth → gems → moment → autobio → reflection → reveal → orchestra`). This branch — **`musicking`** — replaces phases 1–7 with the single Admirer conversation: the flow is `entry → admirer → orchestra → settle`. The 9-phase `*.score.jsx` files remain on disk, unrouted. The sections below describe the `musicking` flow; the Orchestra, conducting, audio engine, R2, and relay infrastructure are shared and unchanged from `main`.
 
+> **Status — 2026-05-21.** Active work is the **desktop journal** (`/journal`). Slices 1–4 of the 6-slice plan (`docs/desktop-journal-design.md` §12) are built; **Slice 5 — the Mapbox collective "sky" — is next**, then Slice 6 (the collective). Slice 3 & 4 specs and plans are at `docs/superpowers/specs/2026-05-21-desktop-journal-slice-{3,4}-*.md` and the matching `docs/superpowers/plans/`. All Slice 3–4 code is committed to `musicking` and **not yet pushed**; it passes `npm run build` and the 295-test suite, but the full phone→relay→Supabase manual run has not been done — verify a real QR-paired rite before relying on the loop.
+
 ## Tech Stack
 
 - **React 19** + **Vite 7** (ES modules)
 - **Tailwind CSS v4** via `@tailwindcss/vite` plugin
 - **Framer Motion** for animations and transitions
 - **React Three Fiber** + **three.js** (`@react-three/fiber`, `@react-three/drei`, `@react-three/postprocessing`) — the conductor routes and the desktop journal's 3D book
-- **Vitest 4** + **jsdom** for pure-function unit tests (270 tests across `src/lib/__tests__/`, `src/orchestra/__tests__/`, `src/conductor-glb/`)
+- **Vitest 4** + **jsdom** for pure-function unit tests (295 tests across `src/lib/__tests__/`, `src/orchestra/__tests__/`, `src/conductor-glb/`)
 - **Web Audio API** — raw nodes only, no external audio libraries
   - PostListener: `src/engine/audio.js` (synthesis, MP3 playback for Spectrum/Moment)
   - Orchestra (v3): `src/orchestra/OrchestraEngine.js` (4-stem spatial graph, per-stem mono filter chain → HRTF panner with pre-HRTF mono reverb send, 6 image-source early reflections, binaural hall IR convolver, constant 10 Hz alpha binaural beats bypassing the compressor)
@@ -119,6 +121,8 @@ ElevenLabs API key (`ELEVENLABS_API_KEY`, no VITE_ prefix) stays on the server. 
 - **`src/hooks/useAdmirerRoom.js`** — owns the Build-A `AdmirerRoom` lifecycle (build, voice capture, roll→azimuth, expansion).
 - **`src/hooks/usePhoneMotion.js`** — device-orientation snapshots via `GestureCore` (Build A + the glyph).
 - **`src/hooks/useInputMode.js`** — Detects mouse vs touch input.
+- **`src/hooks/useRiteSession.js`** — the desktop journal's relay-viewer side: opens one viewer connection, runs the rite `riteStage` state machine, and writes the `entries` row when the phone relays its `entry` message at settle. See **Desktop journal** (Slice 3).
+- **`src/hooks/useEntryAudio.js`** — streams one journal entry's master MP3 from R2 for the entry detail view; owns a plain `HTMLAudioElement`, exposes `{available, playing, toggle, progressRef}`. See **Desktop journal** (Slice 4).
 - **`src/hooks/useAdmirer.js`** — the *old* per-line TTS hook (`/api/admirer`). Not used in `musicking` — superseded by `useAdmirerAgent`. Still on disk for `main`.
 
 ### Key Modules — Engine
@@ -275,8 +279,10 @@ the entry's master MP3 from R2, and the glyph re-animates — `revealGlyph`
 (`src/lib/glyph.js`) slices the recorded path to the song's playback position,
 which the extracted `Glyph` component (`src/journal/Glyph.jsx`) redraws each
 frame. The glyph mark itself is the play/pause control. Mock entries (no
-`song`/`glyph`) stay a static procedural mark. **Slice 5 (next) — the sky:**
-the Mapbox collective globe + the "rise to the field" transition.
+`song`/`glyph`) stay a static procedural mark. (`Glyph.jsx` and `EntryPage`'s
+watercolour wash share the seeded PRNG `src/lib/mulberry32.js`.) **Slice 5
+(next) — the sky:** the Mapbox collective globe + the "rise to the field"
+transition.
 
 ## Environment
 
@@ -309,7 +315,7 @@ npm run dev                          # Start dev server (Vite + /api middleware)
 npm run build                        # Production build
 npm run lint                         # ESLint
 npm run preview                      # Preview production build
-npm test                             # Run vitest suite (265 tests)
+npm test                             # Run vitest suite (295 tests)
 npm run test:watch                   # Watch mode
 
 # Local conducting relay (Node, dev only — for /conduct-* routes + QR pairing dev)
