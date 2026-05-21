@@ -21,6 +21,22 @@ import { createEntry } from '../lib/entriesRepo.js'
  * independent, so the no-backend dev fallback still mirrors a rite. Only the
  * DB write is gated on userId.
  */
+// the desktop's coarse location, resolved once per page load from /api/geo
+// (spec §3.4). Best-effort: any failure resolves to null and the entry still
+// writes — the loop is never blocked on geolocation.
+let cachedRegion // undefined until the first resolve
+async function resolveRegion() {
+  if (cachedRegion !== undefined) return cachedRegion
+  try {
+    const res = await fetch('/api/geo')
+    const data = await res.json()
+    cachedRegion = data && typeof data.region === 'string' ? data.region : null
+  } catch {
+    cachedRegion = null
+  }
+  return cachedRegion
+}
+
 export function useRiteSession({ userId, onEntryWritten }) {
   const sessionId = useMemo(() => generateSessionId(), [])
   const [riteStage, setRiteStage] = useState('idle')
@@ -82,7 +98,10 @@ export function useRiteSession({ userId, onEntryWritten }) {
             setRiteStage('idle')
             return
           }
-          createEntry(uid, { song: msg.song, summary: msg.summary, glyph: msg.glyph })
+          resolveRegion()
+            .then((region) =>
+              createEntry(uid, { song: msg.song, summary: msg.summary, glyph: msg.glyph, region }),
+            )
             .then((row) => {
               if (row) {
                 setNewEntryId(String(row.id))
