@@ -142,12 +142,14 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   }, [getAudioCtx, revealAudioRef, clearFragmentPlayback, resolveRating])
 
   // When the agent finalizes, hand off to orchestra.
-  const onCommitEntry = useCallback(() => {
+  const onCommitEntry = useCallback((entry) => {
     clearFragmentPlayback()
     resolveRating('none')
     setFragmentPlaying(false)
     setTimeout(() => {
-      onNext({ stemsBundle: stemsBundleRef.current })
+      // Slice 3 — carry the Admirer's one-line summary forward so App can
+      // relay it in the entry message at settle.
+      onNext({ stemsBundle: stemsBundleRef.current, summary: entry?.summary })
     }, 600)
   }, [onNext, clearFragmentPlayback, resolveRating])
 
