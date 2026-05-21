@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-05-21-desktop-journal-slice-3-close-the-loop-design.md`
 
+**Revised 2026-05-21** after an independent Codex review — hardened against: a stuck settle-loading state on write failure, duplicate entry writes, an RDP hard-cap dropping the path's last point, a too-weak `entry` guard, and the no-Supabase dev fallback opening no relay viewer. `riteStage` gained a `'settling'` value (the entry-write-in-flight window).
+
 ---
 
 ## No schema migration
@@ -97,6 +99,17 @@ describe('distillGlyph', () => {
     const g = distillGlyph(raw, { budget: 600 })
     expect(g.pts.length).toBeLessThanOrEqual(600)
     expect(g.pts.length).toBeGreaterThan(2)
+  })
+
+  it('preserves both endpoints through pre-decimation + budget enforcement', () => {
+    const raw = [[0.01, 0.02, 0]]
+    for (let i = 1; i < 13999; i++) {
+      raw.push([0.5 + 0.3 * Math.sin(i), 0.5 + 0.3 * Math.cos(i * 1.3), i * 16])
+    }
+    raw.push([0.99, 0.98, 13999 * 16])
+    const g = distillGlyph(raw, { budget: 600 })
+    expect(g.pts[0]).toEqual([0.01, 0.02, 0])
+    expect(g.pts[g.pts.length - 1].slice(0, 2)).toEqual([0.99, 0.98])
   })
 
   it('keeps t monotonically non-decreasing', () => {
@@ -245,11 +258,15 @@ export function distillGlyph(rawPts, opts = {}) {
     guard += 1
   }
 
-  // 3. hard cap — safety net if the sweep never converged
+  // 3. hard cap — safety net if the sweep never converged. The strided slice
+  // can miss the true last point, so force both endpoints back in afterwards
+  // (the spec requires endpoints always survive).
   if (simplified.length > budget) {
     const step = simplified.length / budget
     const capped = []
     for (let i = 0; i < budget; i++) capped.push(simplified[Math.floor(i * step)])
+    capped[0] = simplified[0]
+    capped[capped.length - 1] = simplified[simplified.length - 1]
     simplified = capped
   }
 
@@ -331,8 +348,10 @@ And add this to the `relayProtocol — type guards` `describe` block, after the 
     })).toBe(true)
   })
 
-  it('isEntryMessage rejects messages without a glyph object', () => {
+  it('isEntryMessage rejects a missing or malformed glyph', () => {
     expect(isEntryMessage({ type: 'entry', song: 'x', summary: 'y' })).toBe(false)
+    expect(isEntryMessage({ type: 'entry', glyph: {} })).toBe(false)
+    expect(isEntryMessage({ type: 'entry', glyph: { v: 1, dur: 0 } })).toBe(false)
     expect(isEntryMessage({ type: 'phase', phase: 'orchestra' })).toBe(false)
     expect(isEntryMessage(null)).toBe(false)
   })
@@ -362,8 +381,16 @@ Then add the guard after `isSessionEndMessage`:
 ```js
 // 'entry' — sent by the conductor at settle. Carries the finished journal
 // entry {song, summary, glyph}; the desktop viewer writes the Supabase row.
+// This is the relay→Supabase boundary, so the guard also checks the glyph's
+// shape (pts must be an array) before the desktop persists or renders it.
 export function isEntryMessage(m) {
-  return !!m && m.type === MSG_TYPES.ENTRY && !!m.glyph && typeof m.glyph === 'object'
+  return (
+    !!m &&
+    m.type === MSG_TYPES.ENTRY &&
+    !!m.glyph &&
+    typeof m.glyph === 'object' &&
+    Array.isArray(m.glyph.pts)
+  )
 }
 ```
 
@@ -641,7 +668,7 @@ In `src/App.jsx`, add this effect immediately after the `resetLiveSession` effec
       if (relay.send(msg) || tries >= 10) clearInterval(iv)
     }, 500)
     return () => clearInterval(iv)
-  }, [phase, sessionData])
+  }, [phase, sessionData.summary])
 ```
 
 - [ ] **Step 4: Verify lint + build**
@@ -684,10 +711,14 @@ import { createEntry } from '../lib/entriesRepo.js'
  * riteStage machine and, when the phone relays its entry at settle, writes
  * the Supabase row and calls onEntryWritten so the caller can refetch.
  *
- *   riteStage: 'idle' | 'rite' | 'orchestra' | 'settled'
+ *   riteStage: 'idle' | 'rite' | 'orchestra' | 'settling' | 'settled'
  *
- * With no userId (signed out, or the no-backend dev fallback) it generates an
- * id but does not connect.
+ * 'settling' covers the brief window between the entry message and the row
+ * write resolving; 'settled' means the row is written and newEntryId is set.
+ *
+ * The viewer connects regardless of auth state — the relay is Supabase-
+ * independent, so the no-backend dev fallback still mirrors a rite. Only the
+ * DB write is gated on userId.
  */
 export function useRiteSession({ userId, onEntryWritten }) {
   const sessionId = useMemo(() => generateSessionId(), [])
@@ -701,9 +732,11 @@ export function useRiteSession({ userId, onEntryWritten }) {
   const onWrittenRef = useRef(onEntryWritten)
   onWrittenRef.current = onEntryWritten
   const conductorPhaseRef = useRef(null)
+  // exactly one entry is written per rite — re-armed when the next rite
+  // begins (phase:admirer). Guards against a duplicated 'entry' message.
+  const entryHandledRef = useRef(false)
 
   useEffect(() => {
-    if (!userId) return
     const baseUrl = import.meta.env.VITE_RELAY_URL || 'wss://localhost:8443'
     const client = new RelayClient({
       baseUrl,
@@ -714,13 +747,18 @@ export function useRiteSession({ userId, onEntryWritten }) {
 
         if (msg.type === 'phase') {
           conductorPhaseRef.current = msg.phase
+          // a new rite is beginning — re-arm the entry-write guard
+          if (msg.phase === 'admirer') entryHandledRef.current = false
           setRiteStage((s) => {
             if (msg.phase === 'orchestra') return 'orchestra'
             if (msg.phase === 'admirer') return 'rite'
-            // a trailing 'entry' after settle is the phone returning home —
-            // keep 'settled' so the new page stays; the initial pairing
-            // 'entry' (stage 'idle') just stays idle until the rite begins
-            if (msg.phase === 'entry') return s === 'settled' ? 'settled' : 'idle'
+            // a trailing 'entry' phase after settle is the phone returning
+            // home — keep 'settling'/'settled' so the new page stays; the
+            // initial pairing 'entry' (stage 'idle') stays idle until the
+            // rite begins
+            if (msg.phase === 'entry') {
+              return s === 'settled' || s === 'settling' ? s : 'idle'
+            }
             return s // 'settle' — driven by the entry message, not the phase
           })
           return
@@ -732,28 +770,40 @@ export function useRiteSession({ userId, onEntryWritten }) {
         }
 
         if (isEntryMessage(msg)) {
-          setRiteStage('settled') // optimistic — survives a trailing session:end
+          if (entryHandledRef.current) return // dedupe — already handled this rite
+          entryHandledRef.current = true
+          setRiteStage('settling')
           const uid = userIdRef.current
-          if (!uid) return
+          if (!uid) {
+            // no account to write to (the no-backend dev fallback) — recover
+            setRiteStage('idle')
+            return
+          }
           createEntry(uid, { song: msg.song, summary: msg.summary, glyph: msg.glyph })
             .then((row) => {
               if (row) {
                 setNewEntryId(String(row.id))
+                setRiteStage('settled')
                 onWrittenRef.current?.()
+              } else {
+                // write failed — recover instead of stranding the desktop on
+                // the settled loading card
+                entryHandledRef.current = false
+                setRiteStage('idle')
               }
             })
           return
         }
 
         if (msg.type === 'session:end' || msg.type === 'conductor:lost') {
-          setRiteStage((s) => (s === 'settled' ? 'settled' : 'idle'))
+          setRiteStage((s) => (s === 'settled' || s === 'settling' ? s : 'idle'))
           conductorPhaseRef.current = null
           return
         }
 
         if (msg.type === 'conductor:resumed') {
           setRiteStage((s) => {
-            if (s === 'settled') return 'settled'
+            if (s === 'settled' || s === 'settling') return s
             return conductorPhaseRef.current === 'orchestra' ? 'orchestra' : 'rite'
           })
         }
@@ -761,7 +811,7 @@ export function useRiteSession({ userId, onEntryWritten }) {
     })
     client.start()
     return () => client.stop()
-  }, [userId, sessionId])
+  }, [sessionId])
 
   return { sessionId, riteStage, latestFreq, newEntryId }
 }
@@ -1020,7 +1070,8 @@ Immediately after the `span` memo (the block ending `}, [entries])`), add:
 
 ```js
   // the entry to open on — the just-written entry after a rite settles,
-  // otherwise the first (oldest) page
+  // otherwise the oldest entry (the last array index, since entries are
+  // newest-first), matching the manual "open the journal" default
   const targetIndex = useMemo(() => {
     if (newEntryId) {
       const i = entries.findIndex((e) => e.id === newEntryId)
@@ -1267,6 +1318,9 @@ function RiteMirror({ stage, sessionId, latestFreq }) {
 export default function Desktop() {
   const { user, loading, signInWithGoogle, signOut } = useAuth()
   const [loaded, setLoaded] = useState({ uid: null, entries: null })
+  // true while the post-settle refetch is in flight — holds the loading card
+  // so the pre-rite view never flashes between settle and the new page
+  const [awaitingSettle, setAwaitingSettle] = useState(false)
 
   // refetch for the current user — used after seeding and after a rite
   // settles; called from callbacks, never synchronously in render
@@ -1278,8 +1332,11 @@ export default function Desktop() {
   // phone relays its entry at settle, then refetches via onEntryWritten.
   const { sessionId, riteStage, latestFreq, newEntryId } = useRiteSession({
     userId: user?.id ?? null,
-    onEntryWritten: () => {
-      if (user) load(user.id)
+    onEntryWritten: async () => {
+      if (!user) return
+      setAwaitingSettle(true)
+      await load(user.id)
+      setAwaitingSettle(false)
     },
   })
 
@@ -1310,26 +1367,17 @@ export default function Desktop() {
     return <RiteMirror stage={riteStage} sessionId={sessionId} latestFreq={latestFreq} />
   }
 
-  const entries = loaded.uid === user.id ? loaded.entries : null
-
-  // the rite just settled — wait for the refetch to include the new row,
-  // then open the journal turned to it
-  if (riteStage === 'settled') {
-    if (!entries || !newEntryId || !entries.some((e) => e.id === newEntryId)) {
-      return <DesktopLoading />
-    }
-    return (
-      <Journal
-        entries={entries}
-        onSignOut={signOut}
-        newEntryId={newEntryId}
-        sessionId={sessionId}
-        handStyle={handStyle}
-      />
-    )
+  // the entry is being written ('settling') or the post-write refetch is in
+  // flight ('awaitingSettle') — hold the loading card so the pre-rite view
+  // never flashes. On a write failure useRiteSession reverts to 'idle' and we
+  // fall through; on a refetch that returns nothing we land on FirstTimer —
+  // either way the desktop recovers and never spins forever.
+  if (riteStage === 'settling' || awaitingSettle) {
+    return <DesktopLoading />
   }
 
   // entries are ready only once they have been loaded for the current user
+  const entries = loaded.uid === user.id ? loaded.entries : null
   if (entries === null) return <DesktopLoading />
   if (entries.length === 0) {
     return (
@@ -1349,6 +1397,7 @@ export default function Desktop() {
       onSignOut={signOut}
       sessionId={sessionId}
       handStyle={handStyle}
+      newEntryId={riteStage === 'settled' ? newEntryId : null}
     />
   )
 }
