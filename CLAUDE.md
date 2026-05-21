@@ -236,6 +236,8 @@ Optional flow: desktop visitor sees a QR code, scans with phone, runs the rite o
 | `ELEVENLABS_API_KEY` | `api/admirer.js` (optional in v3) | Inline admirer voice during phases 0–6. Hook fails silently without it. |
 | `VITE_RELAY_URL` | Runtime (`relayClient.js`, `phone.js`) | WebSocket relay endpoint. Dev: `wss://localhost:8443`. Prod: `wss://relay.post-listner.com`. |
 | `VITE_ELEVENLABS_AGENT_ID` | Runtime (`useAdmirerAgent`) | The Admirer agent (musicking branch). Set on Production environment in Vercel. |
+| `VITE_SUPABASE_URL` | Runtime (`supabaseClient.js`) | Desktop journal accounts + entries |
+| `VITE_SUPABASE_ANON_KEY` | Runtime (`supabaseClient.js`) | Desktop journal accounts + entries |
 
 `.env.local` is gitignored via `*.local`. Vercel production needs `VITE_STEMS_BASE_URL`, `VITE_MASTERS_BASE_URL`, and `VITE_RELAY_URL` set on the **Production** environment.
 
@@ -375,6 +377,18 @@ A 2D canvas experience where the conducting gesture draws an ink trail through a
 **Performance:** Zero WebGL contexts on the route (was 5 mid-iteration when R3F layers were stacked). Three 2D canvases. ~60fps on modern devices, ~30 on low-end mobile under sustained gesture.
 
 **Not yet:** wiring to the actual Orchestra-phase audio (currently independent MP3 playback, not the matched-archetype stem player). When integrated, the simulated stem signals in this route become real `AnalyserNode` reads on the existing `StemPlayer` sources.
+
+### Desktop journal (slice 2 — accounts + backend)
+
+The `/journal` route is the **auth-gated desktop journal**. `src/desktop/Desktop.jsx`
+is the orchestrator: `useAuth` (Supabase Google OAuth) gates between `SignIn`,
+`FirstTimer` (signed in, zero entries — QR only), and the `Journal` (one or
+more entries). Entries live in one Supabase `entries` table behind RLS
+(`supabase/schema.sql`); `src/lib/entriesRepo.js` is the data layer and
+`src/lib/entryFormat.js` the pure shaping (tested). With no Supabase env set,
+`Desktop` falls back to a no-auth journal on mock data. Backend setup:
+`docs/supabase-setup.md`. The original `Stage` root + phone-rite/QR-pairing
+flow are unchanged.
 
 ## Parked for later
 
