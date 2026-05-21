@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
+import { deriveHand } from '../lib/glyph.js'
 
 /**
  * EntryPage — the reading surface for one journal entry.
@@ -75,11 +76,67 @@ function washBackground(seed) {
 }
 
 /**
- * Glyph — a hand-painted ink sigil. Each squiggle stroke is laid down in
- * three passes (a wide pale bleed, a mid body, a sharp core) so the edges
- * feather like wet pigment, over a couple of soft colour blooms.
+ * Map a glyph's normalised 0..1 points into a padded canvas box, fitting the
+ * path's bounding box so the recorded mark fills the frame.
  */
-function Glyph({ seed }) {
+function fitGlyphPoints(pts, W, H, pad) {
+  let minX = 1, maxX = 0, minY = 1, maxY = 0
+  for (const p of pts) {
+    if (p[0] < minX) minX = p[0]
+    if (p[0] > maxX) maxX = p[0]
+    if (p[1] < minY) minY = p[1]
+    if (p[1] > maxY) maxY = p[1]
+  }
+  const spanX = Math.max(maxX - minX, 0.001)
+  const spanY = Math.max(maxY - minY, 0.001)
+  const scale = Math.min((W - 2 * pad) / spanX, (H - 2 * pad) / spanY)
+  const ox = (W - spanX * scale) / 2
+  const oy = (H - spanY * scale) / 2
+  return pts.map((p) => [ox + (p[0] - minX) * scale, oy + (p[1] - minY) * scale])
+}
+
+/**
+ * Lay a polyline down in three feathered passes (a wide pale bleed, a mid
+ * body, a sharp core) so the edges feather like wet ink. Per-segment width
+ * follows a taper envelope — thin at the ends, full in the middle. Colour and
+ * weight come from the per-account `hand`.
+ */
+function strokeFeathered(ctx, xy, hand) {
+  const n = xy.length
+  if (n < 2) return
+  const widthAt = (i) => {
+    const u = i / (n - 1)
+    const bell = Math.pow(Math.sin(Math.PI * u), hand.taper) // 0 at ends → 1 mid
+    return hand.minWidth + (hand.maxWidth - hand.minWidth) * bell
+  }
+  const passes = [
+    { blur: 4, mul: 2.6, alpha: 0.10, light: hand.inkLight + 24 }, // wet bleed
+    { blur: 0, mul: 1.5, alpha: 0.24, light: hand.inkLight + 10 }, // body
+    { blur: 0, mul: 1.0, alpha: 0.62, light: hand.inkLight },      // core
+  ]
+  for (const p of passes) {
+    ctx.filter = p.blur ? `blur(${p.blur}px)` : 'none'
+    ctx.strokeStyle = `hsla(${hand.inkHue}, ${hand.inkSat}%, ${p.light}%, ${p.alpha})`
+    for (let i = 1; i < n; i++) {
+      ctx.beginPath()
+      ctx.lineWidth = widthAt(i) * p.mul
+      ctx.moveTo(xy[i - 1][0], xy[i - 1][1])
+      ctx.lineTo(xy[i][0], xy[i][1])
+      ctx.stroke()
+    }
+  }
+  ctx.filter = 'none'
+}
+
+/**
+ * Glyph — the entry's hand-painted ink mark.
+ *
+ * When the entry carries a real recorded conducting path (entry.glyph), it is
+ * stroked in the per-account hand — the literal gesture the session left.
+ * Entries with no glyph (mock + dev-seeded rows) fall back to the original
+ * procedural squiggle seeded off the entry's chronological position.
+ */
+function Glyph({ glyph, seed, hand }) {
   const ref = useRef(null)
   useEffect(() => {
     const W = 300
@@ -91,13 +148,20 @@ function Glyph({ seed }) {
     c.height = H * dpr
     ctx.scale(dpr, dpr)
     ctx.clearRect(0, 0, W, H)
-    const rand = mulberry32((seed + 1) * 2654435761)
-    ctx.translate(W / 2, H / 2)
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
 
-    // soft pigment blooms behind the mark — warm, generous, diffuse so they
-    // read as a wash halo rather than a smudge
+    // the real recorded path, drawn in the account's hand
+    if (glyph && Array.isArray(glyph.pts) && glyph.pts.length >= 2) {
+      strokeFeathered(ctx, fitGlyphPoints(glyph.pts, W, H, 30), hand)
+      return
+    }
+
+    // fallback — the procedural squiggle (mock + dev-seeded entries)
+    const rand = mulberry32((seed + 1) * 2654435761)
+    ctx.translate(W / 2, H / 2)
+
+    // soft pigment blooms behind the mark
     ctx.filter = 'blur(20px)'
     for (let i = 0; i < 3; i++) {
       const warm = rand() < 0.78
@@ -154,7 +218,7 @@ function Glyph({ seed }) {
       ctx.arc((rand() - 0.5) * 230, (rand() - 0.5) * 150, 0.6 + rand() * 2.1, 0, Math.PI * 2)
       ctx.fill()
     }
-  }, [seed])
+  }, [glyph, seed, hand])
   return <canvas ref={ref} style={{ width: 300, height: 190 }} />
 }
 
@@ -190,7 +254,8 @@ function Rule() {
   )
 }
 
-export default function EntryPage({ entry }) {
+export default function EntryPage({ entry, handStyle }) {
+  const hand = useMemo(() => handStyle || deriveHand('default'), [handStyle])
   const wash = useMemo(() => (entry ? washBackground(entry.seq) : ''), [entry])
   if (!entry) return null
   return (
@@ -238,7 +303,7 @@ export default function EntryPage({ entry }) {
           {entry.date}
         </div>
         <Rule />
-        <Glyph seed={entry.seq} />
+        <Glyph glyph={entry.glyph} seed={entry.seq} hand={hand} />
         <div
           style={{
             font: 'italic 31px Palatino, "Palatino Linotype", Georgia, serif',
