@@ -40,4 +40,8 @@ function apiMiddleware() {
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), apiMiddleware(), basicSsl()],
+  // mapbox-gl is only reached through the lazy-loaded CollectiveSky chunk, so
+  // Vite would otherwise discover it on the first "rise to the field" and
+  // re-optimize + full-reload the page mid-transition. Pre-bundle it at start.
+  optimizeDeps: { include: ['mapbox-gl'] },
 })
