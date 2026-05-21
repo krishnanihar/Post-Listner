@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { deriveHand } from '../lib/glyph.js'
 import Glyph from './Glyph.jsx'
+import { useEntryAudio } from './useEntryAudio.js'
 import { mulberry32 } from '../lib/mulberry32.js'
 
 /**
@@ -101,6 +102,7 @@ function Rule() {
 export default function EntryPage({ entry, handStyle }) {
   const hand = useMemo(() => handStyle || deriveHand('default'), [handStyle])
   const wash = useMemo(() => (entry ? washBackground(entry.seq) : ''), [entry])
+  const { available, playing, toggle, progressRef } = useEntryAudio(entry ? entry.song : null)
   if (!entry) return null
   return (
     <div
@@ -147,7 +149,44 @@ export default function EntryPage({ entry, handStyle }) {
           {entry.date}
         </div>
         <Rule />
-        <Glyph glyph={entry.glyph} seed={entry.seq} hand={hand} playing={false} />
+        <div
+          onClick={available ? toggle : undefined}
+          style={{
+            position: 'relative',
+            display: 'inline-block',
+            cursor: available ? 'pointer' : 'default',
+          }}
+        >
+          <Glyph
+            glyph={entry.glyph}
+            seed={entry.seq}
+            hand={hand}
+            playing={playing}
+            progressRef={progressRef}
+          />
+          {available && !playing && (
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                pointerEvents: 'none',
+              }}
+            >
+              <span
+                style={{
+                  font: '300 22px Palatino, Georgia, serif',
+                  color: 'rgba(28,24,20,0.28)',
+                  letterSpacing: '0.1em',
+                }}
+              >
+                ▶
+              </span>
+            </div>
+          )}
+        </div>
         <div
           style={{
             font: 'italic 31px Palatino, "Palatino Linotype", Georgia, serif',
