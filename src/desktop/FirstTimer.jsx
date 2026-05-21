@@ -1,6 +1,4 @@
-import { useMemo } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
-import { generateSessionId } from '../lib/sessionId'
 
 /**
  * FirstTimer — the desktop's signed-in, zero-entries screen (design doc §3).
@@ -13,8 +11,7 @@ import { generateSessionId } from '../lib/sessionId'
 const PAPER = '#F2EBD8'
 const INK = '#1C1814'
 
-export default function FirstTimer({ onSignOut, onSeed }) {
-  const sessionId = useMemo(() => generateSessionId(), [])
+export default function FirstTimer({ onSignOut, onSeed, sessionId }) {
   const joinUrl = `${window.location.origin}/?s=${sessionId}`
   const isDev = import.meta.env.DEV
 
