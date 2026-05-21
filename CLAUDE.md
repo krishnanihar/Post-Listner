@@ -15,7 +15,8 @@ Both acts are a single React app, one Vite project, one Vercel deploy. Audio ass
 - **React 19** + **Vite 7** (ES modules)
 - **Tailwind CSS v4** via `@tailwindcss/vite` plugin
 - **Framer Motion** for animations and transitions
-- **Vitest 4** + **jsdom** for pure-function unit tests (265 tests across `src/lib/__tests__/`, `src/orchestra/__tests__/`, `src/conductor-glb/`)
+- **React Three Fiber** + **three.js** (`@react-three/fiber`, `@react-three/drei`, `@react-three/postprocessing`) — the conductor routes and the desktop journal's 3D book
+- **Vitest 4** + **jsdom** for pure-function unit tests (270 tests across `src/lib/__tests__/`, `src/orchestra/__tests__/`, `src/conductor-glb/`)
 - **Web Audio API** — raw nodes only, no external audio libraries
   - PostListener: `src/engine/audio.js` (synthesis, MP3 playback for Spectrum/Moment)
   - Orchestra (v3): `src/orchestra/OrchestraEngine.js` (4-stem spatial graph, per-stem mono filter chain → HRTF panner with pre-HRTF mono reverb send, 6 image-source early reflections, binaural hall IR convolver, constant 10 Hz alpha binaural beats bypassing the compressor)
@@ -26,6 +27,7 @@ Both acts are a single React app, one Vite project, one Vercel deploy. Audio ass
 - **ElevenLabs Conversational AI** via **`@elevenlabs/react`** — the Admirer (Act 1) is a live conversational agent. Config lives in `scripts/create-admirer-agent.js`. See **The Admirer (musicking — Act 1)** below.
 - **Server-side ElevenLabs proxy** in `api/` — the older per-line TTS path (`POST /api/admirer`, `eleven_v3`). Superseded on `musicking` by the Conversational AI agent; still on disk for `main`. `POST /api/compose` (Music API) is deprecated and unused.
 - **DeviceMotionEvent / DeviceOrientationEvent** — phone-as-baton conducting (Orchestra) + the Build-A room azimuth and the glyph (Admirer). Permission is requested on the Entry "begin" tap.
+- **Supabase** (`@supabase/supabase-js`) — Postgres + Google OAuth for the desktop journal's accounts + entries (`/journal`). See **Desktop journal** below.
 
 ## Architecture
 
@@ -217,17 +219,48 @@ Optional flow: desktop visitor sees a QR code, scans with phone, runs the rite o
 - **Phone bundle**: `conduct-relay/src/phone.js` builds via esbuild to `conduct-relay/public/phone.bundle.js` and imports `GestureCore` + `RelayClient` from the main project. Session ID via `?s=` URL param or the dev session input field.
 - **Cosmos audio**: phone sends 128-byte FFT magnitude arrays at 30 fps over WS during Orchestra phase. Desktop reads them into a `Uint8Array(128)` and feeds the existing `ConductorCelestialField` canvas as if it were a local AnalyserNode. Guarantees what user hears matches what desktop visualizes.
 
-### Desktop journal (slice 2 — accounts + backend)
+### Desktop journal (`/journal`)
 
-The `/journal` route is the **auth-gated desktop journal**. `src/desktop/Desktop.jsx`
-is the orchestrator: `useAuth` (Supabase Google OAuth) gates between `SignIn`,
-`FirstTimer` (signed in, zero entries — QR only), and the `Journal` (one or
-more entries). Entries live in one Supabase `entries` table behind RLS
-(`supabase/schema.sql`); `src/lib/entriesRepo.js` is the data layer and
-`src/lib/entryFormat.js` the pure shaping (tested). With no Supabase env set,
-`Desktop` falls back to a no-auth journal on mock data. Backend setup:
-`docs/supabase-setup.md`. The original `Stage` root + phone-rite/QR-pairing
-flow are unchanged.
+The `/journal` route is the **desktop journal** — PostListener's "past tense"
+surface, where a person browses the accumulated record of their sessions. The
+full design is a hybrid "book + sky"; the 6-slice spec is
+`docs/desktop-journal-design.md`. **Slices 1–2 are built; Slice 3 is next.**
+
+**Slice 1 — the book** (`src/journal/`). The journal is a literal 3D book used
+purely as a *transition device* between separate cream-paper entry pages — the
+book itself is never the reading surface.
+- `Journal.jsx` — the R3F scene (`public/models/journal-book-v2.glb`, a rigged
+  book with a baked page-turn clip) + the transition orchestrator. A rAF loop
+  drives clip position, camera, and a cloud veil for three transition kinds:
+  `open` (landing → first page), `turn` (neighbouring entries — clip scrub +
+  camera push), `jump` (chapter rail — cloud crossfade). Takes an `entries`
+  prop + optional `onSignOut`.
+- `EntryPage.jsx` — the reading surface (DOM, not 3D): a per-entry seeded
+  watercolour wash, a hand-painted ink sigil, the date, the one-line summary.
+- `ChapterIndex.jsx` / `chapters.js` — the marginal month rail for deep
+  navigation across the record.
+- `CloudCanvas.jsx` — volumetric raymarched cloud veil for transitions;
+  `KuwaharaEffect.jsx` — a painterly post-pass (with paper grain = the
+  watercolour look); `coverTexture.js` — a UV-independent cover wash.
+- `entryFormat.js` (`src/lib/`) — pure entry shaping (ISO ↔ display date,
+  `normalizeEntries`, `loadMockEntries`); `mockEntries.js` — the 10 mock
+  entries for the no-backend dev fallback. `/cloud-test` (`CloudTest.jsx`) is
+  a dev route for the cloud shader.
+
+**Slice 2 — accounts + backend.** `src/desktop/Desktop.jsx` is the auth gate:
+`useAuth` (Supabase Google OAuth) routes between `SignIn`, `FirstTimer`
+(signed in, zero entries — QR only), and the `Journal` (one or more entries).
+Entries live in one Supabase `entries` table behind RLS (`supabase/schema.sql`);
+`src/lib/entriesRepo.js` is the data layer. With no Supabase env set, `Desktop`
+falls back to a no-auth journal on mock data, so `/journal` always renders.
+Backend setup: `docs/supabase-setup.md`. A project-scoped Supabase MCP
+(`.mcp.json`) is configured for database work. The original `Stage` root +
+phone-rite/QR-pairing flow are unchanged.
+
+**Slice 3 (next) — "close the loop":** the phone rite writing a real entry at
+settle (relay `song`+`summary`, record the glyph, merge the live-rite mirror
+into the signed-in desktop). A brainstorm — Slice 3 scope + a glyph-system
+rethink — is the pending starting point.
 
 ## Environment
 
@@ -251,7 +284,7 @@ flow are unchanged.
 | `VITE_SUPABASE_URL` | Runtime (`supabaseClient.js`) | Desktop journal accounts + entries |
 | `VITE_SUPABASE_ANON_KEY` | Runtime (`supabaseClient.js`) | Desktop journal accounts + entries |
 
-`.env.local` is gitignored via `*.local`. Vercel production needs `VITE_STEMS_BASE_URL`, `VITE_MASTERS_BASE_URL`, and `VITE_RELAY_URL` set on the **Production** environment.
+`.env.local` is gitignored via `*.local`. Vercel production needs `VITE_STEMS_BASE_URL`, `VITE_MASTERS_BASE_URL`, `VITE_RELAY_URL`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_ANON_KEY` set on the **Production** environment.
 
 ## Commands
 
