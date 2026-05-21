@@ -13,8 +13,9 @@ import {
 } from '../orchestra/constants.js'
 import StemPlayer from '../lib/stemPlayer.js'
 import { scoreArchetype } from '../lib/scoreArchetype.js'
+import { distillGlyph } from '../lib/glyph.js'
 
-export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx, relayRef }) {
+export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx, relayRef, glyphRef }) {
   const [phase, setPhase] = useState(() => isPreloadComplete() ? 'awaiting-tap' : 'loading') // loading | awaiting-tap | briefing | experience | closing
   const [loadProgress, setLoadProgress] = useState(0)
 
@@ -28,6 +29,9 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
   const lastRef = useRef(null)
   const fadeStartedRef = useRef(false)
   const wakeLockRef = useRef(null)
+  // Slice 3 — raw conducting path [[pan, filterNorm, t], ...] accumulated
+  // during the experience phase, distilled into the journal glyph at song end.
+  const glyphBufRef = useRef([])
 
   // Score the archetype now so we know which Forer line to show on the
   // closing card. This is purely a read — scoreArchetype is deterministic
@@ -214,6 +218,14 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
       if (conducting) {
         const gesture = conducting.getData()
         engine.applyConducting(gesture)
+        // Slice 3 — record the conducting path for the journal glyph.
+        // roll→x (pan), pitch→y (filterNorm), both calibrated 0..1; t is ms
+        // since the experience-phase rAF loop started.
+        glyphBufRef.current.push([
+          gesture.pan,
+          gesture.filterNorm,
+          timestamp - startRef.current,
+        ])
         if (gesture.downbeat.fired && navigator.vibrate) {
           navigator.vibrate(15)
         }
@@ -255,6 +267,9 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
       // Transition to closing card after the song completes
       if (t >= songDuration) {
         engine.stopAll()
+        // Slice 3 — distil the recorded conducting path into the glyph and
+        // hand it to App (via the shared ref) for the entry relayed at settle.
+        if (glyphRef) glyphRef.current = distillGlyph(glyphBufRef.current)
         const ref = revealAudioRef.current
         if (ref) {
           if (ref instanceof StemPlayer) ref.stop()
