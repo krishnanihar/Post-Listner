@@ -284,10 +284,15 @@ work for free (§7) — lights cluster where people live. Deterministic, so the
 field is identical across renders and reloads.
 
 `CollectiveSky` renders `MOCK_COLLECTIVE` as the cool, faint wash and
-`selfPoints` as the warm, hand-hued lights — two GeoJSON sources, two (self:
-three — a blurred halo under a bright core) `circle` layers. `circle-blur`
-gives the soft-light glow; no glyph paths are drawn — at the sky's zoom floor a
-light is a light.
+`selfPoints` as the warm, hand-hued lights — two GeoJSON sources. The
+collective is a `heatmap` layer: a soft density haze rather than discrete
+dots, so the field reads as "other people are atmosphere" and population
+clustering does the work. Its `heatmap-color` ramp is deliberately monochrome
+and dim — a deep ink-blue that never climbs toward white — so it never looks
+like a data-viz hotspot map and always sits below the warm self-lights in
+luminance. The self lights stay discrete `circle` layers (a blurred halo
+under a bright core) so the user can still pick themselves out. No glyph paths
+are drawn — at the sky's zoom floor a light is a light.
 
 ### 6.2 Mock entries get a region
 

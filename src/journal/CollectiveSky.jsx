@@ -96,15 +96,32 @@ export default function CollectiveSky({ entries, hand, phase }) {
         type: 'geojson',
         data: toFeatureCollection(MOCK_COLLECTIVE),
       })
+      // the collective renders as a heatmap — a soft cool density wash, not
+      // discrete dots: "other people are atmosphere" (design doc §7). The
+      // colour ramp is deliberately monochrome and dim — never the rainbow a
+      // default heatmap gives — so it reads as faint ink-blue haze where
+      // people cluster, never as a data-viz hotspot map.
       map.addLayer({
-        id: 'collective-lights',
-        type: 'circle',
+        id: 'collective-heat',
+        type: 'heatmap',
         source: 'collective',
         paint: {
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, 1.1, 4.5, 3.6],
-          'circle-color': '#7c90c0',
-          'circle-blur': 1.0,
-          'circle-opacity': 0.32,
+          // a deep, saturated ink-blue that never climbs toward white — the
+          // densest core stays well below the warm self-lights in luminance
+          'heatmap-color': [
+            'interpolate',
+            ['linear'],
+            ['heatmap-density'],
+            0, 'rgba(8,10,16,0)',
+            0.4, 'rgba(22,28,44,1)',
+            0.75, 'rgba(38,50,78,1)',
+            1, 'rgba(56,72,110,1)',
+          ],
+          // wide radius + low intensity so cities bleed into a soft haze and
+          // dense cores never saturate
+          'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 1, 24, 4.5, 44],
+          'heatmap-intensity': 0.35,
+          'heatmap-opacity': 0.6,
         },
       })
 
