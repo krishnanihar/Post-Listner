@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { GLYPH_VERSION, simplifyPath, distillGlyph, deriveHand } from '../glyph.js'
+import { GLYPH_VERSION, simplifyPath, distillGlyph, deriveHand, revealGlyph } from '../glyph.js'
 
 describe('simplifyPath (Ramer–Douglas–Peucker)', () => {
   it('keeps both endpoints', () => {
@@ -93,5 +93,60 @@ describe('deriveHand', () => {
 
   it('handles a null seed without throwing', () => {
     expect(() => deriveHand(null)).not.toThrow()
+  })
+})
+
+describe('revealGlyph', () => {
+  const glyph = { v: 1, pts: [[0, 0, 0], [0.2, 0.4, 100], [0.6, 0.5, 200], [1, 1, 400]], dur: 400 }
+
+  it('returns an empty array for an empty glyph', () => {
+    expect(revealGlyph({ v: 1, pts: [], dur: 0 }, 0.5)).toEqual([])
+  })
+
+  it('returns the single point for a one-point glyph', () => {
+    expect(revealGlyph({ v: 1, pts: [[0.3, 0.7, 0]], dur: 0 }, 0.5)).toEqual([[0.3, 0.7]])
+  })
+
+  it('returns the first point only at progress 0', () => {
+    expect(revealGlyph(glyph, 0)).toEqual([[0, 0]])
+  })
+
+  it('returns every point (as [x,y]) at progress 1', () => {
+    expect(revealGlyph(glyph, 1)).toEqual([[0, 0], [0.2, 0.4], [0.6, 0.5], [1, 1]])
+  })
+
+  it('returns the whole-point prefix when nothing straddles the target time', () => {
+    // progress 0.5 -> targetT 200 -> points at t=0,100,200 are whole; the
+    // segment to t=400 straddles but the interpolation fraction is 0, so it
+    // is not added (no duplicate point).
+    expect(revealGlyph(glyph, 0.5)).toEqual([[0, 0], [0.2, 0.4], [0.6, 0.5]])
+  })
+
+  it('interpolates the segment straddling the target time', () => {
+    // progress 0.75 -> targetT 300, between t=200 and t=400, fraction 0.5 ->
+    // interpolated point is the midpoint of [0.6,0.5] and [1,1] = [0.8,0.75]
+    expect(revealGlyph(glyph, 0.75)).toEqual([[0, 0], [0.2, 0.4], [0.6, 0.5], [0.8, 0.75]])
+  })
+
+  it('always returns a whole-point prefix of the full path', () => {
+    for (const p of [0.1, 0.3, 0.6, 0.9]) {
+      const out = revealGlyph(glyph, p)
+      expect(out.length).toBeLessThanOrEqual(glyph.pts.length)
+      // every point except possibly the last interpolated tail matches the path
+      for (let i = 0; i < out.length - 1; i++) {
+        expect(out[i]).toEqual([glyph.pts[i][0], glyph.pts[i][1]])
+      }
+    }
+  })
+
+  it('clamps progress below 0 and above 1', () => {
+    expect(revealGlyph(glyph, -0.5)).toEqual([[0, 0]])
+    expect(revealGlyph(glyph, 2)).toEqual([[0, 0], [0.2, 0.4], [0.6, 0.5], [1, 1]])
+  })
+
+  it('handles a missing or malformed glyph without throwing', () => {
+    expect(() => revealGlyph(null, 0.5)).not.toThrow()
+    expect(revealGlyph(null, 0.5)).toEqual([])
+    expect(revealGlyph({ v: 1 }, 0.5)).toEqual([])
   })
 })

@@ -107,6 +107,51 @@ export function distillGlyph(rawPts, opts = {}) {
 }
 
 /**
+ * revealGlyph — the points of a glyph that should be drawn at a given
+ * playback progress (0..1). Used to re-animate the recorded path in sync
+ * with the entry's song (spec §4.1). The per-point `t` sets the order and
+ * relative pacing; `progress` is normalised onto the glyph's own `dur`.
+ *
+ * Returns [[x, y], ...] — every point whose t <= progress*dur, plus one
+ * interpolated point on the segment straddling that time so the ink advances
+ * smoothly. progress <= 0 -> the first point only; >= 1 -> the whole path.
+ * A missing/short/malformed glyph is handled without throwing.
+ */
+export function revealGlyph(glyph, progress) {
+  const pts = glyph && Array.isArray(glyph.pts) ? glyph.pts : []
+  if (pts.length === 0) return []
+  const xy = (p) => [p[0], p[1]]
+  if (pts.length === 1) return [xy(pts[0])]
+  if (progress <= 0) return [xy(pts[0])]
+  if (progress >= 1) return pts.map(xy)
+
+  const dur = glyph.dur > 0 ? glyph.dur : pts[pts.length - 1][2] || 1
+  const targetT = progress * dur
+
+  const out = [xy(pts[0])]
+  for (let i = 1; i < pts.length; i++) {
+    const t = pts[i][2]
+    if (t <= targetT) {
+      out.push(xy(pts[i]))
+    } else {
+      // interpolate the straddling segment; skip when the fraction is 0 so
+      // the result never duplicates the previous whole point
+      const prev = pts[i - 1]
+      const span = t - prev[2]
+      const f = span > 0 ? (targetT - prev[2]) / span : 0
+      if (f > 0) {
+        out.push([
+          prev[0] + (pts[i][0] - prev[0]) * f,
+          prev[1] + (pts[i][1] - prev[1]) * f,
+        ])
+      }
+      break
+    }
+  }
+  return out
+}
+
+/**
  * Derive the per-account "hand" — a stable render style for one user's
  * glyphs. The account id is hashed (FNV-1a, via textHash) and independent
  * fields are carved from the 32-bit result. Constant for a given seed, so
