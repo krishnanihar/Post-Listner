@@ -9,6 +9,7 @@ import { Kuwahara } from './KuwaharaEffect'
 import { applyCoverWash } from './coverTexture'
 import ChapterIndex from './ChapterIndex'
 import { MONTH_FULL, monthOf } from './chapters'
+import { QRCodeSVG } from 'qrcode.react'
 
 /**
  * Journal — the desktop journal route.
@@ -124,7 +125,7 @@ function Book({ bookRef }) {
 }
 useGLTF.preload(BOOK_URL)
 
-export default function Journal({ entries, onSignOut }) {
+export default function Journal({ entries, onSignOut, newEntryId, sessionId, handStyle }) {
   const [view, setView] = useState('landing')
   const [index, setIndex] = useState(0)
   const [pageVisible, setPageVisible] = useState(false)
@@ -146,6 +147,17 @@ export default function Journal({ entries, onSignOut }) {
     const oldest = monthOf(entries[entries.length - 1].date)
     return `${MONTH_FULL[oldest] || oldest} – ${MONTH_FULL[newest] || newest}`
   }, [entries])
+
+  // the entry to open on — the just-written entry after a rite settles,
+  // otherwise the oldest entry (the last array index, since entries are
+  // newest-first), matching the manual "open the journal" default
+  const targetIndex = useMemo(() => {
+    if (newEntryId) {
+      const i = entries.findIndex((e) => e.id === newEntryId)
+      if (i >= 0) return i
+    }
+    return entries.length - 1
+  }, [entries, newEntryId])
 
   useEffect(() => {
     let raf
@@ -221,13 +233,12 @@ export default function Journal({ entries, onSignOut }) {
   const open = useCallback(() => {
     if (transRef.current) return
     setBusy(true)
-    // open on the first entry — the oldest sits at the last array index
     transRef.current = {
       kind: 'open',
       start: performance.now(),
-      firstIndex: entries.length - 1,
+      firstIndex: targetIndex,
     }
-  }, [entries.length])
+  }, [targetIndex])
 
   const turn = useCallback(
     (dir) => {
@@ -249,6 +260,13 @@ export default function Journal({ entries, onSignOut }) {
     },
     [index, maxIndex],
   )
+
+  // after a rite settles the journal opens itself, turned to the new entry —
+  // the desktop "lands on" the page rather than showing the landing screen
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (newEntryId && view === 'landing' && !transRef.current) open()
+  }, [newEntryId, view, open])
 
   useEffect(() => {
     const onKey = (e) => {
@@ -298,6 +316,47 @@ export default function Journal({ entries, onSignOut }) {
           sign out
         </button>
       )}
+      {sessionId && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 22,
+            left: 24,
+            zIndex: 5,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 7,
+          }}
+        >
+          <div
+            style={{
+              padding: 7,
+              background: '#fff',
+              borderRadius: 3,
+              border: '1px solid rgba(28,24,20,0.12)',
+            }}
+          >
+            <QRCodeSVG
+              value={`${window.location.origin}/?s=${sessionId}`}
+              size={78}
+              fgColor="#1C1814"
+              bgColor="#fff"
+              level="M"
+            />
+          </div>
+          <div
+            style={{
+              font: '300 9px ui-monospace, SFMono-Regular, monospace',
+              letterSpacing: '0.22em',
+              textTransform: 'uppercase',
+              color: view === 'landing' ? 'rgba(231,222,198,0.5)' : 'rgba(28,24,20,0.45)',
+            }}
+          >
+            begin again
+          </div>
+        </div>
+      )}
       <style>{`@keyframes jFadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}`}</style>
       <Canvas camera={{ position: [0, 3.7, 4.7], fov: 36 }} gl={{ antialias: true }} dpr={[1, 2]}>
         <color attach="background" args={[BG]} />
@@ -330,7 +389,7 @@ export default function Journal({ entries, onSignOut }) {
         </EffectComposer>
       </Canvas>
 
-      {pageVisible && <EntryPage entry={entries[index]} />}
+      {pageVisible && <EntryPage entry={entries[index]} handStyle={handStyle} />}
 
       {!busy && view === 'page' && (
         <ChapterIndex entries={entries} currentIndex={index} onJump={jumpTo} />
