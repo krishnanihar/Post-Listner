@@ -10,7 +10,7 @@ Both acts are a single React app, one Vite project, one Vercel deploy. Audio ass
 
 > **Branch note.** `main` runs the original 9-phase profiling rite (`entry → spectrum → depth → gems → moment → autobio → reflection → reveal → orchestra`). This branch — **`musicking`** — replaces phases 1–7 with the single Admirer conversation: the flow is `entry → admirer → orchestra → settle`. The 9-phase `*.score.jsx` files remain on disk, unrouted. The sections below describe the `musicking` flow; the Orchestra, conducting, audio engine, R2, and relay infrastructure are shared and unchanged from `main`.
 
-> **Status — 2026-05-21.** Active work is the **desktop journal** (`/journal`). Slices 1–4 of the 6-slice plan (`docs/desktop-journal-design.md` §12) are built; **Slice 5 — the Mapbox collective "sky" — is next**, then Slice 6 (the collective). Slice 3 & 4 specs and plans are at `docs/superpowers/specs/2026-05-21-desktop-journal-slice-{3,4}-*.md` and the matching `docs/superpowers/plans/`. All Slice 3–4 code is committed to `musicking` and **not yet pushed**; it passes `npm run build` and the 295-test suite, but the full phone→relay→Supabase manual run has not been done — verify a real QR-paired rite before relying on the loop.
+> **Status — 2026-05-21.** Active work is the **desktop journal** (`/journal`). Slices 1–5 of the 6-slice plan (`docs/desktop-journal-design.md` §12) are built; **Slice 6 — the real collective — is next**. Slice 3 & 4 specs and plans are at `docs/superpowers/specs/2026-05-21-desktop-journal-slice-{3,4}-*.md` and the matching `docs/superpowers/plans/`. All Slice 3–5 code is committed to `musicking` and **not yet pushed**; it passes `npm run build` and the 312-test suite, but the full phone→relay→Supabase manual run has not been done — verify a real QR-paired rite before relying on the loop.
 
 ## Tech Stack
 
@@ -18,7 +18,7 @@ Both acts are a single React app, one Vite project, one Vercel deploy. Audio ass
 - **Tailwind CSS v4** via `@tailwindcss/vite` plugin
 - **Framer Motion** for animations and transitions
 - **React Three Fiber** + **three.js** (`@react-three/fiber`, `@react-three/drei`, `@react-three/postprocessing`) — the conductor routes and the desktop journal's 3D book
-- **Vitest 4** + **jsdom** for pure-function unit tests (295 tests across `src/lib/__tests__/`, `src/orchestra/__tests__/`, `src/conductor-glb/`)
+- **Vitest 4** + **jsdom** for pure-function unit tests (312 tests across `src/lib/__tests__/`, `src/orchestra/__tests__/`, `src/conductor-glb/`)
 - **Web Audio API** — raw nodes only, no external audio libraries
   - PostListener: `src/engine/audio.js` (synthesis, MP3 playback for Spectrum/Moment)
   - Orchestra (v3): `src/orchestra/OrchestraEngine.js` (4-stem spatial graph, per-stem mono filter chain → HRTF panner with pre-HRTF mono reverb send, 6 image-source early reflections, binaural hall IR convolver, constant 10 Hz alpha binaural beats bypassing the compressor)
@@ -114,6 +114,7 @@ ElevenLabs API key (`ELEVENLABS_API_KEY`, no VITE_ prefix) stays on the server. 
 - **`api/compose.js`** — *Deprecated in v3.* No longer called. Safe to delete.
 - **`api/_admirerLines.js`** — Server-side allowlist of voice lines per phase. Canonical source.
 - **`api/_elevenlabs.js`** — Shared helpers: `getApiKey`, `readJsonBody`, `sendError`.
+- **`api/geo.js`** — Resolves the desktop's coarse location from Vercel's `x-vercel-ip-*` geolocation headers, coarsened server-side to a 1° grid. Returns `{ region }`. Used by `useRiteSession` to stamp a journal entry's `region` (desktop journal Slice 5).
 
 ### Hooks
 
@@ -228,7 +229,7 @@ Optional flow: desktop visitor sees a QR code, scans with phone, runs the rite o
 The `/journal` route is the **desktop journal** — PostListener's "past tense"
 surface, where a person browses the accumulated record of their sessions. The
 full design is a hybrid "book + sky"; the 6-slice spec is
-`docs/desktop-journal-design.md`. **Slices 1–4 are built; Slice 5 is next.**
+`docs/desktop-journal-design.md`. **Slices 1–5 are built; Slice 6 is next.**
 
 **Slice 1 — the book** (`src/journal/`). The journal is a literal 3D book used
 purely as a *transition device* between separate cream-paper entry pages — the
@@ -280,9 +281,21 @@ the entry's master MP3 from R2, and the glyph re-animates — `revealGlyph`
 which the extracted `Glyph` component (`src/journal/Glyph.jsx`) redraws each
 frame. The glyph mark itself is the play/pause control. Mock entries (no
 `song`/`glyph`) stay a static procedural mark. (`Glyph.jsx` and `EntryPage`'s
-watercolour wash share the seeded PRNG `src/lib/mulberry32.js`.) **Slice 5
-(next) — the sky:** the Mapbox collective globe + the "rise to the field"
-transition.
+watercolour wash share the seeded PRNG `src/lib/mulberry32.js`.)
+
+**Slice 5 — the sky (built).** The journal's third surface: a Mapbox GL
+globe of glyph-lights (`src/journal/CollectiveSky.jsx`), reached from a book
+page by the "rise to the field" transition — a `rise`/`descend` crossfade in
+`Journal.jsx`'s rAF orchestrator, reusing the cloud veil. The custom dark
+style is code-defined (`src/journal/skyStyle.js`): faint ink land over a void
+ocean. The user's own entries glow warm in their hand hue, placed at a
+coarsened location; a mock collective wash (`src/lib/mockCollective.js`)
+fills the field. Location is captured at settle from Vercel geo headers
+(`api/geo.js` → `entries.region`); `src/lib/geo.js` coarsens to a 1° grid and
+`src/lib/skyPresets.js` holds the INTIMATE↔EXPANDED rise camera. Needs
+`VITE_MAPBOX_TOKEN`; without it the rise affordance is hidden. **Slice 6
+(next) — the real collective:** anonymized glyphs from all accounts, the
+mine/field/both view (§7).
 
 ## Environment
 
@@ -305,8 +318,9 @@ transition.
 | `VITE_ELEVENLABS_AGENT_ID` | Runtime (`useAdmirerAgent`) | The Admirer agent (musicking branch). Set on Production environment in Vercel. |
 | `VITE_SUPABASE_URL` | Runtime (`supabaseClient.js`) | Desktop journal accounts + entries |
 | `VITE_SUPABASE_ANON_KEY` | Runtime (`supabaseClient.js`) | Desktop journal accounts + entries |
+| `VITE_MAPBOX_TOKEN` | Runtime (`CollectiveSky.jsx`) | The desktop journal's collective sky (Mapbox globe). Without it the "rise to the field" affordance is hidden. |
 
-`.env.local` is gitignored via `*.local`. Vercel production needs `VITE_STEMS_BASE_URL`, `VITE_MASTERS_BASE_URL`, `VITE_RELAY_URL`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_ANON_KEY` set on the **Production** environment.
+`.env.local` is gitignored via `*.local`. Vercel production needs `VITE_STEMS_BASE_URL`, `VITE_MASTERS_BASE_URL`, `VITE_RELAY_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_MAPBOX_TOKEN` set on the **Production** environment.
 
 ## Commands
 
@@ -315,7 +329,7 @@ npm run dev                          # Start dev server (Vite + /api middleware)
 npm run build                        # Production build
 npm run lint                         # ESLint
 npm run preview                      # Preview production build
-npm test                             # Run vitest suite (295 tests)
+npm test                             # Run vitest suite (312 tests)
 npm run test:watch                   # Watch mode
 
 # Local conducting relay (Node, dev only — for /conduct-* routes + QR pairing dev)

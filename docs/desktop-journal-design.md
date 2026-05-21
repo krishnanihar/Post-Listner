@@ -182,7 +182,7 @@ Front-loads the visually motivating, low-dependency work; defers the backend-hea
 2. **Accounts + backend.** Desktop sign-in; backend with accounts + entries; first-timer vs. returning routing. The book now reads the signed-in user's real entries.
 3. **Close the loop — entry capture. (Built 2026-05-21.)** Relay plumbing (phone sends `song` + `summary` at session end, §6); the desktop records the glyph from the live gesture stream; at settle, writes the entry to the account. A real session now produces a real journal entry.
 4. **The entry detail view. (Built 2026-05-21.)** Open one entry → the calm room: music replay from R2, glyph re-animation, caption (§5).
-5. **The sky.** Mapbox custom dark style + globe; the "rise to the field" transition; the user's own glyphs placed geographically (coarsened). Mock collective data acceptable here.
+5. **The sky. (Built 2026-05-21.)** Mapbox custom dark style + globe; the "rise to the field" transition; the user's own glyphs placed geographically (coarsened). Mock collective data acceptable here.
 6. **The collective.** Real anonymized glyphs from all accounts populate the sky; the self-among-others view (§7).
 
 ---
