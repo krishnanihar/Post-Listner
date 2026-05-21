@@ -26,6 +26,26 @@ export async function fetchEntries(userId) {
 }
 
 /**
+ * Write one journal entry for a user. Called by useRiteSession when the phone
+ * relays its entry at settle. Returns the inserted row, or null on failure /
+ * no client (the no-backend dev fallback). RLS ("insert own entries") plus
+ * the explicit user_id ensures a user only ever writes their own rows.
+ */
+export async function createEntry(userId, { song, summary, glyph }) {
+  if (!supabase || !userId) return null
+  const { data, error } = await supabase
+    .from('entries')
+    .insert({ user_id: userId, song, summary, glyph })
+    .select()
+    .single()
+  if (error) {
+    console.error('[entriesRepo] create failed:', error.message)
+    return null
+  }
+  return data
+}
+
+/**
  * Dev helper — populate a signed-in account with the 10 bundled mock entries
  * so the returning-journal flow is testable before the rite writes real
  * entries (slice 3). Exposed only via the FirstTimer dev affordance.
