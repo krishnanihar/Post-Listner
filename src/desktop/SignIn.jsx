@@ -24,9 +24,18 @@ function GoogleG() {
 
 export default function SignIn({ onSignIn }) {
   const [busy, setBusy] = useState(false)
-  const handle = () => {
+  const [failed, setFailed] = useState(false)
+  // on success the page redirects to Google and unloads — busy stays true.
+  // on failure onSignIn rejects: clear busy so the button is usable again.
+  const handle = async () => {
     setBusy(true)
-    onSignIn()
+    setFailed(false)
+    try {
+      await onSignIn()
+    } catch {
+      setBusy(false)
+      setFailed(true)
+    }
   }
   return (
     <div
@@ -82,6 +91,17 @@ export default function SignIn({ onSignIn }) {
         <GoogleG />
         {busy ? 'opening Google…' : 'continue with Google'}
       </button>
+      {failed && (
+        <div
+          style={{
+            marginTop: 16,
+            font: 'italic 13px Palatino, Georgia, serif',
+            color: 'rgba(120,46,32,0.72)',
+          }}
+        >
+          couldn't reach Google — try again
+        </div>
+      )}
     </div>
   )
 }

@@ -41,7 +41,12 @@ export function useAuth() {
       provider: 'google',
       options: { redirectTo: `${window.location.origin}/journal` },
     })
-    if (error) console.error('[useAuth] Google sign-in failed:', error.message)
+    if (error) {
+      // surface failure so the caller can recover its UI — on success the
+      // browser has already redirected to Google and this never returns
+      console.error('[useAuth] Google sign-in failed:', error.message)
+      throw error
+    }
   }, [])
 
   const signOut = useCallback(async () => {
