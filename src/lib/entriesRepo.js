@@ -15,7 +15,7 @@ export async function fetchEntries(userId) {
   if (!supabase) return []
   const { data, error } = await supabase
     .from('entries')
-    .select('id, created_at, song, summary, glyph')
+    .select('id, created_at, song, summary, glyph, region')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
   if (error) {
@@ -31,11 +31,11 @@ export async function fetchEntries(userId) {
  * no client (the no-backend dev fallback). RLS ("insert own entries") plus
  * the explicit user_id ensures a user only ever writes their own rows.
  */
-export async function createEntry(userId, { song, summary, glyph }) {
+export async function createEntry(userId, { song, summary, glyph, region }) {
   if (!supabase || !userId) return null
   const { data, error } = await supabase
     .from('entries')
-    .insert({ user_id: userId, song, summary, glyph })
+    .insert({ user_id: userId, song, summary, glyph, region })
     .select()
     .single()
   if (error) {
@@ -57,6 +57,7 @@ export async function seedSampleEntries(userId) {
     created_at: mockDateToIso(e.date),
     summary: e.summary,
     song: null,
+    region: e.region ?? null,
   }))
   const { error } = await supabase.from('entries').insert(rows)
   if (error) console.error('[entriesRepo] seed failed:', error.message)

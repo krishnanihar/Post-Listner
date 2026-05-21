@@ -56,3 +56,21 @@ describe('loadMockEntries', () => {
     expect(out[9].summary).toBe('where the record begins')
   })
 })
+
+describe('region (slice 5)', () => {
+  it('normalizeEntries carries region through', () => {
+    const rows = [
+      { id: 1, created_at: '2026-05-21T19:00:00.000Z', summary: 's', region: '41,-74' },
+    ]
+    expect(normalizeEntries(rows)[0].region).toBe('41,-74')
+  })
+  it('normalizeEntries defaults a missing region to null', () => {
+    const rows = [{ id: 1, created_at: '2026-05-21T19:00:00.000Z', summary: 's' }]
+    expect(normalizeEntries(rows)[0].region).toBeNull()
+  })
+  it('loadMockEntries places every mock entry with a region string', () => {
+    for (const e of loadMockEntries()) {
+      expect(typeof e.region).toBe('string')
+    }
+  })
+})

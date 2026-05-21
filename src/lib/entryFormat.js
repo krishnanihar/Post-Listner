@@ -53,6 +53,7 @@ export function normalizeEntries(rows) {
     summary: r.summary,
     song: r.song ?? null,
     glyph: r.glyph ?? null,
+    region: r.region ?? null,
   }))
 }
 
@@ -65,6 +66,7 @@ export function loadMockEntries() {
       summary: e.summary,
       song: null,
       glyph: null,
+      region: e.region ?? null,
     })),
   )
 }
