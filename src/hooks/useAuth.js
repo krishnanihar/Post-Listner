@@ -1,0 +1,59 @@
+import { useCallback, useEffect, useState } from 'react'
+import { supabase } from '../lib/supabaseClient'
+
+/**
+ * useAuth — Supabase auth state for the desktop.
+ *
+ * Loads the current session, subscribes to auth changes, and exposes Google
+ * sign-in / sign-out. With no Supabase client it resolves immediately to a
+ * signed-out, not-loading state so the desktop can fall back to the dev
+ * journal. Google OAuth uses the PKCE redirect flow — the client picks the
+ * session back up via detectSessionInUrl on return to /journal.
+ */
+export function useAuth() {
+  const [session, setSession] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!supabase) {
+      Promise.resolve().then(() => setLoading(false))
+      return
+    }
+    let active = true
+    supabase.auth.getSession().then(({ data }) => {
+      if (!active) return
+      setSession(data.session)
+      setLoading(false)
+    })
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, next) => {
+      setSession(next)
+    })
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  const signInWithGoogle = useCallback(async () => {
+    if (!supabase) return
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}/journal` },
+    })
+    if (error) console.error('[useAuth] Google sign-in failed:', error.message)
+  }, [])
+
+  const signOut = useCallback(async () => {
+    if (supabase) await supabase.auth.signOut()
+  }, [])
+
+  return {
+    session,
+    user: session?.user ?? null,
+    loading,
+    signInWithGoogle,
+    signOut,
+  }
+}
