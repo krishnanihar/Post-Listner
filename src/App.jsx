@@ -87,6 +87,44 @@ function App() {
 
   const stemsBundleRef = useRef(null)
   const revealAudioRef = useRef(null)
+  // Slice 3 — Orchestra distils the conducting glyph into this ref at song
+  // end; App reads it when relaying the entry message at settle.
+  const glyphRef = useRef(null)
+  // Slice 3 — one-shot guard so the settle entry is relayed exactly once
+  // per rite even if the effect re-runs; re-armed when the phase leaves settle.
+  const settleEntrySentRef = useRef(false)
+
+  // Slice 3 — close the loop. On entering settle, relay the finished entry
+  // (song + summary + glyph) to the paired desktop, which writes the journal
+  // row. Fire-and-forget with a bounded retry while the relay reconnects;
+  // a solo rite (no relayRef, or no glyph) simply writes nothing. The
+  // one-shot ref guarantees a single send per settle entry even if the
+  // effect re-runs; it re-arms whenever the phase leaves settle.
+  useEffect(() => {
+    if (phase !== 'settle') {
+      settleEntrySentRef.current = false
+      return
+    }
+    if (settleEntrySentRef.current) return
+    settleEntrySentRef.current = true
+    const relay = relayRef.current
+    const glyph = glyphRef.current
+    if (!relay || !glyph) return
+    const bundle = stemsBundleRef.current
+    const msg = {
+      type: 'entry',
+      song: bundle ? `${bundle.archetypeId}/${bundle.variationId}` : null,
+      summary: sessionData.summary || '',
+      glyph,
+    }
+    if (relay.send(msg)) return
+    let tries = 0
+    const iv = setInterval(() => {
+      tries += 1
+      if (relay.send(msg) || tries >= 10) clearInterval(iv)
+    }, 500)
+    return () => clearInterval(iv)
+  }, [phase, sessionData.summary])
 
   const nextPhase = useCallback((data = {}) => {
     const { stemsBundle, ...rest } = data
@@ -107,7 +145,7 @@ function App() {
   const phaseComponent = {
     entry: <Entry onNext={nextPhase} />,
     admirer: <Admirer onNext={nextPhase} getAudioCtx={getAudioCtx} revealAudioRef={revealAudioRef} />,
-    orchestra: <Orchestra avd={avdEngine} revealAudioRef={revealAudioRef} goToPhase={goToPhase} getAudioCtx={getAudioCtx} relayRef={relayRef} />,
+    orchestra: <Orchestra avd={avdEngine} revealAudioRef={revealAudioRef} goToPhase={goToPhase} getAudioCtx={getAudioCtx} relayRef={relayRef} glyphRef={glyphRef} />,
     settle: <Settle onComplete={handleSettleComplete} />,
   }
 
