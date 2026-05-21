@@ -29,7 +29,7 @@ The desktop is the **journal** — PostListener's "past tense" surface (spec Par
 
 **Deferred, by decision:** mobile sign-in — i.e. starting a solo phone rite with *no* desktop present. It is purely additive and requires zero rework of anything in this doc. Not in scope now.
 
-Routing today ([main.jsx](../src/main.jsx#L20)): desktop with no `?s=` → [Stage.jsx](../src/phases/Stage.jsx). This becomes: desktop → auth check → signed-out → sign-in; signed-in + 0 entries → first-timer; signed-in + entries → the journal. The live-mirror states in `Stage` still apply *during* a rite.
+Routing today ([main.jsx](../src/main.jsx#L20)): desktop with no `?s=` → `Desktop` (the auth-gated desktop root). This becomes: desktop → auth check → signed-out → sign-in; signed-in + 0 entries → first-timer; signed-in + entries → the journal. The live-mirror states (`StageCosmos`) still apply *during* a rite.
 
 ---
 
@@ -84,6 +84,13 @@ One **entry** = the record of one session. Deliberately lean — a mark, a time,
 | `summary` | the Admirer's one-line `commitEntry` sentence. **Relayed from the phone.** |
 
 **The one piece of relay plumbing required.** The glyph the desktop captures for free (it already streams gestures). But `song` and `summary` are not currently relayed — the phone must send those two at session end. This is ~10 lines in [relayProtocol.js](../src/lib/relayProtocol.js) — pure plumbing, **not** the parked mobile experience. It is unavoidable: the desktop cannot record an entry it was never told about.
+
+> **Slice 3 update.** The glyph is *not* accumulated by the desktop from the
+> live gesture stream (the original sketch above). Instead the phone records
+> the Orchestra conducting path, distils it (`distillGlyph`), and relays the
+> finished `{song, summary, glyph}` in one `entry` message at settle; the
+> desktop writes the row. This survives 4 minutes of relay loss as a single
+> retryable send rather than 14k streamed frames. See the Slice 3 spec §7.
 
 ---
 
@@ -173,7 +180,7 @@ Front-loads the visually motivating, low-dependency work; defers the backend-hea
 
 1. **The book, with mock data.** Blender re-skin of the model; R3F journal route; load the book; procedural page turns; the fade/turn/zoom choreography; dynamic page-content textures. Driven by hardcoded mock entries — **no backend needed.** Deliverable: page through a beautiful book of fake entries.
 2. **Accounts + backend.** Desktop sign-in; backend with accounts + entries; first-timer vs. returning routing. The book now reads the signed-in user's real entries.
-3. **Close the loop — entry capture.** Relay plumbing (phone sends `song` + `summary` at session end, §6); the desktop records the glyph from the live gesture stream; at settle, writes the entry to the account. A real session now produces a real journal entry.
+3. **Close the loop — entry capture. (Built 2026-05-21.)** Relay plumbing (phone sends `song` + `summary` at session end, §6); the desktop records the glyph from the live gesture stream; at settle, writes the entry to the account. A real session now produces a real journal entry.
 4. **The entry detail view.** Open one entry → the calm room: music replay from R2, glyph re-animation, caption (§5).
 5. **The sky.** Mapbox custom dark style + globe; the "rise to the field" transition; the user's own glyphs placed geographically (coarsened). Mock collective data acceptable here.
 6. **The collective.** Real anonymized glyphs from all accounts populate the sky; the self-among-others view (§7).

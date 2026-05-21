@@ -211,11 +211,11 @@ Each Spectrum word-pair carries explicit `coordL` / `coordR` AVD coordinates in 
 
 Optional flow: desktop visitor sees a QR code, scans with phone, runs the rite on phone, desktop becomes the cosmos canvas during Orchestra.
 
-- **Routing**: `src/main.jsx` picks the root at runtime — desktop without `?s=` → `Stage`; everything else → `App`. Device detection via `useDeviceMode` (`matchMedia('(pointer: coarse)')`).
+- **Routing**: `src/main.jsx` picks the root at runtime — desktop without `?s=` → `Desktop` (the auth-gated journal that also hosts the live rite mirror); everything else → `App`. Device detection via `useDeviceMode` (`matchMedia('(pointer: coarse)')`).
 - **Session ID**: 8-char Crockford base32 from `src/lib/sessionId.js`, generated client-side on desktop, embedded in QR URL.
 - **Relay**: Cloudflare Worker + Durable Object at `relay.post-listner.com` (or the `*.workers.dev` default). One DO instance per session ID, routed via `env.SESSION_ROOM.idFromName(sessionId).get()`. Conductor messages broadcast to all viewers. Single-conductor enforcement (new conductor closes the old socket). 5-second grace period via DO Alarms (hibernation-safe).
 - **Local dev**: `conduct-relay/server.cjs` at `wss://localhost:8443` with the same `?s=<id>&role=<conductor|viewer>` protocol. Backwards-compat: also accepts the legacy `role=phone|desktop`.
-- **WS protocol**: see `src/lib/relayProtocol.js`. 4 conductor→viewer message types: `gesture`, `phase`, `audio`, `session:end`. Relay-generated: `conductor:lost`, `conductor:resumed`.
+- **WS protocol**: see `src/lib/relayProtocol.js`. 5 conductor→viewer message types: `gesture`, `phase`, `audio`, `session:end`, `entry` (the finished journal entry, relayed at settle). Relay-generated: `conductor:lost`, `conductor:resumed`.
 - **Phone bundle**: `conduct-relay/src/phone.js` builds via esbuild to `conduct-relay/public/phone.bundle.js` and imports `GestureCore` + `RelayClient` from the main project. Session ID via `?s=` URL param or the dev session input field.
 - **Cosmos audio**: phone sends 128-byte FFT magnitude arrays at 30 fps over WS during Orchestra phase. Desktop reads them into a `Uint8Array(128)` and feeds the existing `ConductorCelestialField` canvas as if it were a local AnalyserNode. Guarantees what user hears matches what desktop visualizes.
 
@@ -224,7 +224,7 @@ Optional flow: desktop visitor sees a QR code, scans with phone, runs the rite o
 The `/journal` route is the **desktop journal** — PostListener's "past tense"
 surface, where a person browses the accumulated record of their sessions. The
 full design is a hybrid "book + sky"; the 6-slice spec is
-`docs/desktop-journal-design.md`. **Slices 1–2 are built; Slice 3 is next.**
+`docs/desktop-journal-design.md`. **Slices 1–3 are built; Slice 4 is next.**
 
 **Slice 1 — the book** (`src/journal/`). The journal is a literal 3D book used
 purely as a *transition device* between separate cream-paper entry pages — the
@@ -254,13 +254,22 @@ Entries live in one Supabase `entries` table behind RLS (`supabase/schema.sql`);
 `src/lib/entriesRepo.js` is the data layer. With no Supabase env set, `Desktop`
 falls back to a no-auth journal on mock data, so `/journal` always renders.
 Backend setup: `docs/supabase-setup.md`. A project-scoped Supabase MCP
-(`.mcp.json`) is configured for database work. The original `Stage` root +
-phone-rite/QR-pairing flow are unchanged.
+(`.mcp.json`) is configured for database work. The desktop root is now
+`Desktop` itself; `main.jsx` routes desktop-without-`?s=` straight to it.
+The phone-rite/QR-pairing relay flow is unchanged.
 
-**Slice 3 (next) — "close the loop":** the phone rite writing a real entry at
-settle (relay `song`+`summary`, record the glyph, merge the live-rite mirror
-into the signed-in desktop). A brainstorm — Slice 3 scope + a glyph-system
-rethink — is the pending starting point.
+**Slice 3 — "close the loop" (built).** A QR-paired rite writes a real
+`entries` row at settle. The phone records the Orchestra conducting gesture,
+`distillGlyph` (`src/lib/glyph.js`) reduces it to a small recorded-path glyph,
+and `App.jsx` relays one `entry` message. `Desktop` is now the desktop root:
+`useRiteSession` (`src/hooks/useRiteSession.js`) holds the relay viewer, runs
+the rite state machine, writes the row via `entriesRepo.createEntry`, and the
+`Journal` reopens turned to the new page. `EntryPage` renders the real glyph in
+a per-account "hand" (`deriveHand`); entries with no glyph keep the procedural
+fallback. `Stage` is retired (`StageCosmos` reused as the live mirror). The
+Admirer-phase `GlyphCanvas` is kept as pure decoration. **Slice 4 (next) — the
+entry detail view:** music replay from R2 + glyph re-animation (the stored
+per-point timing makes this a replay).
 
 ## Environment
 
