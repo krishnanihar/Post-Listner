@@ -191,7 +191,7 @@ function Rule() {
 }
 
 export default function EntryPage({ entry }) {
-  const wash = useMemo(() => (entry ? washBackground(entry.id) : ''), [entry])
+  const wash = useMemo(() => (entry ? washBackground(entry.seq) : ''), [entry])
   if (!entry) return null
   return (
     <div
@@ -225,7 +225,7 @@ export default function EntryPage({ entry }) {
             marginBottom: 10,
           }}
         >
-          {roman(entry.id)}.
+          {roman(entry.seq)}.
         </div>
         <div
           style={{
@@ -238,7 +238,7 @@ export default function EntryPage({ entry }) {
           {entry.date}
         </div>
         <Rule />
-        <Glyph seed={entry.id} />
+        <Glyph seed={entry.seq} />
         <div
           style={{
             font: 'italic 31px Palatino, "Palatino Linotype", Georgia, serif',

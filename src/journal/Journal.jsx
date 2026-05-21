@@ -3,7 +3,6 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { useGLTF, Environment, ContactShadows } from '@react-three/drei'
 import { EffectComposer, Bloom, Vignette, Noise } from '@react-three/postprocessing'
 import * as THREE from 'three'
-import { MOCK_ENTRIES } from './mockEntries'
 import EntryPage from './EntryPage'
 import CloudCanvas from './CloudCanvas'
 import { Kuwahara } from './KuwaharaEffect'
@@ -125,7 +124,7 @@ function Book({ bookRef }) {
 }
 useGLTF.preload(BOOK_URL)
 
-export default function Journal() {
+export default function Journal({ entries, onSignOut }) {
   const [view, setView] = useState('landing')
   const [index, setIndex] = useState(0)
   const [pageVisible, setPageVisible] = useState(false)
@@ -139,14 +138,14 @@ export default function Journal() {
   const veilRef = useRef({ opacity: 0 })
   const transRef = useRef(null)
 
-  const maxIndex = MOCK_ENTRIES.length - 1
+  const maxIndex = entries.length - 1
 
   // the span of the record — a quiet temporal frame for the landing
   const span = useMemo(() => {
-    const newest = monthOf(MOCK_ENTRIES[0].date)
-    const oldest = monthOf(MOCK_ENTRIES[MOCK_ENTRIES.length - 1].date)
+    const newest = monthOf(entries[0].date)
+    const oldest = monthOf(entries[entries.length - 1].date)
     return `${MONTH_FULL[oldest] || oldest} – ${MONTH_FULL[newest] || newest}`
-  }, [])
+  }, [entries])
 
   useEffect(() => {
     let raf
@@ -167,9 +166,7 @@ export default function Journal() {
           veilRef.current.opacity = pulse(t, 0.6, 0.78, 0.85, 1.0)
           if (t >= 0.8 && !tr.showPage) {
             tr.showPage = true
-            // open on the first entry — the beginning of the record. Entries
-            // are newest-first, so the oldest sits at the last array index.
-            setIndex(MOCK_ENTRIES.length - 1)
+            setIndex(tr.firstIndex)
             setPageVisible(true)
           }
         } else if (tr.kind === 'jump') {
@@ -224,8 +221,13 @@ export default function Journal() {
   const open = useCallback(() => {
     if (transRef.current) return
     setBusy(true)
-    transRef.current = { kind: 'open', start: performance.now() }
-  }, [])
+    // open on the first entry — the oldest sits at the last array index
+    transRef.current = {
+      kind: 'open',
+      start: performance.now(),
+      firstIndex: entries.length - 1,
+    }
+  }, [entries.length])
 
   const turn = useCallback(
     (dir) => {
@@ -278,6 +280,24 @@ export default function Journal() {
 
   return (
     <div className="h-full w-full" style={{ background: BG, position: 'relative' }}>
+      {onSignOut && (
+        <button
+          onClick={onSignOut}
+          style={{
+            position: 'absolute',
+            top: 20,
+            right: 24,
+            zIndex: 5,
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            font: 'italic 13px Palatino, Georgia, serif',
+            color: view === 'landing' ? 'rgba(231,222,198,0.4)' : 'rgba(28,24,20,0.4)',
+          }}
+        >
+          sign out
+        </button>
+      )}
       <style>{`@keyframes jFadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}`}</style>
       <Canvas camera={{ position: [0, 3.7, 4.7], fov: 36 }} gl={{ antialias: true }} dpr={[1, 2]}>
         <color attach="background" args={[BG]} />
@@ -310,10 +330,10 @@ export default function Journal() {
         </EffectComposer>
       </Canvas>
 
-      {pageVisible && <EntryPage entry={MOCK_ENTRIES[index]} />}
+      {pageVisible && <EntryPage entry={entries[index]} />}
 
       {!busy && view === 'page' && (
-        <ChapterIndex entries={MOCK_ENTRIES} currentIndex={index} onJump={jumpTo} />
+        <ChapterIndex entries={entries} currentIndex={index} onJump={jumpTo} />
       )}
 
       <CloudCanvas veilRef={veilRef} />
@@ -439,7 +459,7 @@ export default function Journal() {
               textAlign: 'center',
             }}
           >
-            {MOCK_ENTRIES.length - index} of {MOCK_ENTRIES.length}
+            {entries.length - index} of {entries.length}
           </span>
           <button style={{ ...inkBtn, opacity: index <= 0 ? 0.3 : 1 }} onClick={() => turn(-1)}>
             later →
