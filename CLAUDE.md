@@ -10,7 +10,7 @@ Both acts are a single React app, one Vite project, one Vercel deploy. Audio ass
 
 > **Branch note.** `main` runs the original 9-phase profiling rite (`entry → spectrum → depth → gems → moment → autobio → reflection → reveal → orchestra`). This branch — **`musicking`** — replaces phases 1–7 with the single Admirer conversation: the flow is `entry → admirer → orchestra → settle`. The 9-phase `*.score.jsx` files remain on disk, unrouted. The sections below describe the `musicking` flow; the Orchestra, conducting, audio engine, R2, and relay infrastructure are shared and unchanged from `main`.
 
-> **Status — 2026-05-21.** Active work is the **desktop journal** (`/journal`). Slices 1–5 of the 6-slice plan (`docs/desktop-journal-design.md` §12) are built; **Slice 6 — the real collective — is next**. Slice 3 & 4 specs and plans are at `docs/superpowers/specs/2026-05-21-desktop-journal-slice-{3,4}-*.md` and the matching `docs/superpowers/plans/`. All Slice 3–5 code is committed to `musicking` and **not yet pushed**; it passes `npm run build` and the 312-test suite, but the full phone→relay→Supabase manual run has not been done — verify a real QR-paired rite before relying on the loop.
+> **Status — 2026-05-22.** Active work is the **desktop journal** (`/journal`). Slices 1–5 of the 6-slice plan (`docs/desktop-journal-design.md` §12) are built; **Slice 6 — the real collective — is next**. Slice 3, 4 & 5 specs and plans are at `docs/superpowers/specs/2026-05-21-desktop-journal-slice-{3,4,5}-*.md` and the matching `docs/superpowers/plans/`. All Slice 3–5 code is committed to `musicking` and **not yet pushed**; it passes `npm run build` and the 312-test suite, but the full phone→relay→Supabase manual run has not been done — verify a real QR-paired rite before relying on the loop.
 
 ## Tech Stack
 
@@ -289,11 +289,14 @@ page by the "rise to the field" transition — a `rise`/`descend` crossfade in
 `Journal.jsx`'s rAF orchestrator, reusing the cloud veil. The custom dark
 style is code-defined (`src/journal/skyStyle.js`): faint ink land over a void
 ocean. The user's own entries glow warm in their hand hue, placed at a
-coarsened location; a mock collective wash (`src/lib/mockCollective.js`)
-fills the field. Location is captured at settle from Vercel geo headers
-(`api/geo.js` → `entries.region`); `src/lib/geo.js` coarsens to a 1° grid and
-`src/lib/skyPresets.js` holds the INTIMATE↔EXPANDED rise camera. Needs
-`VITE_MAPBOX_TOKEN`; without it the rise affordance is hidden. **Slice 6
+coarsened location; a mock collective — `src/lib/mockCollective.js` rendered
+as a soft, dim Mapbox `heatmap` haze — fills the field. Location is captured
+at settle from Vercel geo headers (`api/geo.js` → `entries.region`);
+`src/lib/geo.js` coarsens to a 1° grid and `src/lib/skyPresets.js` holds the
+INTIMATE↔EXPANDED rise camera. Needs `VITE_MAPBOX_TOKEN`; without it the rise
+affordance is hidden. `region` resolves only on a Vercel deploy (the geo
+headers don't exist in local dev — it stores `null` there), so real
+self-placement on the globe is verifiable only once deployed. **Slice 6
 (next) — the real collective:** anonymized glyphs from all accounts, the
 mine/field/both view (§7).
 
@@ -351,6 +354,8 @@ bash scripts/upload-to-r2.sh stems      # Sync stems only
 npm run gen:phase2                      # Legacy Phase 2 audio asset generation
 node scripts/generate-assets.js         # Legacy Orchestra v2 audio asset generation (TTS, SFX, Music, Hall IR)
 ```
+
+> **Lint debt.** `npm run lint` is **not clean** — ~133 pre-existing errors (+12 warnings), all in legacy/unrouted or non-browser code: the `src/phases` 9-phase rite, `src/chamber` v1, Node `scripts/`, `api/`, and the relay. Mostly `no-unused-vars`; every `no-undef` is an ESLint env-config gap (`process`/`Buffer`/Cloudflare-Workers globals), not a real bug. `npm run build` + `npm test` (312 passing) are the real gates — the bar for new work is **no _new_ lint errors**.
 
 ## Deployment
 
