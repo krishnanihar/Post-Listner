@@ -5,11 +5,15 @@ import Stage from './phases/Stage.jsx'
 import ConductorView from './conductor/ConductorView.jsx'
 import ConductCodex from './conductor-codex/ConductCodex.jsx'
 import ConductGlb from './conductor-glb/ConductGlb.jsx'
+import Journal from './journal/Journal.jsx'
+import CloudTest from './journal/CloudTest.jsx'
 
 const ROUTES = {
   '/conduct': ConductorView,
   '/conduct-codex': ConductCodex,
   '/conduct-glb': ConductGlb,
+  '/journal': Journal,
+  '/cloud-test': CloudTest,
 }
 
 // Device + session detection at the root:
