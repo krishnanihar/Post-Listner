@@ -217,6 +217,18 @@ Optional flow: desktop visitor sees a QR code, scans with phone, runs the rite o
 - **Phone bundle**: `conduct-relay/src/phone.js` builds via esbuild to `conduct-relay/public/phone.bundle.js` and imports `GestureCore` + `RelayClient` from the main project. Session ID via `?s=` URL param or the dev session input field.
 - **Cosmos audio**: phone sends 128-byte FFT magnitude arrays at 30 fps over WS during Orchestra phase. Desktop reads them into a `Uint8Array(128)` and feeds the existing `ConductorCelestialField` canvas as if it were a local AnalyserNode. Guarantees what user hears matches what desktop visualizes.
 
+### Desktop journal (slice 2 — accounts + backend)
+
+The `/journal` route is the **auth-gated desktop journal**. `src/desktop/Desktop.jsx`
+is the orchestrator: `useAuth` (Supabase Google OAuth) gates between `SignIn`,
+`FirstTimer` (signed in, zero entries — QR only), and the `Journal` (one or
+more entries). Entries live in one Supabase `entries` table behind RLS
+(`supabase/schema.sql`); `src/lib/entriesRepo.js` is the data layer and
+`src/lib/entryFormat.js` the pure shaping (tested). With no Supabase env set,
+`Desktop` falls back to a no-auth journal on mock data. Backend setup:
+`docs/supabase-setup.md`. The original `Stage` root + phone-rite/QR-pairing
+flow are unchanged.
+
 ## Environment
 
 `.env.local` env vars:
@@ -377,18 +389,6 @@ A 2D canvas experience where the conducting gesture draws an ink trail through a
 **Performance:** Zero WebGL contexts on the route (was 5 mid-iteration when R3F layers were stacked). Three 2D canvases. ~60fps on modern devices, ~30 on low-end mobile under sustained gesture.
 
 **Not yet:** wiring to the actual Orchestra-phase audio (currently independent MP3 playback, not the matched-archetype stem player). When integrated, the simulated stem signals in this route become real `AnalyserNode` reads on the existing `StemPlayer` sources.
-
-### Desktop journal (slice 2 — accounts + backend)
-
-The `/journal` route is the **auth-gated desktop journal**. `src/desktop/Desktop.jsx`
-is the orchestrator: `useAuth` (Supabase Google OAuth) gates between `SignIn`,
-`FirstTimer` (signed in, zero entries — QR only), and the `Journal` (one or
-more entries). Entries live in one Supabase `entries` table behind RLS
-(`supabase/schema.sql`); `src/lib/entriesRepo.js` is the data layer and
-`src/lib/entryFormat.js` the pure shaping (tested). With no Supabase env set,
-`Desktop` falls back to a no-auth journal on mock data. Backend setup:
-`docs/supabase-setup.md`. The original `Stage` root + phone-rite/QR-pairing
-flow are unchanged.
 
 ## Parked for later
 
