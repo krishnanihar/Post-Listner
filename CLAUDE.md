@@ -224,7 +224,7 @@ Optional flow: desktop visitor sees a QR code, scans with phone, runs the rite o
 The `/journal` route is the **desktop journal** — PostListener's "past tense"
 surface, where a person browses the accumulated record of their sessions. The
 full design is a hybrid "book + sky"; the 6-slice spec is
-`docs/desktop-journal-design.md`. **Slices 1–3 are built; Slice 4 is next.**
+`docs/desktop-journal-design.md`. **Slices 1–4 are built; Slice 5 is next.**
 
 **Slice 1 — the book** (`src/journal/`). The journal is a literal 3D book used
 purely as a *transition device* between separate cream-paper entry pages — the
@@ -267,9 +267,16 @@ the rite state machine, writes the row via `entriesRepo.createEntry`, and the
 `Journal` reopens turned to the new page. `EntryPage` renders the real glyph in
 a per-account "hand" (`deriveHand`); entries with no glyph keep the procedural
 fallback. `Stage` is retired (`StageCosmos` reused as the live mirror). The
-Admirer-phase `GlyphCanvas` is kept as pure decoration. **Slice 4 (next) — the
-entry detail view:** music replay from R2 + glyph re-animation (the stored
-per-point timing makes this a replay).
+Admirer-phase `GlyphCanvas` is kept as pure decoration.
+
+**Slice 4 — the entry detail view (built).** Opening a journal entry makes its
+page a living "room": `useEntryAudio` (`src/journal/useEntryAudio.js`) streams
+the entry's master MP3 from R2, and the glyph re-animates — `revealGlyph`
+(`src/lib/glyph.js`) slices the recorded path to the song's playback position,
+which the extracted `Glyph` component (`src/journal/Glyph.jsx`) redraws each
+frame. The glyph mark itself is the play/pause control. Mock entries (no
+`song`/`glyph`) stay a static procedural mark. **Slice 5 (next) — the sky:**
+the Mapbox collective globe + the "rise to the field" transition.
 
 ## Environment
 
