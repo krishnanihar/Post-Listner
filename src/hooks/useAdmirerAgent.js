@@ -18,7 +18,7 @@ import { addTranscriptLine } from '../lib/liveSession.js'
 // sessionStage:
 //   'opening' — Admirer phase: arrival + biography + locate + generation
 //   'closing' — Settle phase: brief settle/close
-export function useAdmirerAgent({ sessionStage = 'opening', callbacks = {} } = {}) {
+export function useAdmirerAgent({ sessionStage = 'opening', firstMessage = null, callbacks = {} } = {}) {
   const conv = useConversation()
   const { startSession, endSession, setMuted } = conv
   const startedRef = useRef(false)
@@ -41,6 +41,14 @@ export function useAdmirerAgent({ sessionStage = 'opening', callbacks = {} } = {
       await startSession({
         clientTools,
         dynamicVariables,
+        // Client-side override for the agent's first utterance. The
+        // platform-side permission (overrides.agent.first_message) was
+        // enabled at agent creation; when this is provided it replaces
+        // the static "this first time runs slow..." baked into the
+        // agent. Pass null/undefined to keep the static default.
+        overrides: firstMessage
+          ? { agent: { firstMessage } }
+          : undefined,
         onConnect: ({ conversationId }) => {
           console.log(`[admirer] connected (${sessionStage}):`, conversationId)
           // Push-to-talk: start muted. Setting after connect so the SDK
@@ -67,7 +75,7 @@ export function useAdmirerAgent({ sessionStage = 'opening', callbacks = {} } = {
       console.error('[admirer] startSession threw:', e)
       startedRef.current = false
     }
-  }, [sessionStage, startSession, setMuted])
+  }, [sessionStage, firstMessage, startSession, setMuted])
 
   const disconnect = useCallback(async () => {
     if (!startedRef.current) return

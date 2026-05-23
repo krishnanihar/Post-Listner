@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ConversationProvider } from '@elevenlabs/react'
 import Paper from '../score/Paper'
 import { COLORS, FONTS } from '../score/tokens'
 import { useAdmirerAgent } from '../hooks/useAdmirerAgent.js'
+import { buildFirstMessage } from '../lib/admirerFirstMessage.js'
+import { buildDynamicVariables } from '../lib/sessionStore.js'
 import StemPlayer from '../lib/stemPlayer.js'
 import { addLexiconWord } from '../lib/liveSession.js'
 import HoldToSpeak from './HoldToSpeak'
@@ -162,6 +164,19 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     addLexiconWord(userPhrasing)
   }, [])
 
+  // Build the agent's opening line from session state — first-time users
+  // get the threshold opening; returning users get a short recognition line
+  // keyed off recencySummary + timeOfDay. Computed once on mount so it
+  // is stable across re-renders.
+  const firstMessage = useMemo(() => {
+    const dv = buildDynamicVariables()
+    return buildFirstMessage({
+      isFirstSession: dv.is_first_session,
+      recencySummary: dv.recency_summary,
+      timeOfDay: dv.time_of_day,
+    })
+  }, [])
+
   const {
     connect,
     status,
@@ -171,6 +186,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     sendUserActivity,
   } = useAdmirerAgent({
     sessionStage: 'opening',
+    firstMessage,
     callbacks: { onPlayFragment, onStartGeneration, onCommitEntry, onRecordLexicon },
   })
 
