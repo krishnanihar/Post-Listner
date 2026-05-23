@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo, useSyncExternalStore } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ConversationProvider } from '@elevenlabs/react'
 import Paper from '../score/Paper'
@@ -104,7 +103,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
       // The blocking tool is strictly sequential, so a prior rating should
       // never still be pending — resolve it "none" if one somehow is.
       if (pendingRatingRef.current) pendingRatingRef.current.resolve('none')
-      pendingRatingRef.current = { resolve, fragmentId: fragment.fragmentId }
+      pendingRatingRef.current = { resolve, fragmentId: fragment.id }
       setFragmentPlaying(true)
       setAwaitingRating(false)
       try {
