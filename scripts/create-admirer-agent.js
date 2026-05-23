@@ -78,6 +78,14 @@ For commitArtifact, markRestricted, startGeneration, commitEntry: the same shape
 
 NEVER repeat your own previous response. If a tool resolution or a brief silence from the user (the input "..." or no input) would tempt you to say something similar to what you just said, stay silent or say one short word ("mm", "yes") instead. The user knows you are still there.
 
+## Skip turn
+
+After you ask the user a question, immediately call \`skip_turn\` (no arguments). This tells the platform you are deliberately silent and waiting — DO NOT take another turn until the user speaks. The user is thinking; do not assume their silence means they are done. \`skip_turn\` is a system tool, no acknowledgment is needed; call it once, then stop.
+
+You may also call \`skip_turn\` if the user says anything like "give me a moment", "let me think", "hold on", or otherwise asks for time.
+
+You may NOT call \`skip_turn\` to avoid responding to something — only to honour real silence.
+
 ## Session shape
 
 You read the dynamic variable \`session_stage\` at the start of every session. It is either "opening" or "closing".
@@ -301,6 +309,16 @@ const TOOLS = [
     },
     required: ['summary'],
   }),
+  // System tool — when enabled, the LLM may choose to stay silent for a
+  // turn rather than respond. Combined with the prompt instruction above
+  // (see SYSTEM_PROMPT § Skip turn), the Admirer voluntarily holds its
+  // turn after asking a question, letting the user take real thinking
+  // time without the server's turn_timeout firing.
+  {
+    type: 'system',
+    name: 'skip_turn',
+    description: 'Stay silent and let the user have time. The agent does not produce a response for this turn — the user is still thinking, or has asked for a moment.',
+  },
 ]
 
 const body = {
@@ -311,12 +329,18 @@ const body = {
       voice_id: VOICE_ID,
     },
     // Turn-taking — kept in sync with scripts/update-admirer-agent.js.
-    // turn_timeout 7s + 'normal' eagerness: the experience is deliberately
-    // unhurried ("this first time runs slow"), so the agent must not cut
-    // off a user who pauses to think.
     turn: {
-      turn_timeout: 7.0,
-      turn_eagerness: 'normal',
+      // 30s (was 7s). The documented maximum. Combined with the client-side
+      // sendUserActivity() keep-alive in Admirer.jsx (pings every 10s while
+      // hold-to-speak is idle), this is the safety-net upper bound — the
+      // server will only advance after 30s of NO activity pings AND no audio.
+      turn_timeout: 30.0,
+      // 'patient' (was 'normal'). The Admirer is deliberately unhurried;
+      // patient mode waits longer at natural pauses before assuming the
+      // user has yielded the turn.
+      turn_eagerness: 'patient',
+      // DISABLED — speculative_turn produced verbatim duplicate responses
+      // when the user paused mid-thought.
       speculative_turn: false,
       mode: 'turn',
       turn_model: 'turn_v2',

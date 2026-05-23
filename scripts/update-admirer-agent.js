@@ -84,24 +84,10 @@ const patch = {
       },
     },
     turn: {
-      // 7.0 (was briefly 3.0). The 3s timeout cut users off when they
-      // paused to think — the experience is deliberately unhurried ("this
-      // first time runs slow"), so the agent must wait out a reflective
-      // silence rather than jump into it.
-      turn_timeout: 7.0,
-      // "normal" (was briefly "eager"). Eager made the agent commit to a
-      // turn the instant it guessed the user was done; normal lets a beat
-      // land first.
-      turn_eagerness: 'normal',
-      // DISABLED — speculative_turn produced verbatim duplicate responses
-      // when the user paused mid-thought or went briefly silent ("..."
-      // user turns triggered a second full agent response identical to
-      // the previous one). The latency benefit isn't worth the doubling
-      // for an intimate voice register that already tolerates 2-3s gaps.
-      // Verified in conv_5901ks0y99eceetbgvtn35knpqaf (turns 06/10 and
-      // 17/25 doubled).
+      // See create-admirer-agent.js for full rationale.
+      turn_timeout: 30.0,
+      turn_eagerness: 'patient',
       speculative_turn: false,
-      // Keep existing
       mode: 'turn',
       turn_model: 'turn_v2',
     },
@@ -136,8 +122,8 @@ console.log('Agent updated.')
 console.log(`  first_message:     ${FIRST_MESSAGE.length} chars`)
 console.log(`  system prompt:     ${SYSTEM_PROMPT.length} chars synced from create script`)
 console.log('  llm:               gemini-2.5-flash-lite')
-console.log('  turn_timeout:      7.0')
-console.log('  turn_eagerness:    normal')
+console.log('  turn_timeout:      30.0')
+console.log('  turn_eagerness:    patient')
 console.log('  speculative_turn:  false  (was true; caused duplicate utterances)')
 console.log('  tts.speed:         1.05')
 console.log('')
