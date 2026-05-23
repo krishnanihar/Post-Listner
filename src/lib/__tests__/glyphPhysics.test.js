@@ -18,7 +18,7 @@ function p(overrides = {}) {
 describe('stepParticle', () => {
   const dt = 1 / 60 // 16.67ms
   const zeroForce = { x: 0, y: 0 }
-  const now = 1000
+  const now = 100_000  // large enough that test offsets (e.g. now - 5000) stay positive
 
   it('does not move an un-released particle at scatter with no force', () => {
     const particle = p({ x: 5, y: 5, sx: 5, sy: 5 }) // already at scatter
@@ -91,5 +91,34 @@ describe('stepParticle', () => {
     expect(typeof PHYSICS.MOTION_FORCE).toBe('number')
     expect(typeof PHYSICS.SETTLED_MOTION_COUPLING).toBe('number')
     expect(PHYSICS.SETTLED_MOTION_COUPLING).toBeLessThan(0.5) // weak
+  })
+
+  it('does NOT spring-pull toward target when releasedAt is in the FUTURE', () => {
+    // BackgroundGlyph stages cascade by setting releasedAt = now + delay.
+    // Particles with a future releasedAt MUST behave as un-released
+    // (spring toward scatter, not target) until nowMs >= releasedAt.
+    const particle = p({
+      x: 0, y: 0,
+      sx: 0, sy: 0,    // scatter is at origin
+      tx: 100, ty: 0,  // target is far on +x
+      releasedAt: now + 500, // 500ms in the future
+    })
+    stepParticle(particle, dt, zeroForce, now)
+    // Released would pull toward (100, 0) → vx > 0. Un-released at scatter
+    // with no force should stay at rest.
+    expect(particle.vx).toBeCloseTo(0, 4)
+    expect(particle.vy).toBeCloseTo(0, 4)
+  })
+
+  it('starts spring-pulling toward target once nowMs reaches releasedAt', () => {
+    const particle = p({
+      x: 0, y: 0,
+      sx: 0, sy: 0,
+      tx: 100, ty: 0,
+      releasedAt: now,  // releases NOW, not in the future
+    })
+    stepParticle(particle, dt, zeroForce, now)
+    // Spring should pull toward +x now.
+    expect(particle.vx).toBeGreaterThan(0)
   })
 })

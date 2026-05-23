@@ -49,7 +49,7 @@ export const PHYSICS = {
 //
 // Mutates p in place. Returns p for chaining.
 export function stepParticle(p, dt, motionForce, nowMs) {
-  const released = p.releasedAt !== 0
+  const released = p.releasedAt > 0 && nowMs >= p.releasedAt
   const settled = released && (nowMs - p.releasedAt) > PHYSICS.SETTLED_AFTER_MS
 
   // Spring target: released → its real target; otherwise its scatter point.
