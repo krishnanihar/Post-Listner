@@ -51,7 +51,7 @@ export default function ReflectionSurface() {
                 style={{
                   fontFamily: 'Iowan Old Style, Palatino, serif',
                   fontStyle: 'italic', fontSize: 12, letterSpacing: 0.2,
-                  color: 'currentColor',
+                  color: 'var(--ink, currentColor)',
                 }}
               >
                 {w}
@@ -92,7 +92,7 @@ export default function ReflectionSurface() {
                     fontSize,
                     lineHeight: 1.45,
                     textAlign: 'center',
-                    color: 'currentColor',
+                    color: 'var(--ink, currentColor)',
                   }}
                 >
                   {line.text}

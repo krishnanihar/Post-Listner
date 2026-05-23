@@ -10,6 +10,7 @@ import { audioEngine } from './engine/audio'
 import { startOrchestraPreload } from './orchestra/preloader'
 import ReflectionSurface from './phases/ReflectionSurface'
 import { resetLiveSession } from './lib/liveSession.js'
+import { inkForPhase } from './lib/phaseTheme.js'
 
 const PHASES = ['entry', 'admirer', 'orchestra', 'settle']
 
@@ -154,7 +155,10 @@ function App() {
   void sessionData
 
   return (
-    <div className="h-full w-full relative">
+    <div
+      className="h-full w-full relative"
+      style={{ '--ink': inkForPhase(phase) }}
+    >
       <AnimatePresence mode="wait">
         <motion.div
           key={phase}
