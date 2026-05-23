@@ -42,7 +42,7 @@ export const PHYSICS = {
 }
 
 // Step one particle forward by dt seconds.
-// p: particle object with x, y, vx, vy, tx, ty, sx, sy, releasedAt, settledAt
+// p: particle object with x, y, vx, vy, tx, ty, sx, sy, releasedAt
 // dt: time step in seconds
 // motionForce: { x, y } — phone-motion force vector in particle-space units
 // nowMs: current performance.now() — used to determine settled state

@@ -250,6 +250,12 @@ export default function BackgroundGlyph() {
           opacity: 0,  // initial; rAF loop drives the live value
         }}
       >
+        {/* All source paths use a single near-black fill (#231F20) in the
+            source SVG. fill="currentColor" intentionally discards the source
+            color so the overlay inherits the phase's theme ink via var(--ink)
+            — keeps the sacred-geometry rendering on-theme for both cream and
+            dark phases. The source's per-path `fill` value lives in p.fill
+            if multi-color tiles are ever added; currently unused. */}
         {data && data.pathElements.map((p, i) => (
           <path
             key={i}
