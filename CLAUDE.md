@@ -64,7 +64,7 @@ The **admirer** phase is a ~5-minute spoken conversation with "the Admirer" — 
 - `scripts/create-admirer-agent.js` — **source of truth**: `SYSTEM_PROMPT`, `first_message` (the Arrival speech), the 6 client tools, the `turn` config. Run once to create the agent.
 - `scripts/update-admirer-agent.js` — PATCHes the live agent's prompt + `turn` + `tts`, regex-extracted from the create script so the two can't drift. Re-run after any prompt change.
 - `docs/admirer-agent-dashboard.md` — a human-readable mirror of the config; keep it in sync.
-- Agent ID → `VITE_ELEVENLABS_AGENT_ID`. LLM `gemini-2.5-flash-lite`. `speculative_turn: false` is mandatory (it caused duplicate utterances). `turn_timeout: 7` / `turn_eagerness: normal` (a 3s/eager setting cut off thinking pauses).
+- Agent ID → `VITE_ELEVENLABS_AGENT_ID`. LLM `gemini-2.5-flash-lite`. `speculative_turn: false` is mandatory (it caused duplicate utterances). `turn_timeout: 30` (the documented max) / `turn_eagerness: 'patient'` — paired with a client-side `sendUserActivity()` keep-alive in `Admirer.jsx` that pings every 10 s while hold-to-speak is idle, so the Admirer never advances through user silence. The `skip_turn` system tool is enabled so the LLM can also explicitly hold its own turn after asking a question.
 
 **Client wiring.**
 - `src/hooks/useAdmirerAgent.js` — wraps `@elevenlabs/react` `useConversation` (under a `ConversationProvider`). **Push-to-talk**: the mic starts muted; holding the `HoldToSpeak` button unmutes (`setMuted`). Forwards conversation messages into `liveSession` (Build B).
@@ -78,12 +78,14 @@ The **admirer** phase is a ~5-minute spoken conversation with "the Admirer" — 
 - `src/orchestra/AdmirerRoom.js` — an HRTF room for one source (mirrors `OrchestraEngine`'s per-source chain): captured voice → mono → HRTF panner + pre-HRTF reverb send → 6 early reflections + hall-IR convolver → master lowpass. `setExpansion(t)` / `beginExpansion()` interpolate `INTIMATE ↔ EXPANDED`. The voice is captured from the SDK's hidden `<audio>` element via `createMediaStreamSource` (`captureAdmirerVoice` — the SDK exposes no output node; see `docs/admirer-spatial-spike.md`).
 - `src/lib/roomPresets.js` — pure `INTIMATE`/`EXPANDED` acoustic presets + `roomAt(t)` interpolation. Unit-tested.
 - `src/hooks/usePhoneMotion.js` — device-orientation hook over `src/conducting/GestureCore.js`. iOS permission is requested in `Entry.score.jsx`'s "begin" tap.
-- `src/hooks/useAdmirerRoom.js` — owns the `AdmirerRoom` lifecycle: builds it, captures the voice on connect, feeds phone roll → room azimuth, exposes `beginExpansion()` (fired when the agent calls `startGeneration`).
+- `src/hooks/useAdmirerRoom.js` — owns the `AdmirerRoom` lifecycle: builds it, captures the voice on connect, feeds phone roll → room azimuth, exposes `beginExpansion()` (fired when the agent calls `startGeneration`). On Admirer mount, `useAdmirerRoom` plays a ~3 s footsteps clip through the same HRTF graph (`AdmirerRoom.playFootsteps`), animated from behind-right to the voice's resting seat — so the Admirer audibly walks up before the first word.
 
 **Build B — the reflection surface.** A calm, peripheral, ignorable visual layer shown unbroken across the admirer + orchestra phases.
 - `src/lib/liveSession.js` — an in-memory, subscribable store of the current session's transcript + accumulating lexicon. Reset on entry. Unit-tested.
 - `src/phases/ReflectionSurface.jsx` — renders the Admirer's latest line + the lexicon words faintly at the bottom; mounted in `App.jsx` **outside** the phase-swap `AnimatePresence` so it persists across the act transition.
 - `src/phases/GlyphCanvas.jsx` — a faint ink-trail glyph drawn from phone orientation (`usePhoneMotion`).
+
+The agent's `first_message` is overridden per-session from the React client (`src/lib/admirerFirstMessage.js`) — first-time users get the threshold opening; returning users get a recognition line driven by `recency_summary` + `time_of_day` from `buildDynamicVariables()`. The static `first_message` baked into the agent on ElevenLabs is the fallback when no override is passed. The `ReflectionSurface` now shows a 3-line agent transcript tail with an opacity ramp (0.85/0.5/0.28) — the user can read what they missed hearing without leaving the rite.
 
 ### Score-v2 lib modules (`src/lib/`)
 
