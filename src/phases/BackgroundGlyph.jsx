@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { motion } from 'framer-motion' // eslint-disable-line no-unused-vars
 import { usePhoneMotion } from '../hooks/usePhoneMotion.js'
 import { rasterizeTile, pickRandomTileId } from '../lib/glyphRasterizer.js'
 import { subscribeMoments } from '../lib/momentBus.js'
@@ -48,11 +47,15 @@ const SCATTER_RADIUS = 70 // half-extent in tile-normalised units
 const RELEASE_STAGGER_MS = 4
 const SVG_FADE_IN_START = 0.7  // release ratio at which SVG opacity > 0
 const SVG_FADE_IN_END = 1.0    // release ratio at which SVG opacity = 1
+const SVG_FADE_DURATION_S = 0.5  // ease time for the SVG opacity to track a release-ratio change
 const PARTICLE_BASE_OPACITY = 0.45
 const MAX_DPR = 2
 
 export default function BackgroundGlyph() {
   const canvasRef = useRef(null)
+  const svgNodeRef = useRef(null)               // NEW
+  const animatedSvgOpacityRef = useRef(0)       // NEW
+  const releaseRatioRef = useRef(0)             // NEW
   const readMotion = usePhoneMotion()
   const [data, setData] = useState(null)
   const [releaseRatio, setReleaseRatio] = useState(0)
@@ -92,6 +95,13 @@ export default function BackgroundGlyph() {
   useEffect(() => {
     return subscribeMoments(setReleaseRatio)
   }, [])
+
+  // Mirror releaseRatio into a ref so the rAF loop reads the current value
+  // without re-running on every momentBus fire. Each fire would otherwise
+  // tear down + rebuild the rAF loop and the ResizeObserver.
+  useEffect(() => {
+    releaseRatioRef.current = releaseRatio
+  }, [releaseRatio])
 
   // ── 3. Stage particle releases as release ratio grows ─────────────────
   useEffect(() => {
@@ -155,8 +165,18 @@ export default function BackgroundGlyph() {
         stepParticle(particles[i], dt, motionForce, now)
       }
 
-      // Paint canvas. Particles fade as SVG opacity rises.
-      const svgOpacity = svgOpacityForRelease(releaseRatio)
+      // Ease the SVG opacity toward its target from releaseRatio. Both the
+      // canvas particle fade and the SVG overlay opacity are driven by this
+      // single eased value — one clock, no sync gap between layers.
+      const svgOpacityTarget = svgOpacityForRelease(releaseRatioRef.current)
+      const easeRate = dt / SVG_FADE_DURATION_S
+      const cur = animatedSvgOpacityRef.current
+      const delta = svgOpacityTarget - cur
+      animatedSvgOpacityRef.current = cur + delta * Math.min(1, easeRate * 8)
+      // ↑ exponential ease toward target — converges in ~0.5s for a step
+      //   change. The * 8 factor is tuned empirically so a step from 0→1
+      //   reaches ~95% in 500ms; it matches Motion's easeOut feel.
+      const svgOpacity = animatedSvgOpacityRef.current
       const particleOpacity = PARTICLE_BASE_OPACITY * (1 - svgOpacity)
 
       ctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -177,6 +197,11 @@ export default function BackgroundGlyph() {
         ctx.fill()
       }
 
+      // Drive the SVG opacity from the same eased value as the canvas fade.
+      if (svgNodeRef.current) {
+        svgNodeRef.current.style.opacity = String(svgOpacity)
+      }
+
       raf = requestAnimationFrame(frame)
     }
     raf = requestAnimationFrame(frame)
@@ -186,10 +211,8 @@ export default function BackgroundGlyph() {
       cancelAnimationFrame(raf)
       ro.disconnect()
     }
-  }, [data, readMotion, releaseRatio])
+  }, [data, readMotion])
 
-  // SVG fade-in opacity derived from release ratio.
-  const svgOpacity = data ? svgOpacityForRelease(releaseRatio) : 0
   const viewBox = data
     ? `${data.bbox.x} ${data.bbox.y} ${data.bbox.width} ${data.bbox.height}`
     : '0 0 100 100'
@@ -208,7 +231,8 @@ export default function BackgroundGlyph() {
           zIndex: 4,
         }}
       />
-      <motion.svg
+      <svg
+        ref={svgNodeRef}
         aria-hidden
         viewBox={viewBox}
         preserveAspectRatio="xMidYMid meet"
@@ -223,9 +247,8 @@ export default function BackgroundGlyph() {
           zIndex: 4,
           overflow: 'visible',
           color: 'var(--ink, currentColor)',
+          opacity: 0,  // initial; rAF loop drives the live value
         }}
-        animate={{ opacity: svgOpacity }}
-        transition={{ duration: 0.5, ease: 'easeOut' }}
       >
         {data && data.pathElements.map((p, i) => (
           <path
@@ -235,7 +258,7 @@ export default function BackgroundGlyph() {
             fillRule={p.fillRule}
           />
         ))}
-      </motion.svg>
+      </svg>
     </>
   )
 }
