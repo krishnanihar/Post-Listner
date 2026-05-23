@@ -31,6 +31,27 @@ export function useAdmirerRoom({ getAudioCtx, status }) {
     }
   }, [getAudioCtx])
 
+  // Arrival footsteps — play once when the room is live, before (or
+  // overlapping with) the agent's first word. Fire-and-forget: failure is
+  // silent and the rite continues. The fetch + decode is small (~50KB);
+  // we don't bother caching across mounts because the Admirer phase only
+  // mounts once per rite.
+  useEffect(() => {
+    const room = roomRef.current
+    const ctx = getAudioCtx?.()
+    if (!room || !ctx) return undefined
+    let cancelled = false
+    fetch('/admirer/footsteps.mp3')
+      .then(r => r.arrayBuffer())
+      .then(buf => ctx.decodeAudioData(buf))
+      .then(audioBuffer => {
+        if (cancelled) return
+        room.playFootsteps(audioBuffer)
+      })
+      .catch(e => console.warn('[admirer-room] footsteps load failed', e))
+    return () => { cancelled = true }
+  }, [getAudioCtx])
+
   // Capture the agent's voice once the session connects. The SDK appends its
   // hidden <audio> element around onConnect time — retry briefly if it is not
   // there on the first attempt. captureAdmirerVoice throws (before muting

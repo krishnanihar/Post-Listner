@@ -203,6 +203,67 @@ export default class AdmirerRoom {
     this.panner.positionZ.setTargetAtTime(pos.z, now, 0.08)
   }
 
+  // Play a one-shot footsteps clip routed through this room's HRTF panner.
+  // The panner position animates from a "room edge" point behind the
+  // listener's right shoulder to the voice's resting seat over the clip's
+  // duration, so the listener hears the Admirer walking up before the
+  // first word arrives. Schedules a transient BufferSource and disposes
+  // it on 'ended'. Cheap, fire-and-forget.
+  playFootsteps(buffer) {
+    if (this._disposed || !buffer || !this.ctx || !this.monoGain) return
+    const ctx = this.ctx
+    const src = ctx.createBufferSource()
+    src.buffer = buffer
+
+    // Dedicated panner for the footsteps so the animated position does
+    // not fight with the voice panner's roll-driven azimuth (set in
+    // setAzimuthOffset). Routes to the same directBus so the room's
+    // master lowpass + reflections process it like everything else.
+    const stepGain = ctx.createGain()
+    stepGain.channelCount = 1
+    stepGain.channelCountMode = 'explicit'
+    stepGain.channelInterpretation = 'speakers'
+    stepGain.gain.value = 0.55
+
+    const stepPanner = ctx.createPanner()
+    stepPanner.panningModel = 'HRTF'
+    stepPanner.distanceModel = 'inverse'
+    stepPanner.refDistance = 1
+    stepPanner.maxDistance = 20
+    stepPanner.rolloffFactor = 1
+
+    // Start position: behind-right at ~6m.
+    const startSph = sphericalToCartesian(-150, 0, 6)
+    stepPanner.positionX.value = startSph.x
+    stepPanner.positionY.value = startSph.y
+    stepPanner.positionZ.value = startSph.z
+
+    src.connect(stepGain)
+    stepGain.connect(stepPanner)
+    stepPanner.connect(this.directBus)
+    // Also feed the reverb bus so reflections + late reverb shape the steps.
+    stepPanner.connect(this.reverbBus)
+
+    // Animate from (-150°, 0°, 6m) to (0°, 5°, 1.6m) over the buffer's
+    // duration. setTargetAtTime ramps with a smoothing time constant; we
+    // schedule the targets at start and let them glide.
+    const now = ctx.currentTime
+    const dur = buffer.duration
+    const endSph = sphericalToCartesian(0, 5, 1.6)
+    const tc = Math.max(0.3, dur * 0.4)
+    stepPanner.positionX.setTargetAtTime(endSph.x, now, tc)
+    stepPanner.positionY.setTargetAtTime(endSph.y, now, tc)
+    stepPanner.positionZ.setTargetAtTime(endSph.z, now, tc)
+
+    src.start(now)
+
+    src.addEventListener('ended', () => {
+      try { src.disconnect() } catch { /* ignore */ }
+      try { stepGain.disconnect() } catch { /* ignore */ }
+      try { stepPanner.disconnect() } catch { /* ignore */ }
+    }, { once: true })
+  }
+
   // Apply the room preset at expansion t (0 intimate … 1 expanded).
   setExpansion(t) {
     if (this._disposed || !this.directBus) return
