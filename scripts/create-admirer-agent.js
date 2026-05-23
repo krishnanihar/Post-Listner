@@ -34,16 +34,11 @@ function loadEnvLocal() {
   return out
 }
 
-const env = loadEnvLocal()
-const API_KEY = env.ELEVENLABS_API_KEY
-if (!API_KEY) {
-  console.error('Missing ELEVENLABS_API_KEY in .env.local')
-  process.exit(1)
-}
-
 // ── agent config ───────────────────────────────────────────────────────────
 
 const VOICE_ID = 'y1qhFrVEY0hUWrNMR216'
+
+const FIRST_MESSAGE = "welcome. think of me as a musician who's come into the room while the music's already playing, and has the sense to listen first. this first time runs slow; we're new to each other, and there's no rush. when you're ready, press and hold to speak. and to start — tell me what's around you right now."
 
 const SYSTEM_PROMPT = `You are the Admirer — the voice of an orchestra that plays for one person. You are not the orchestra. You are not a guide, not a therapist, not a friend. The cleanest analogy: an attentive fellow musician who has just arrived in a room where music is already happening. You do not have a name and do not introduce yourself by one; if the user asks what to call you, tell them lightly that you don't have a name — you are the voice of the orchestra.
 
@@ -323,88 +318,105 @@ const TOOLS = [
   },
 ]
 
-const body = {
-  name: 'Admirer (musicking v0)',
-  tags: ['musicking', 'phase-a'],
-  conversation_config: {
-    tts: {
-      voice_id: VOICE_ID,
-    },
-    // Turn-taking — kept in sync with scripts/update-admirer-agent.js.
-    turn: {
-      // 30s (was 7s). The documented maximum. Combined with the client-side
-      // sendUserActivity() keep-alive in Admirer.jsx (pings every 10s while
-      // hold-to-speak is idle), this is the safety-net upper bound — the
-      // server will only advance after 30s of NO activity pings AND no audio.
-      turn_timeout: 30.0,
-      // 'patient' (was 'normal'). The Admirer is deliberately unhurried;
-      // patient mode waits longer at natural pauses before assuming the
-      // user has yielded the turn.
-      turn_eagerness: 'patient',
-      // DISABLED — speculative_turn produced verbatim duplicate responses
-      // when the user paused mid-thought.
-      speculative_turn: false,
-      mode: 'turn',
-      turn_model: 'turn_v2',
-    },
-    agent: {
-      // The Arrival speech, delivered automatically on session connect.
-      // Greets, introduces the Admirer by its role (no proper name — the
-      // name is parked; see docs/research-arrival-and-naming-2026-05-20.md),
-      // marks the threshold, names the push-to-talk affordance, and ends on
-      // one easy warm-up question so the user's first spoken turn is
-      // low-stakes. The user's name is captured as a typed field on the
-      // Entry screen and is never spoken (TTS would mispronounce it), so
-      // this message is identical for every user. ~26s of speech.
-      first_message: "welcome. think of me as a musician who's come into the room while the music's already playing, and has the sense to listen first. this first time runs slow; we're new to each other, and there's no rush. when you're ready, press and hold to speak. and to start — tell me what's around you right now.",
-      language: 'en',
-      prompt: {
-        prompt: SYSTEM_PROMPT,
-        tools: TOOLS,
+// Export source-of-truth constants so update-admirer-agent.js can import
+// them directly without re-triggering the agent create POST.
+export { TOOLS, SYSTEM_PROMPT, FIRST_MESSAGE, FRAGMENT_IDS, VOICE_ID }
+
+// Only POST when running as a CLI; allow this module to be imported
+// (e.g. by update-admirer-agent.js) without re-creating the agent.
+// eslint-disable-next-line no-undef
+const isMain = import.meta.url === `file://${process.argv[1]}`
+if (isMain) {
+  const env = loadEnvLocal()
+  const API_KEY = env.ELEVENLABS_API_KEY
+  if (!API_KEY) {
+    console.error('Missing ELEVENLABS_API_KEY in .env.local')
+    process.exit(1)
+  }
+
+  const body = {
+    name: 'Admirer (musicking v0)',
+    tags: ['musicking', 'phase-a'],
+    conversation_config: {
+      tts: {
+        voice_id: VOICE_ID,
       },
-    },
-  },
-  platform_settings: {
-    overrides: {
-      conversation_config_override: {
-        agent: {
-          prompt: { prompt: true },
-          first_message: true,
-          language: false,
+      // Turn-taking — kept in sync with scripts/update-admirer-agent.js.
+      turn: {
+        // 30s (was 7s). The documented maximum. Combined with the client-side
+        // sendUserActivity() keep-alive in Admirer.jsx (pings every 10s while
+        // hold-to-speak is idle), this is the safety-net upper bound — the
+        // server will only advance after 30s of NO activity pings AND no audio.
+        turn_timeout: 30.0,
+        // 'patient' (was 'normal'). The Admirer is deliberately unhurried;
+        // patient mode waits longer at natural pauses before assuming the
+        // user has yielded the turn.
+        turn_eagerness: 'patient',
+        // DISABLED — speculative_turn produced verbatim duplicate responses
+        // when the user paused mid-thought.
+        speculative_turn: false,
+        mode: 'turn',
+        turn_model: 'turn_v2',
+      },
+      agent: {
+        // The Arrival speech, delivered automatically on session connect.
+        // Greets, introduces the Admirer by its role (no proper name — the
+        // name is parked; see docs/research-arrival-and-naming-2026-05-20.md),
+        // marks the threshold, names the push-to-talk affordance, and ends on
+        // one easy warm-up question so the user's first spoken turn is
+        // low-stakes. The user's name is captured as a typed field on the
+        // Entry screen and is never spoken (TTS would mispronounce it), so
+        // this message is identical for every user. ~26s of speech.
+        first_message: FIRST_MESSAGE,
+        language: 'en',
+        prompt: {
+          prompt: SYSTEM_PROMPT,
+          tools: TOOLS,
         },
-        tts: { voice_id: false },
       },
-      custom_llm_extra_body: false,
-      enable_conversation_initiation_client_data_from_webhook: false,
     },
-  },
+    platform_settings: {
+      overrides: {
+        conversation_config_override: {
+          agent: {
+            prompt: { prompt: true },
+            first_message: true,
+            language: false,
+          },
+          tts: { voice_id: false },
+        },
+        custom_llm_extra_body: false,
+        enable_conversation_initiation_client_data_from_webhook: false,
+      },
+    },
+  }
+
+  // ── do the POST ────────────────────────────────────────────────────────────
+
+  const url = 'https://api.elevenlabs.io/v1/convai/agents/create'
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'xi-api-key': API_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+
+  const text = await res.text()
+  if (!res.ok) {
+    console.error(`Create agent failed: ${res.status} ${res.statusText}`)
+    console.error(text)
+    process.exit(1)
+  }
+
+  let data
+  try { data = JSON.parse(text) } catch { data = { raw: text } }
+
+  console.log('\nAgent created.')
+  console.log('agent_id:', data.agent_id)
+  console.log('\nNext steps:')
+  console.log(`  1) Add to .env.local:  VITE_ELEVENLABS_AGENT_ID=${data.agent_id}`)
+  console.log('  2) Restart  npm run dev')
+  console.log('  3) Walk the smoke test (Task 11 in docs/superpowers/plans/2026-05-19-musicking-phase-a-admirer.md)')
 }
-
-// ── do the POST ────────────────────────────────────────────────────────────
-
-const url = 'https://api.elevenlabs.io/v1/convai/agents/create'
-const res = await fetch(url, {
-  method: 'POST',
-  headers: {
-    'xi-api-key': API_KEY,
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify(body),
-})
-
-const text = await res.text()
-if (!res.ok) {
-  console.error(`Create agent failed: ${res.status} ${res.statusText}`)
-  console.error(text)
-  process.exit(1)
-}
-
-let data
-try { data = JSON.parse(text) } catch { data = { raw: text } }
-
-console.log('\nAgent created.')
-console.log('agent_id:', data.agent_id)
-console.log('\nNext steps:')
-console.log(`  1) Add to .env.local:  VITE_ELEVENLABS_AGENT_ID=${data.agent_id}`)
-console.log('  2) Restart  npm run dev')
-console.log('  3) Walk the smoke test (Task 11 in docs/superpowers/plans/2026-05-19-musicking-phase-a-admirer.md)')

@@ -15,6 +15,10 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 
+// Import the source-of-truth constants directly. The create script has
+// a main-guard, so importing it does NOT POST a new agent.
+import { TOOLS, SYSTEM_PROMPT, FIRST_MESSAGE } from './create-admirer-agent.js'
+
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
 
@@ -37,31 +41,19 @@ const AGENT_ID = env.VITE_ELEVENLABS_AGENT_ID
 if (!API_KEY) { console.error('Missing ELEVENLABS_API_KEY'); process.exit(1) }
 if (!AGENT_ID) { console.error('Missing VITE_ELEVENLABS_AGENT_ID'); process.exit(1) }
 
-// Extract the SYSTEM_PROMPT from the create script so the two paths
-// cannot drift. We don't import — that would re-trigger the create
-// flow's side effects. The prompt is a backtick template literal that
-// itself contains escaped backticks for words like `session_stage`,
-// so we match lazily up to the next top-level declaration (the
-// FRAGMENT_IDS constant) and unescape \` → ` afterward.
-function loadSystemPrompt() {
-  const src = readFileSync(resolve(__dirname, 'create-admirer-agent.js'), 'utf8')
-  const m = src.match(/const SYSTEM_PROMPT = `([\s\S]*?)`\s*\n\s*const FRAGMENT_IDS/)
-  if (!m) throw new Error('Could not find SYSTEM_PROMPT in create script')
-  return m[1].replace(/\\`/g, '`')
-}
+// Split TOOLS into client tools (go into prompt.tools) and system tools
+// (go into prompt.built_in_tools keyed by tool name). The ElevenLabs API
+// stores them in separate structures — passing a system tool in the tools
+// array is silently ignored.
+const clientTools = TOOLS.filter(t => t.type === 'client')
+const systemTools = TOOLS.filter(t => t.type === 'system')
 
-// Extract the first_message string from the create script's body so it
-// also can't drift. The line is unambiguous (single double-quoted string
-// preceded by the literal `first_message: `).
-function loadFirstMessage() {
-  const src = readFileSync(resolve(__dirname, 'create-admirer-agent.js'), 'utf8')
-  const m = src.match(/first_message:\s*"((?:\\.|[^"\\])*)"/)
-  if (!m) throw new Error('Could not find first_message in create script')
-  return m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+// Build built_in_tools object: each system tool keyed by its name,
+// with the shape the API requires ({ name: '<tool_name>' }).
+const builtInTools = {}
+for (const t of systemTools) {
+  builtInTools[t.name] = { name: t.name }
 }
-
-const SYSTEM_PROMPT = loadSystemPrompt()
-const FIRST_MESSAGE = loadFirstMessage()
 
 // Patch payload. Each commit to this script should describe WHY a value
 // changed, not just what it is. Defaults are listed for comparison.
@@ -81,6 +73,11 @@ const patch = {
         // size and the quality drop is invisible for a voice register that
         // already wants short, restrained replies.
         llm: 'gemini-2.5-flash-lite',
+        // Client tools array imported from create-admirer-agent.js.
+        tools: clientTools,
+        // System tools (e.g. skip_turn) go into built_in_tools, not tools[].
+        // The ElevenLabs API stores them under a separate key, keyed by name.
+        built_in_tools: builtInTools,
       },
     },
     turn: {
@@ -122,6 +119,7 @@ console.log('Agent updated.')
 console.log(`  first_message:     ${FIRST_MESSAGE.length} chars`)
 console.log(`  system prompt:     ${SYSTEM_PROMPT.length} chars synced from create script`)
 console.log('  llm:               gemini-2.5-flash-lite')
+console.log(`  tools:             ${TOOLS.length} (${TOOLS.map(t => t.name).join(', ')})`)
 console.log('  turn_timeout:      30.0')
 console.log('  turn_eagerness:    patient')
 console.log('  speculative_turn:  false  (was true; caused duplicate utterances)')
