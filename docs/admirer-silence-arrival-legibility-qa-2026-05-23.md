@@ -12,8 +12,10 @@ externalises in stereo headphones.
 the new settings before running QA:
 - Turn timeout: **30 s**
 - Turn eagerness: **Patient**
-- Tools list includes **Skip turn** (system tool — add via dashboard if
-  not already present; the update script does not patch the tools array)
+- Tools list includes **Skip turn** (system tool — `node scripts/update-admirer-agent.js`
+  has been run and confirmed; the update script now patches `built_in_tools.skip_turn`
+  via the API so no dashboard step is needed. Verified: GET on the live agent returns
+  `system:skip_turn` in the tools list alongside the 6 client tools.)
 
 ---
 
