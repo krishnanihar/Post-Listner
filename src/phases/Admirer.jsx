@@ -9,6 +9,7 @@ import { addLexiconWord } from '../lib/liveSession.js'
 import HoldToSpeak from './HoldToSpeak'
 import FragmentControls from './FragmentControls'
 import { useAdmirerRoom } from '../hooks/useAdmirerRoom.js'
+import { useIdleKeepAlive } from '../hooks/useIdleKeepAlive.js'
 
 const AGENT_ID = import.meta.env.VITE_ELEVENLABS_AGENT_ID
 
@@ -167,6 +168,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     isSpeaking,
     isMuted,
     setMuted,
+    sendUserActivity,
   } = useAdmirerAgent({
     sessionStage: 'opening',
     callbacks: { onPlayFragment, onStartGeneration, onCommitEntry, onRecordLexicon },
@@ -175,6 +177,18 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   // Build A — the spatial room. Routes the agent's voice through an HRTF
   // room and opens it at the phase-1 → phase-2 handoff.
   const beginExpansion = useAdmirerRoom({ getAudioCtx, status })
+
+  // While the agent is connected and the user is NOT holding the speak
+  // button (and NOT mid-fragment), ping sendUserActivity every 10s so the
+  // server's turn-timeout timer does not fire and the agent does not
+  // advance through silence. Stops automatically when the user holds the
+  // button (isMuted goes false) — at that point real audio is reaching
+  // the server and it has its own activity signal.
+  useIdleKeepAlive({
+    enabled: status === 'connected' && isMuted && !fragmentPlaying && !awaitingRating,
+    intervalMs: 10000,
+    ping: sendUserActivity,
+  })
 
   // When the agent commits a direction, open the room. The room's expansion
   // is the phase-1 → phase-2 transition — the closed conversation room

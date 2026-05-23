@@ -99,5 +99,10 @@ export function useAdmirerAgent({ sessionStage = 'opening', callbacks = {} } = {
     isMuted: !!conv.isMuted,
     setMuted: conv.setMuted,
     sendUserMessage: conv.sendUserMessage,
+    // sendUserActivity resets the server-side turn-timeout timer. Pinged
+    // periodically by Admirer.jsx while hold-to-speak is idle so the
+    // agent does not advance through silence.
+    sendUserActivity: conv.sendUserActivity,
+    sendContextualUpdate: conv.sendContextualUpdate,
   }
 }
