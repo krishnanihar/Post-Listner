@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { useSyncExternalStore } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ConversationProvider } from '@elevenlabs/react'
 import Paper from '../score/Paper'
@@ -7,7 +8,8 @@ import { useAdmirerAgent } from '../hooks/useAdmirerAgent.js'
 import { buildFirstMessage } from '../lib/admirerFirstMessage.js'
 import { buildDynamicVariables } from '../lib/sessionStore.js'
 import StemPlayer from '../lib/stemPlayer.js'
-import { addLexiconWord } from '../lib/liveSession.js'
+import { addLexiconWord, subscribeLiveSession, getLiveSession } from '../lib/liveSession.js'
+import { fireMoment, resetMoments } from '../lib/momentBus.js'
 import QuestionDisplay from './QuestionDisplay'
 import HoldToSpeak from './HoldToSpeak'
 import FragmentControls from './FragmentControls'
@@ -68,7 +70,14 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     setAwaitingRating(false)
     const pending = pendingRatingRef.current
     pendingRatingRef.current = null
-    if (pending) pending.resolve(answer)
+    if (pending) {
+      // Editorial moment: the user just rated a fragment (yes/no/none).
+      // Burst-release 8% of particles. eventId is the fragment id so
+      // re-resolving the same fragment (shouldn't happen, but defensively)
+      // doesn't double-fire.
+      if (pending.fragmentId) fireMoment(0.08, `fragment:${pending.fragmentId}`)
+      pending.resolve(answer)
+    }
   }, [])
 
   // The fragment audio has run its course (cap timer fired, or the audio
@@ -95,7 +104,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
       // The blocking tool is strictly sequential, so a prior rating should
       // never still be pending — resolve it "none" if one somehow is.
       if (pendingRatingRef.current) pendingRatingRef.current.resolve('none')
-      pendingRatingRef.current = { resolve }
+      pendingRatingRef.current = { resolve, fragmentId: fragment.fragmentId }
       setFragmentPlaying(true)
       setAwaitingRating(false)
       try {
@@ -128,6 +137,11 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     setFragmentPlaying(false)
     // The conversation has resolved — let the room begin to open.
     setGenerationStarted(true)
+    // Editorial moment: the agent has chosen the direction; the rite is
+    // about to hand off to the orchestra. Snap the geometry to fully
+    // formed (any remaining un-released particles release now). The
+    // 'startGeneration' eventId makes this safe against re-fires.
+    fireMoment(1.0, 'startGeneration')
     stemsBundleRef.current = bundle
     const ctx = getAudioCtx?.()
     if (!ctx) {
@@ -161,8 +175,12 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   // recordLexicon client tool) into the live session, so the reflection
   // surface can show the user's own words accumulating. addLexiconWord
   // trims, de-duplicates, and ignores empty input.
-  const onRecordLexicon = useCallback(({ userPhrasing } = {}) => {
+  const onRecordLexicon = useCallback(({ term, userPhrasing } = {}) => {
     addLexiconWord(userPhrasing)
+    // Editorial moment: the agent just captured one of the user's
+    // verbatim words. Burst-release 5% of particles. eventId is the
+    // term so the same term being re-recorded doesn't double-fire.
+    if (term) fireMoment(0.05, `lexicon:${term}`)
   }, [])
 
   // Build the agent's opening line from session state — first-time users
@@ -177,6 +195,42 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
       timeOfDay: dv.time_of_day,
     })
   }, [])
+
+  // Transcript watcher: drives the per-turn release bursts (agent question,
+  // user turn). Lives here (not in BackgroundGlyph) so all momentBus
+  // dispatches happen in one place — single source of truth, no
+  // double-fire risk.
+  //
+  // Index-keyed bookkeeping correctly handles the Task-5 tentative→final
+  // dedupe in liveSession: when a line's text grows from "welcome." to
+  // "welcome. ... what's around you?", this effect re-runs and sees the
+  // line at index i has a '?' for the first time, so it fires once.
+  // After it fires for that index, the seen set blocks any re-fire even
+  // if the line's text changes again.
+  const { transcript } = useSyncExternalStore(subscribeLiveSession, getLiveSession)
+  const firedQuestionAtIndexRef = useRef(null)
+  const firedUserTurnAtIndexRef = useRef(null)
+  if (firedQuestionAtIndexRef.current === null) firedQuestionAtIndexRef.current = new Set()
+  if (firedUserTurnAtIndexRef.current === null) firedUserTurnAtIndexRef.current = new Set()
+
+  useEffect(() => {
+    const firedQ = firedQuestionAtIndexRef.current
+    const firedU = firedUserTurnAtIndexRef.current
+    for (let i = 0; i < transcript.length; i++) {
+      const line = transcript[i]
+      if (line.role === 'agent') {
+        if (!firedQ.has(i) && line.text.includes('?')) {
+          fireMoment(0.12, `question:${i}`)
+          firedQ.add(i)
+        }
+      } else if (line.role === 'user') {
+        if (!firedU.has(i)) {
+          fireMoment(0.05, `user:${i}`)
+          firedU.add(i)
+        }
+      }
+    }
+  }, [transcript])
 
   const {
     connect,
@@ -219,6 +273,16 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   const handleRate = useCallback((answer) => {
     resolveRating(answer)
   }, [resolveRating])
+
+  // Editorial moment dispatcher: each rite starts with the release at 0
+  // (resetMoments) plus an immediate 8% pre-release so the geometry has
+  // a faint hint of its form before the Admirer's first word. The
+  // 'mount' eventId makes this idempotent: dev-mode double-mount or a
+  // hot-reload re-fire won't double the initial release.
+  useEffect(() => {
+    resetMoments()
+    fireMoment(0.08, 'mount')
+  }, [])
 
   // Connect on mount.
   useEffect(() => {
