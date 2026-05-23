@@ -1,13 +1,14 @@
 import { useSyncExternalStore } from 'react'
 import { motion } from 'framer-motion'
 import { subscribeLiveSession, getLiveSession } from '../lib/liveSession.js'
-import GlyphCanvas from './GlyphCanvas.jsx'
+import BackgroundGlyph from './BackgroundGlyph.jsx'
 
 // A calm, peripheral surface, unbroken across the admirer and orchestra
-// phases. Two quiet things: a glyph that forms from the phone's motion
-// (GlyphCanvas), and the words the user has given. It must be ignorable —
-// a user who never looks at it loses nothing. Theme-neutral so it reads
-// on both the cream Admirer phase and the dark Orchestra phase.
+// phases. Two quiet things: a sacred-geometry glyph that forms over the
+// course of the conversation (BackgroundGlyph), and the words the user has
+// given. It must be ignorable — a user who never looks at it loses nothing.
+// Theme-neutral so it reads on both the cream Admirer phase and the dark
+// Orchestra phase.
 //
 // The active question the Admirer is asking is handled by QuestionDisplay,
 // which lives inside Admirer.jsx in the reading zone just below the state
@@ -20,8 +21,8 @@ export default function ReflectionSurface() {
       aria-hidden
       style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5 }}
     >
-      {/* the glyph — a faint ink trail drawn from phone motion */}
-      <GlyphCanvas />
+      {/* the glyph — a sacred-geometry pattern that forms with the conversation */}
+      <BackgroundGlyph />
 
       {/* accumulating lexicon — the words the user gave (peripheral by design) */}
       {lexicon.length > 0 && (
