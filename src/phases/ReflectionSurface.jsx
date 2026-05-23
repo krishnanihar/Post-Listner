@@ -81,7 +81,7 @@ export default function ReflectionSurface() {
               const fontSize = ageFromNewest === 0 ? 15 : 13
               return (
                 <motion.div
-                  key={line.text}
+                  key={`agent-${transcript.indexOf(line)}`}
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity, y: 0 }}
                   exit={{ opacity: 0, y: -4 }}
