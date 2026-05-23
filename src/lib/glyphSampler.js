@@ -30,7 +30,19 @@ async function loadSource() {
   return sourceTextPromise
 }
 
-// Returns: { tileId, segments: [{x1,y1,x2,y2}, ...] } in 0..100 origin-centred coords.
+// Returns:
+// {
+//   tileId,
+//   bbox: { x, y, width, height, cx, cy, halfExtent, scale },
+//   paths: [
+//     {
+//       d: '<verbatim path d attribute>',
+//       length: <getTotalLength()>,
+//       segments: [{ x1, y1, x2, y2 }, ...],  // in normalised ±50 coords
+//     },
+//     ...
+//   ]
+// }
 export async function sampleTile(tileId) {
   const svgText = await loadSource()
   // Parse and insert into a hidden, offscreen, but laid-out container so
@@ -49,13 +61,25 @@ export async function sampleTile(tileId) {
 
     // Compute the tile's bbox by querying the group directly. getBBox
     // returns the union of all child geometries in the SVG coord space.
-    const bbox = tileGroup.getBBox()
-    const cx = bbox.x + bbox.width / 2
-    const cy = bbox.y + bbox.height / 2
+    const rawBbox = tileGroup.getBBox()
+    const cx = rawBbox.x + rawBbox.width / 2
+    const cy = rawBbox.y + rawBbox.height / 2
     // Normalise to a half-extent of 50 (so the tile fills -50..50). Pick
     // the larger dimension as the scaling axis to preserve aspect ratio.
-    const halfExtent = Math.max(bbox.width, bbox.height) / 2
+    const halfExtent = Math.max(rawBbox.width, rawBbox.height) / 2
     const scale = 50 / halfExtent
+
+    // Expose bbox so the SVG layer can render with the correct viewBox.
+    const bbox = {
+      x: rawBbox.x,
+      y: rawBbox.y,
+      width: rawBbox.width,
+      height: rawBbox.height,
+      cx,
+      cy,
+      halfExtent,
+      scale,
+    }
 
     // Per-path lengths.
     const pathLengths = paths.map(p => {
@@ -64,16 +88,19 @@ export async function sampleTile(tileId) {
     const totalLength = pathLengths.reduce((a, b) => a + b, 0)
     if (totalLength <= 0) throw new Error(`tile ${tileId} has zero total path length`)
 
-    const segments = []
+    const result = []
     for (let i = 0; i < paths.length; i++) {
       const path = paths[i]
       const len = pathLengths[i]
       if (len <= 0) continue
+      // Capture the verbatim d attribute for the SVG layer.
+      const d = path.getAttribute('d') || ''
       // Distribute the segment budget proportionally to path length.
       const nSegs = Math.max(1, Math.round(TARGET_SEGMENTS * (len / totalLength)))
       // We need nSegs+1 sample points to produce nSegs segments.
       const step = len / nSegs
       let prev = path.getPointAtLength(0)
+      const segments = []
       for (let s = 1; s <= nSegs; s++) {
         const cur = path.getPointAtLength(Math.min(s * step, len))
         // Normalise: subtract centre, scale to ±50.
@@ -85,9 +112,10 @@ export async function sampleTile(tileId) {
         })
         prev = cur
       }
+      result.push({ d, length: len, segments })
     }
 
-    return { tileId, segments }
+    return { tileId, bbox, paths: result }
   } finally {
     wrapper.remove()
   }
