@@ -14,7 +14,7 @@
 // conversation that follows; this just changes the very first thing
 // the voice says.
 
-const FIRST_SESSION_MESSAGE = "welcome. think of me as a musician who's come into the room while the music's already playing, and has the sense to listen first. this first time runs slow; we're new to each other, and there's no rush. when you're ready, press and hold to speak. and to start — tell me what's around you right now."
+const FIRST_SESSION_MESSAGE = "welcome. think of me as a musician who's come into the room while the music's already playing, and has the sense to listen first. this first time runs slow; we're new to each other, and there's no rush. when you're ready, press and hold to speak. and to start — what's around you right now?"
 
 // Returning-user variants. Each is a small fragment that gets joined with
 // the constant tail (the push-to-talk reminder + an opener question that

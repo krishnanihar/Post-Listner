@@ -8,6 +8,7 @@ import { buildFirstMessage } from '../lib/admirerFirstMessage.js'
 import { buildDynamicVariables } from '../lib/sessionStore.js'
 import StemPlayer from '../lib/stemPlayer.js'
 import { addLexiconWord } from '../lib/liveSession.js'
+import QuestionDisplay from './QuestionDisplay'
 import HoldToSpeak from './HoldToSpeak'
 import FragmentControls from './FragmentControls'
 import { useAdmirerRoom } from '../hooks/useAdmirerRoom.js'
@@ -359,6 +360,11 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
               {stateLabel}
             </motion.div>
           </AnimatePresence>
+
+          {/* The active question the Admirer is asking. Reads from
+              liveSession; shows only utterances containing '?', extracts
+              the question sentence, persists through user response. */}
+          <QuestionDisplay />
         </div>
 
         {/* Fragment controls: playing indicator + Yes/No rating buttons */}
