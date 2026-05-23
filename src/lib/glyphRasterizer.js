@@ -36,7 +36,21 @@ const DEFAULT_RESOLUTION = 320
 let sourceTextPromise = null
 async function loadSource() {
   if (!sourceTextPromise) {
-    sourceTextPromise = fetch(SOURCE_SVG_URL).then(r => r.text())
+    // Clear the cached promise on rejection so the next call can retry —
+    // otherwise a transient 404 / network failure / CSP block would
+    // permanently break the module for the rest of the page lifetime.
+    // Also check r.ok so a 404 surfaces as a clear error message rather
+    // than parsing the server's HTML error page as SVG and failing
+    // mysteriously on getElementById.
+    sourceTextPromise = fetch(SOURCE_SVG_URL)
+      .then(r => {
+        if (!r.ok) throw new Error(`source SVG fetch failed: ${r.status} ${r.statusText}`)
+        return r.text()
+      })
+      .catch(e => {
+        sourceTextPromise = null
+        throw e
+      })
   }
   return sourceTextPromise
 }
