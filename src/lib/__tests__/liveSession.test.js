@@ -52,3 +52,43 @@ describe('liveSession', () => {
     expect(calls).toBe(1)
   })
 })
+
+describe('addTranscriptLine dedupe', () => {
+  beforeEach(() => { resetLiveSession() })
+
+  it('replaces a partial agent line when its extension lands', () => {
+    addTranscriptLine('agent', 'welcome.')
+    addTranscriptLine('agent', 'welcome. think of me as a musician.')
+    const { transcript } = getLiveSession()
+    expect(transcript).toHaveLength(1)
+    expect(transcript[0].text).toBe('welcome. think of me as a musician.')
+  })
+
+  it('appends when the new agent line is NOT a continuation', () => {
+    addTranscriptLine('agent', 'welcome.')
+    addTranscriptLine('agent', 'what is around you?')
+    const { transcript } = getLiveSession()
+    expect(transcript).toHaveLength(2)
+    expect(transcript[0].text).toBe('welcome.')
+    expect(transcript[1].text).toBe('what is around you?')
+  })
+
+  it('does not coalesce across roles', () => {
+    addTranscriptLine('agent', 'hello.')
+    addTranscriptLine('user', 'hello. hi.')
+    const { transcript } = getLiveSession()
+    expect(transcript).toHaveLength(2)
+  })
+
+  it('appends user lines even when they extend a prior user line (we want both visible)', () => {
+    // Push-to-talk means user lines are committed all-at-once, but the SDK
+    // may emit tentative + final for the user too; for the *agent* tail we
+    // promoted here, dedupe applies to agent role. User role keeps the
+    // current append-always behaviour so the prior tests stay green.
+    addTranscriptLine('user', 'hello.')
+    addTranscriptLine('user', 'hello. how are you.')
+    const { transcript } = getLiveSession()
+    // Agent dedupe only; user lines append as before.
+    expect(transcript).toHaveLength(2)
+  })
+})
