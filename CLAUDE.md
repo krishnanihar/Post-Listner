@@ -10,7 +10,7 @@ Both acts are a single React app, one Vite project, one Vercel deploy. Audio ass
 
 > **Branch note.** `main` runs the original 9-phase profiling rite (`entry → spectrum → depth → gems → moment → autobio → reflection → reveal → orchestra`). This branch — **`musicking`** — replaces phases 1–7 with the single Admirer conversation: the flow is `entry → admirer → orchestra → settle`. The 9-phase `*.score.jsx` files remain on disk, unrouted. The sections below describe the `musicking` flow; the Orchestra, conducting, audio engine, R2, and relay infrastructure are shared and unchanged from `main`.
 
-> **Status — 2026-05-22.** Active work is the **desktop journal** (`/journal`). Slices 1–5 of the 6-slice plan (`docs/desktop-journal-design.md` §12) are built; **Slice 6 — the real collective — is next**. Slice 3, 4 & 5 specs and plans are at `docs/superpowers/specs/2026-05-21-desktop-journal-slice-{3,4,5}-*.md` and the matching `docs/superpowers/plans/`. All Slice 3–5 code is committed to `musicking` and **not yet pushed**; it passes `npm run build` and the 312-test suite, but the full phone→relay→Supabase manual run has not been done — verify a real QR-paired rite before relying on the loop.
+> **Status — 2026-05-24.** Two recent Admirer-phase refinement passes landed on `musicking` (not yet pushed). **2026-05-23 — silence / arrival / legibility:** server-side `turn_timeout: 30 + turn_eagerness: patient + skip_turn`, client-side `sendUserActivity()` keep-alive (the agent no longer runs away through user silence), arrival footsteps through the AdmirerRoom HRTF graph, dynamic per-session `first_message` override, and the on-screen transcript redesigned as a single active-**QuestionDisplay** at the top (replacing the bottom transcript tail). **2026-05-24 — BackgroundGlyph v3:** the Admirer's background visual is now an image-to-particles sacred-geometry layer (`docs/superpowers/plans/2026-05-24-background-glyph-v3-image-particles.md`) that forms over the conversation via editorial-moment release bursts and resolves to the source SVG with original fills. 367 tests passing, build clean, lint ≤ 149. The desktop journal Slices 1–5 from earlier still hold; **Slice 6 — the real collective — is next** after the Admirer-side polish settles. The real-device walkthrough (phone-tilt force coupling on BackgroundGlyph particles, full SDK transcript on a real conversation) is the one outstanding verification — Chrome DevTools confirms the visual pipeline but cannot synthesise DeviceOrientation.
 
 ## Tech Stack
 
@@ -18,7 +18,7 @@ Both acts are a single React app, one Vite project, one Vercel deploy. Audio ass
 - **Tailwind CSS v4** via `@tailwindcss/vite` plugin
 - **Framer Motion** for animations and transitions
 - **React Three Fiber** + **three.js** (`@react-three/fiber`, `@react-three/drei`, `@react-three/postprocessing`) — the conductor routes and the desktop journal's 3D book
-- **Vitest 4** + **jsdom** for pure-function unit tests (312 tests across `src/lib/__tests__/`, `src/orchestra/__tests__/`, `src/conductor-glb/`)
+- **Vitest 4** + **jsdom** for pure-function unit tests (367 tests across `src/lib/__tests__/`, `src/orchestra/__tests__/`, `src/conductor-glb/`, `src/hooks/__tests__/`)
 - **Web Audio API** — raw nodes only, no external audio libraries
   - PostListener: `src/engine/audio.js` (synthesis, MP3 playback for Spectrum/Moment)
   - Orchestra (v3): `src/orchestra/OrchestraEngine.js` (4-stem spatial graph, per-stem mono filter chain → HRTF panner with pre-HRTF mono reverb send, 6 image-source early reflections, binaural hall IR convolver, constant 10 Hz alpha binaural beats bypassing the compressor)
@@ -28,7 +28,7 @@ Both acts are a single React app, one Vite project, one Vercel deploy. Audio ass
 - **Demucs (htdemucs)** via Python venv at `~/.venvs/demucs` for offline 4-stem separation (vocals/drums/bass/other) of the 24 Suno-generated archetype masters.
 - **ElevenLabs Conversational AI** via **`@elevenlabs/react`** — the Admirer (Act 1) is a live conversational agent. Config lives in `scripts/create-admirer-agent.js`. See **The Admirer (musicking — Act 1)** below.
 - **Server-side ElevenLabs proxy** in `api/` — the older per-line TTS path (`POST /api/admirer`, `eleven_v3`). Superseded on `musicking` by the Conversational AI agent; still on disk for `main`. `POST /api/compose` (Music API) is deprecated and unused.
-- **DeviceMotionEvent / DeviceOrientationEvent** — phone-as-baton conducting (Orchestra) + the Build-A room azimuth and the glyph (Admirer). Permission is requested on the Entry "begin" tap.
+- **DeviceMotionEvent / DeviceOrientationEvent** — phone-as-baton conducting (Orchestra) + the Build-A room azimuth and the BackgroundGlyph force-field particles (Admirer). Permission is requested on the Entry "begin" tap.
 - **Supabase** (`@supabase/supabase-js`) — Postgres + Google OAuth for the desktop journal's accounts + entries (`/journal`). See **Desktop journal** below.
 
 ## Architecture
@@ -80,14 +80,20 @@ The **admirer** phase is a ~5-minute spoken conversation with "the Admirer" — 
 - `src/hooks/usePhoneMotion.js` — device-orientation hook over `src/conducting/GestureCore.js`. iOS permission is requested in `Entry.score.jsx`'s "begin" tap.
 - `src/hooks/useAdmirerRoom.js` — owns the `AdmirerRoom` lifecycle: builds it, captures the voice on connect, feeds phone roll → room azimuth, exposes `beginExpansion()` (fired when the agent calls `startGeneration`). On Admirer mount, `useAdmirerRoom` plays a ~3 s footsteps clip through the same HRTF graph (`AdmirerRoom.playFootsteps`), animated from behind-right to the voice's resting seat — so the Admirer audibly walks up before the first word.
 
-**Build B — the reflection surface.** A calm, peripheral, ignorable visual layer shown unbroken across the admirer + orchestra phases.
-- `src/lib/liveSession.js` — an in-memory, subscribable store of the current session's transcript + accumulating lexicon. Reset on entry. Unit-tested.
-- `src/phases/ReflectionSurface.jsx` — renders the Admirer's latest line + the lexicon words faintly at the bottom; mounted in `App.jsx` **outside** the phase-swap `AnimatePresence` so it persists across the act transition.
-- `src/phases/GlyphCanvas.jsx` — a faint ink-trail glyph drawn from phone orientation (`usePhoneMotion`).
+**Build B — the reflection surface.** A calm, peripheral visual layer shown unbroken across the admirer + orchestra phases. Mounts the sacred-geometry BackgroundGlyph + the lexicon strip; no transcript here (the active question lives at the top of the Admirer phase via `QuestionDisplay`, not in this peripheral layer).
+- `src/lib/liveSession.js` — an in-memory, subscribable store of the current session's transcript + accumulating lexicon. Reset on entry. `addTranscriptLine` coalesces tentative→final agent updates by replacing in place when the new text starts with the previous text. Unit-tested.
+- `src/phases/ReflectionSurface.jsx` — mounts `BackgroundGlyph` + renders the accumulating lexicon words faintly at the bottom. Mounted in `App.jsx` **outside** the phase-swap `AnimatePresence` so it persists across the act transition. Uses `color: var(--ink, currentColor)` so the same surface reads on both the cream Admirer phase and the dark Orchestra phase (the `--ink` CSS custom property is set on the App root by `src/lib/phaseTheme.js`'s `inkForPhase(phase)`).
+- `src/phases/BackgroundGlyph.jsx` — the v3 sacred-geometry visual (see paragraph below for the full pipeline).
 
-The agent's `first_message` is overridden per-session from the React client (`src/lib/admirerFirstMessage.js`) — first-time users get the threshold opening; returning users get a recognition line driven by `recency_summary` + `time_of_day` from `buildDynamicVariables()`. The static `first_message` baked into the agent on ElevenLabs is the fallback when no override is passed. The `ReflectionSurface` now shows a 3-line agent transcript tail with an opacity ramp (0.85/0.5/0.28) — the user can read what they missed hearing without leaving the rite.
+**The active question — `QuestionDisplay`.** The single editorial line the user is being asked sits at the TOP of the Admirer phase, just under the state label — NOT in the peripheral Build B surface. `src/phases/QuestionDisplay.jsx` subscribes to `liveSession` via `useSyncExternalStore`, walks the transcript backwards for the most recent agent line containing `?`, runs it through `src/lib/extractQuestion.js` to pull only the question sentence (so multi-sentence framing like "welcome. think of me as a musician... what's around you?" collapses to just "what's around you?"), and renders it as a single italic serif line that persists through the user's response — replaced only when the next question arrives. Acknowledgments ("mm", "okay"), framing lines, and non-question utterances leave the previously-shown question on screen.
 
-The Admirer phase's background visual is a sacred-geometry pattern that *forms over the conversation* via an image-to-particles pipeline. On phase mount, `src/lib/glyphRasterizer.js` rasterises one of 15 source SVG tiles (`public/admirer/glyphs/source.svg`, Layer_2..Layer_17, Layer_16 excluded) to an offscreen canvas, scans the dark pixels via `getImageData()`, and downsamples to ~800 particle target positions. `src/phases/BackgroundGlyph.jsx` animates those particles from random scatter positions toward their targets using force-field physics in `src/lib/glyphPhysics.js` (velocity + spring-to-target + phone-motion force + damping; settled particles get 10× weaker motion coupling so the formed geometry sways without dissolving). Editorial-moment release bursts come from `src/lib/momentBus.js` — a tiny pub/sub with idempotent eventId-keyed `fireMoment(amount, eventId)`. `Admirer.jsx` is the **single source of truth** for all dispatches: mount fires `(0.08, 'mount')`, recordLexicon fires `(0.05, 'lexicon:{term}')`, fragment rating resolution fires `(0.08, 'fragment:{id}')`, startGeneration snaps to 1.0, and a transcript watcher fires `(0.12, 'question:{i}')` / `(0.05, 'user:{i}')` per new agent question / user turn. As the release ratio crosses 0.7, an SVG overlay of the actual source tile (with original fills) fades in over ~500ms — by 1.0, particles are gone and the visual is the source SVG line-for-line. Both layers ease together via a single rAF-driven `animatedSvgOpacityRef`, so there's no dark gap between the canvas fade and the SVG fade-in. See the v3 rebuild plan at `docs/superpowers/plans/2026-05-24-background-glyph-v3-image-particles.md` and the verification report at `docs/admirer-glyph-v3-verification-2026-05-24.md`.
+**The Admirer's first utterance — dynamic override.** The static `first_message` baked into the agent on ElevenLabs is overridden per-session from the React client via `src/lib/admirerFirstMessage.js` — first-time users get the threshold opening (long-form, "this first time runs slow…"), returning users get a short recognition line driven by `recency_summary` + `time_of_day` from `buildDynamicVariables()` (e.g. "a few weeks. you're back. press and hold to speak. what's around you now?"). The agent-side override permission was enabled at agent creation; the static message is the fallback when no override is passed.
+
+**Silence handling — the agent never runs away.** While the user is connected to the Admirer and NOT holding the speak button (and NOT mid-fragment), `src/phases/Admirer.jsx` uses the `src/hooks/useIdleKeepAlive.js` hook to ping the ElevenLabs SDK's `sendUserActivity()` every 10s. This resets the server-side turn-timeout timer so the agent stays silent through user silence. As a safety net, the server is configured with `turn_timeout: 30` (the documented maximum) and `turn_eagerness: 'patient'`. The `skip_turn` system tool is enabled so the LLM can also explicitly hold its own turn after asking a question.
+
+**Arrival footsteps.** On Admirer mount, `useAdmirerRoom` plays a ~3 s footsteps clip (`public/admirer/footsteps.mp3`, generated via `scripts/generate-footsteps.js` from the ElevenLabs Sound Effects API) through the AdmirerRoom HRTF graph — animated from behind-right (azimuth -150°, distance 6m) to the voice's resting seat (azimuth 0°, elevation +5°, distance 1.6m). The Admirer audibly walks up before the first word lands.
+
+**Background visual — BackgroundGlyph v3 (image-to-particles).** The Admirer phase's background visual is a sacred-geometry pattern that *forms over the conversation*. On phase mount, `src/lib/glyphRasterizer.js` rasterises one of 15 source SVG tiles (`public/admirer/glyphs/source.svg`, Layer_2..Layer_17, Layer_16 excluded as too busy) to an offscreen 320×320 canvas, scans active pixels via `getImageData()` (alpha + luminance thresholded), and downsamples to ~800 (`PARTICLE_BUDGET`) particle target positions. `src/phases/BackgroundGlyph.jsx` animates those particles from random scatter positions toward their targets using the pure force-field physics in `src/lib/glyphPhysics.js` (velocity + spring-to-target + phone-motion force + damping; settled particles get 10× weaker motion coupling so the formed geometry sways without dissolving). Editorial-moment release bursts come from `src/lib/momentBus.js` — a tiny pub/sub with idempotent eventId-keyed `fireMoment(amount, eventId)`. `Admirer.jsx` is the **single source of truth** for all dispatches: mount fires `(0.08, 'mount')`, `recordLexicon` fires `(0.05, 'lexicon:{term}')`, fragment rating resolution fires `(0.08, 'fragment:{id}')`, `startGeneration` snaps to 1.0, and a transcript watcher (with index-keyed `Set`s to handle the tentative→final coalescing) fires `(0.12, 'question:{i}')` / `(0.05, 'user:{i}')` per new agent question / user turn. As the release ratio crosses 0.7, an SVG overlay of the actual source tile (with original fills) fades in over ~500ms — by 1.0, particles are gone and the visual is the source SVG line-for-line. Both layers ease together via a single rAF-driven `animatedSvgOpacityRef`, so there's no dark gap between the canvas fade and the SVG fade-in. Per-frame the loop allocates nothing (motion-force object hoisted, ink color cached); DPR is capped at 2. See the v3 plan at `docs/superpowers/plans/2026-05-24-background-glyph-v3-image-particles.md` and the verification report at `docs/admirer-glyph-v3-verification-2026-05-24.md`.
 
 ### Score-v2 lib modules (`src/lib/`)
 
@@ -110,6 +116,22 @@ Pure-function modules. Most have unit tests in `src/lib/__tests__/`.
 - **`moment.js`** — `computeBpm(moment)` derives BPM from `totalDownbeats` (score-flow) or `peakTapRate` (legacy fallback).
 - **`compositionPlan.js`** — *Deprecated in v3.* Was used to build ElevenLabs Music API prompts. No longer called; safe to delete.
 
+### Musicking-era lib modules (`src/lib/`)
+
+Added or rewritten during the `musicking` redesign and its refinement passes. All pure-function (no React, no DOM) except where noted; all have unit tests in `src/lib/__tests__/` except where noted browser-only.
+
+- **`admirerFirstMessage.js`** — `buildFirstMessage({ isFirstSession, recencySummary, timeOfDay })` returns the per-session opening line. First-time = full threshold opening; returning = short recognition line. Unit-tested.
+- **`admirerTools.js`** — `buildAdmirerTools(callbacks)` constructs the 6 client tools the Admirer agent calls (recordLexicon, commitArtifact, markRestricted, playFragment, startGeneration, commitEntry).
+- **`descriptorsToStems.js`** — maps the agent's `startGeneration` descriptors `{tempo, mood, era, instrumentation}` to one of the 24 archetype × variation stem sets.
+- **`extractQuestion.js`** — pure: extracts the trailing question sentence from a multi-sentence agent utterance (so "welcome. … what's around you?" collapses to "what's around you?"). Returns `null` if no `?`. Used by `QuestionDisplay`. Unit-tested.
+- **`fragmentBank.js`** — the 8 named locate-phase fragments (`warm-acoustic-now`, …) the agent plays during the listening run.
+- **`glyphPhysics.js`** — pure: `stepParticle(p, dt, motionForce, nowMs)` — force-field integration for BackgroundGlyph. Spring + motion force + damping; 10× weaker coupling for settled particles. Unit-tested.
+- **`glyphRasterizer.js`** — image-to-particles for BackgroundGlyph. Async `rasterizeTile(tileId)` is browser-only; pure helpers `extractActivePixels`, `downsampleTargets`, `normalizeTargets`, plus `TILE_IDS` / `PARTICLE_BUDGET = 800` / `pickRandomTileId(rand)` are unit-tested.
+- **`liveSession.js`** — subscribable in-memory store for the current session's transcript + lexicon. `addTranscriptLine` coalesces tentative→final agent updates. Unit-tested.
+- **`momentBus.js`** — tiny pub/sub for editorial release moments in the Admirer phase. `fireMoment(amount, eventId?)` is idempotent on `eventId`. `subscribeMoments` immediately emits the current value. `resetMoments` clears both the ratio AND the seen-id set. Unit-tested.
+- **`phaseTheme.js`** — `inkForPhase(phase)` returns the right ink colour for each phase (entry/admirer/settle = `#1C1814` for cream paper; orchestra = `#E8E4DD` for the dark theme). `App.jsx` sets `--ink` on its outer wrapper from this; cross-phase surfaces read `var(--ink, currentColor)`. Unit-tested.
+- **`roomPresets.js`** — `INTIMATE` / `EXPANDED` Web-Audio acoustic presets + `roomAt(t)` interpolation. Used by `AdmirerRoom`. Unit-tested.
+
 ### Server-side proxy (`api/`)
 
 ElevenLabs API key (`ELEVENLABS_API_KEY`, no VITE_ prefix) stays on the server. Vite dev middleware in `vite.config.js` mounts `/api/*.js` handlers via `ssrLoadModule`. In production, Vercel auto-deploys these as serverless functions.
@@ -122,9 +144,10 @@ ElevenLabs API key (`ELEVENLABS_API_KEY`, no VITE_ prefix) stays on the server. 
 
 ### Hooks
 
-- **`src/hooks/useAdmirerAgent.js`** — wraps `@elevenlabs/react` `useConversation`; runs the Admirer agent with push-to-talk and forwards messages into `liveSession`. See **The Admirer (musicking — Act 1)**.
-- **`src/hooks/useAdmirerRoom.js`** — owns the Build-A `AdmirerRoom` lifecycle (build, voice capture, roll→azimuth, expansion).
-- **`src/hooks/usePhoneMotion.js`** — device-orientation snapshots via `GestureCore` (Build A + the glyph).
+- **`src/hooks/useAdmirerAgent.js`** — wraps `@elevenlabs/react` `useConversation`; runs the Admirer agent with push-to-talk and forwards messages into `liveSession`. Exposes `sendUserActivity` + `sendContextualUpdate` and accepts an optional `firstMessage` override for per-session opening lines. See **The Admirer (musicking — Act 1)**.
+- **`src/hooks/useAdmirerRoom.js`** — owns the Build-A `AdmirerRoom` lifecycle (build, voice capture, roll→azimuth, expansion, arrival footsteps).
+- **`src/hooks/useIdleKeepAlive.js`** — small timer hook: while `enabled` is true, calls `ping()` every `intervalMs`. Used by `Admirer.jsx` to call `sendUserActivity()` every 10 s while hold-to-speak is idle so the server's turn-timeout never fires.
+- **`src/hooks/usePhoneMotion.js`** — device-orientation snapshots via `GestureCore` (Build A's room azimuth + BackgroundGlyph's force-field motion input).
 - **`src/hooks/useInputMode.js`** — Detects mouse vs touch input.
 - **`src/hooks/useRiteSession.js`** — the desktop journal's relay-viewer side: opens one viewer connection, runs the rite `riteStage` state machine, and writes the `entries` row when the phone relays its `entry` message at settle. See **Desktop journal** (Slice 3).
 - **`src/hooks/useEntryAudio.js`** — streams one journal entry's master MP3 from R2 for the entry detail view; owns a plain `HTMLAudioElement`, exposes `{available, playing, toggle, progressRef}`. See **Desktop journal** (Slice 4).
@@ -276,7 +299,8 @@ the rite state machine, writes the row via `entriesRepo.createEntry`, and the
 `Journal` reopens turned to the new page. `EntryPage` renders the real glyph in
 a per-account "hand" (`deriveHand`); entries with no glyph keep the procedural
 fallback. `Stage` is retired (`StageCosmos` reused as the live mirror). The
-Admirer-phase `GlyphCanvas` is kept as pure decoration.
+Admirer-phase `BackgroundGlyph` (sacred-geometry image-to-particles visual)
+is distinct from the journal's recorded-conducting glyph — decoupled by design.
 
 **Slice 4 — the entry detail view (built).** Opening a journal entry makes its
 page a living "room": `useEntryAudio` (`src/journal/useEntryAudio.js`) streams
@@ -336,7 +360,7 @@ npm run dev                          # Start dev server (Vite + /api middleware)
 npm run build                        # Production build
 npm run lint                         # ESLint
 npm run preview                      # Preview production build
-npm test                             # Run vitest suite (312 tests)
+npm test                             # Run vitest suite (367 tests)
 npm run test:watch                   # Watch mode
 
 # Local conducting relay (Node, dev only — for /conduct-* routes + QR pairing dev)
@@ -359,7 +383,7 @@ npm run gen:phase2                      # Legacy Phase 2 audio asset generation
 node scripts/generate-assets.js         # Legacy Orchestra v2 audio asset generation (TTS, SFX, Music, Hall IR)
 ```
 
-> **Lint debt.** `npm run lint` is **not clean** — ~133 pre-existing errors (+12 warnings), all in legacy/unrouted or non-browser code: the `src/phases` 9-phase rite, `src/chamber` v1, Node `scripts/`, `api/`, and the relay. Mostly `no-unused-vars`; every `no-undef` is an ESLint env-config gap (`process`/`Buffer`/Cloudflare-Workers globals), not a real bug. `npm run build` + `npm test` (312 passing) are the real gates — the bar for new work is **no _new_ lint errors**.
+> **Lint debt.** `npm run lint` is **not clean** — ~137 pre-existing errors (+12 warnings = 149 problems total), all in legacy/unrouted or non-browser code: the `src/phases` 9-phase rite, `src/chamber` v1, Node `scripts/`, `api/`, and the relay. Mostly `no-unused-vars`; every `no-undef` is an ESLint env-config gap (`process`/`Buffer`/Cloudflare-Workers globals), not a real bug. `npm run build` + `npm test` (367 passing) are the real gates — the bar for new work is **no _new_ lint errors**.
 
 ## Deployment
 
@@ -399,6 +423,11 @@ The **`musicking`** redesign — Act 1 = the Admirer conversation; Build A = the
 - `docs/superpowers/plans/2026-05-20-five-minute-admirer-shared-world.md` — 5-minute compression, the fragment listening run, Build B
 - `docs/superpowers/plans/2026-05-20-build-a-room-integration.md` — Build A: the HRTF room, phone motion, the glyph, the expansion transition
 - `docs/admirer-spatial-spike.md`, `docs/admirer-tap-to-agent-spike.md`, `docs/admirer-blocking-tool-spike.md` — SDK spikes (audio capture, the tap→agent path, the blocking-tool semantics)
+
+Two refinement passes followed in late May 2026:
+
+- `docs/superpowers/plans/2026-05-23-admirer-silence-arrival-legibility.md` — silence handling (`sendUserActivity()` keep-alive + `turn_timeout: 30` + `turn_eagerness: 'patient'` + `skip_turn` system tool), arrival footsteps through the AdmirerRoom HRTF graph, dynamic per-session `first_message` override, and the on-screen question display redesigned as a single active-question line at the top via `QuestionDisplay` + `extractQuestion`.
+- `docs/superpowers/plans/2026-05-24-background-glyph-v3-image-particles.md` — full rebuild of the Admirer's background visual. The v1 (chord chains) and v2 (stroke-dashoffset on filled paths) approaches rendered the source sacred-geometry tiles as wireframes; v3 uses the canonical image-to-particles pattern (rasterise → `getImageData()` → ~800 particle targets → force-field physics → SVG fade-in overlay). Single source of truth for momentBus dispatches lives in `Admirer.jsx`. Verification report at `docs/admirer-glyph-v3-verification-2026-05-24.md`.
 
 ## Experimental conducting routes
 
