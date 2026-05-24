@@ -6,6 +6,7 @@ import ConductCodex from './conductor-codex/ConductCodex.jsx'
 import ConductGlb from './conductor-glb/ConductGlb.jsx'
 import Desktop from './desktop/Desktop.jsx'
 import CloudTest from './journal/CloudTest.jsx'
+import AureolaTest from './aureola/AureolaTest.jsx'
 
 const ROUTES = {
   '/conduct': ConductorView,
@@ -13,6 +14,7 @@ const ROUTES = {
   '/conduct-glb': ConductGlb,
   '/journal': Desktop,
   '/cloud-test': CloudTest,
+  '/aureola-test': AureolaTest,
 }
 
 // Device + session detection at the root:
