@@ -9,14 +9,20 @@ import {
 
 const SEGMENTS_W = 256
 const SEGMENTS_H = 144
-const DISPLACEMENT_SCALE = 0.08
+// 0.08 → 0.22 read distorted on the figure silhouette (the depth-edge stretch
+// was visible). Settled on 0.14 — figure has clear internal volume without
+// the silhouette artifact.
+const DISPLACEMENT_SCALE = 0.14
 const ALPHA_TEST = 0.1
+// Slight translucency so the figure feels integrated with the field behind
+// it rather than stamped on top.
+const FIGURE_OPACITY = 0.85
 
-// Front plane uses the back plane's HEIGHT for scaling — figure stands at the
-// back's vertical extent. Front width comes from its own aspect (3:2 instead
-// of 16:9), so the figure is narrower than the back and the cosmic periphery
-// shows past it on left/right.
-const FRONT_BASE_PLANE_H = BACK_CONSTANTS.BASE_PLANE_H
+// Front plane scaled DOWN to 75% of back's height — figure feels smaller and
+// less dominating, with more cosmic periphery breathing around it. Width still
+// derives from front's own 3:2 aspect.
+const FRONT_HEIGHT_OF_BACK = 0.75
+const FRONT_BASE_PLANE_H = BACK_CONSTANTS.BASE_PLANE_H * FRONT_HEIGHT_OF_BACK
 const FRONT_BASE_PLANE_W = FRONT_BASE_PLANE_H * FRONT_CONSTANTS.IMAGE_ASPECT
 
 export default function FrontFigurePlane({ colorTex, depthTex }) {
@@ -25,6 +31,7 @@ export default function FrontFigurePlane({ colorTex, depthTex }) {
       displacementScale: DISPLACEMENT_SCALE,
       useTextureAlpha: true,
       alphaTest: ALPHA_TEST,
+      opacityMultiplier: FIGURE_OPACITY,
     }),
     [colorTex, depthTex],
   )

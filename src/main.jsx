@@ -6,8 +6,6 @@ import ConductCodex from './conductor-codex/ConductCodex.jsx'
 import ConductGlb from './conductor-glb/ConductGlb.jsx'
 import Desktop from './desktop/Desktop.jsx'
 import CloudTest from './journal/CloudTest.jsx'
-import AureolaTest from './aureola/AureolaTest.jsx'
-import AureolaIntegrationTest from './aureola-integration/AureolaIntegrationTest.jsx'
 import AureolaThreePlaneTest from './aureola-three-plane/AureolaThreePlaneTest.jsx'
 
 const ROUTES = {
@@ -16,8 +14,6 @@ const ROUTES = {
   '/conduct-glb': ConductGlb,
   '/journal': Desktop,
   '/cloud-test': CloudTest,
-  '/aureola-test': AureolaTest,
-  '/aureola-integration-test': AureolaIntegrationTest,
   '/aureola-three-plane-test': AureolaThreePlaneTest,
 }
 

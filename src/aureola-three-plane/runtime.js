@@ -32,6 +32,16 @@ export const PLANE_Z = {
   FRONT: +0.5,
 }
 
+// ---- AtmosphericGrain uniforms ----
+// Tuned at 0.10 (10%) — stronger than the original 3-5% film-grain norm so
+// the overlay reads as a unifying layer rather than a subliminal one.
+export const GRAIN_OPACITY = 0.10
+export const grainEnabledU = uniform(1)
+
+export function setGrainEnabled(on) {
+  grainEnabledU.value = on ? 1 : 0
+}
+
 // ---- Tilt → shader bridges ----
 // Live tilt magnitude in degrees (sqrt(gamma² + beta²)). Drives middle-plane
 // rotation acceleration, ring fade-in thresholds, and color shift.
@@ -56,16 +66,22 @@ export function setMiddlePlaneAspect(a) {
 // the figure's alpha channel.
 //
 //   opts:
-//     displacementScale (required, e.g. 0.15 back, 0.08 front)
-//     useTextureAlpha   (front-figure plane sets true → opacityNode = texture.a)
+//     displacementScale  (required, e.g. 0.35 back, 0.22 front)
+//     useTextureAlpha    (front-figure plane sets true → opacityNode = texture.a)
+//     opacityMultiplier  (multiplies the texture alpha when useTextureAlpha; e.g.
+//                         0.85 to make the figure slightly translucent)
+//     alphaTest          (discard fragments below this alpha threshold)
 export function buildDisplacementMaterial(colorTex, depthTex, opts = {}) {
   const displacementScale = opts.displacementScale ?? 0.15
+  const opacityMultiplier = opts.opacityMultiplier ?? 1.0
   const m = new MeshBasicNodeMaterial()
   const sampled = texture(colorTex)
   m.colorNode = sampled
   if (opts.useTextureAlpha) {
     m.transparent = true
-    m.opacityNode = sampled.a
+    m.opacityNode = opacityMultiplier === 1.0
+      ? sampled.a
+      : sampled.a.mul(opacityMultiplier)
     if (opts.alphaTest !== undefined) m.alphaTest = opts.alphaTest
   }
   const depthValue = texture(depthTex).r

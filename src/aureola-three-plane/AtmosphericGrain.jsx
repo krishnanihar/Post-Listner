@@ -8,7 +8,7 @@ import { GRAIN_OPACITY, grainEnabledU } from './runtime'
 // to avoid clipping when the camera translates with tilt. Plane is sized to the
 // viewport at this distance so it always covers the frame.
 const PLANE_Z = 1.5
-const CAM_Z = 2.2 // must match IntegrationScene's camera.position.z
+const CAM_Z = 2.0 // matches AureolaThreePlaneTest's camera.position.z
 
 function buildGrainMaterial() {
   const m = new MeshBasicNodeMaterial()
@@ -33,18 +33,17 @@ function buildGrainMaterial() {
   return m
 }
 
-// AtmosphericGrain — full-canvas film-grain overlay. Approximates screen blend
-// with AdditiveBlending at this low opacity (3-5%) — visual difference vs true
-// screen is sub-perceptible. Renders last (depthTest off, renderOrder high) so
-// it sits on top of the base + Eye composite.
+// AtmosphericGrain — full-canvas film-grain overlay. AdditiveBlending at this
+// opacity approximates screen blend (sub-perceptible difference). Renders last
+// (depthTest off, renderOrder high) so it sits on top of the three planes.
 export default function AtmosphericGrain() {
   const { viewport } = useThree()
   const material = useMemo(() => buildGrainMaterial(), [])
   useEffect(() => () => material.dispose(), [material])
 
   // Size the plane to cover the viewport at PLANE_Z. viewport.width/height are
-  // world units at the camera focal distance (default = z=0 plane); scale
-  // linearly by the distance ratio to PLANE_Z, plus a small headroom.
+  // world units at the camera focal distance; scale linearly by the distance
+  // ratio to PLANE_Z, plus a small headroom.
   const sizeFactor = ((CAM_Z - PLANE_Z) / CAM_Z) * 1.1
   const planeW = viewport.width * sizeFactor
   const planeH = viewport.height * sizeFactor

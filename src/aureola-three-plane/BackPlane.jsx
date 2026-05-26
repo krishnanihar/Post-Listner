@@ -4,7 +4,11 @@ import { BACK_CONSTANTS, PLANE_Z, buildDisplacementMaterial } from './runtime'
 
 const SEGMENTS_W = 256
 const SEGMENTS_H = 144
-const DISPLACEMENT_SCALE = 0.15
+// 0.15 → 0.35 read too dramatic (visible mesh distortion at depth edges).
+// Settled on 0.22 — clearly more dimensional than 0.15 but without the
+// distortion artifacts. Back foreground peaks at z=-0.28, plenty of
+// clearance from the middle plane at z=0.
+const DISPLACEMENT_SCALE = 0.22
 
 // BackPlane — cosmic periphery at z = -0.5, depth-displaced.
 // `depthOn` is a debug toggle: when false, displacementScale collapses to 0 so

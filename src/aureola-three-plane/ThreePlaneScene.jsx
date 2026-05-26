@@ -7,7 +7,7 @@ import {
   SRGBColorSpace,
   TextureLoader,
 } from 'three/webgpu'
-import AtmosphericGrain from '../aureola-integration/AtmosphericGrain'
+import AtmosphericGrain from './AtmosphericGrain'
 import BackPlane from './BackPlane'
 import MiddleShaderPlane from './MiddleShaderPlane'
 import FrontFigurePlane from './FrontFigurePlane'
