@@ -9,11 +9,13 @@ import { buildDynamicVariables } from '../lib/sessionStore.js'
 import StemPlayer from '../lib/stemPlayer.js'
 import { addLexiconWord, subscribeLiveSession, getLiveSession } from '../lib/liveSession.js'
 import { fireMoment, resetMoments } from '../lib/momentBus.js'
+import { advanceFormationStage, resetFormationStage } from '../lib/formationStage.js'
 import QuestionDisplay from './QuestionDisplay'
 import HoldToSpeak from './HoldToSpeak'
 import FragmentControls from './FragmentControls'
 import { useAdmirerRoom } from '../hooks/useAdmirerRoom.js'
 import { useIdleKeepAlive } from '../hooks/useIdleKeepAlive.js'
+import AdmirerScene3D from './admirer-scene/AdmirerScene3D'
 
 const AGENT_ID = import.meta.env.VITE_ELEVENLABS_AGENT_ID
 
@@ -74,7 +76,13 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
       // Burst-release 8% of particles. eventId is the fragment id so
       // re-resolving the same fragment (shouldn't happen, but defensively)
       // doesn't double-fire.
-      if (pending.fragmentId) fireMoment(0.08, `fragment:${pending.fragmentId}`)
+      if (pending.fragmentId) {
+        fireMoment(0.08, `fragment:${pending.fragmentId}`)
+        // First fragment rated → advance formation stage 1 (back plane
+        // fades in). Subsequent ratings are no-ops by the formationStage
+        // contract.
+        advanceFormationStage(1)
+      }
       pending.resolve(answer)
     }
   }, [])
@@ -141,6 +149,8 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     // formed (any remaining un-released particles release now). The
     // 'startGeneration' eventId makes this safe against re-fires.
     fireMoment(1.0, 'startGeneration')
+    // Formation stage 2 — front figure fades in over the orchestra handoff.
+    advanceFormationStage(2)
     stemsBundleRef.current = bundle
     const ctx = getAudioCtx?.()
     if (!ctx) {
@@ -280,6 +290,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   // hot-reload re-fire won't double the initial release.
   useEffect(() => {
     resetMoments()
+    resetFormationStage()
     fireMoment(0.08, 'mount')
   }, [])
 
@@ -367,11 +378,13 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
 
   return (
     <Paper variant="cream">
+      <AdmirerScene3D />
       <div style={{
         position: 'absolute', inset: 0,
         display: 'flex', flexDirection: 'column',
         alignItems: 'center',
         padding: '0 32px',
+        zIndex: 5,
       }}>
         {/* Top region: amber dot + state label */}
         <div style={{

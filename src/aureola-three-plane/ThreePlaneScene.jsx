@@ -39,7 +39,9 @@ function configureDepth(tex) {
 
 // ThreePlaneScene — runs inside the Canvas. Owns texture loading + camera-tilt
 // translation (single useFrame at this level rather than per-plane, so all
-// three planes share one camera).
+// three planes share one camera). Optional opacity uniforms drive per-plane
+// fades when this scene is hosted inside AdmirerScene3D; the
+// /aureola-three-plane-test route omits them and the planes behave as before.
 export default function ThreePlaneScene({
   getTilt,
   middleVisible,
@@ -47,6 +49,9 @@ export default function ThreePlaneScene({
   frontVisible,
   middleZ,
   middleBaseRate,
+  backOpacityU = null,
+  middleOpacityU = null,
+  frontOpacityU = null,
 }) {
   const {
     backColor,
@@ -94,16 +99,17 @@ export default function ThreePlaneScene({
 
   return (
     <>
-      <BackPlane colorTex={backColor} depthTex={backDepth} depthOn={backDepthOn} />
+      <BackPlane colorTex={backColor} depthTex={backDepth} depthOn={backDepthOn} opacityU={backOpacityU} />
       {middleVisible && (
         <MiddleShaderPlane
           getTilt={getTilt}
           baseRate={middleBaseRate}
           z={middleZ}
+          opacityU={middleOpacityU}
         />
       )}
       {frontVisible && (
-        <FrontFigurePlane colorTex={frontColor} depthTex={frontDepth} />
+        <FrontFigurePlane colorTex={frontColor} depthTex={frontDepth} opacityU={frontOpacityU} />
       )}
       <AtmosphericGrain />
     </>

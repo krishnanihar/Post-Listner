@@ -25,15 +25,19 @@ const FRONT_HEIGHT_OF_BACK = 0.75
 const FRONT_BASE_PLANE_H = BACK_CONSTANTS.BASE_PLANE_H * FRONT_HEIGHT_OF_BACK
 const FRONT_BASE_PLANE_W = FRONT_BASE_PLANE_H * FRONT_CONSTANTS.IMAGE_ASPECT
 
-export default function FrontFigurePlane({ colorTex, depthTex }) {
+// `opacityU` — optional TSL `uniform()` node. When provided, the figure
+// fades in/out with `opacityU.value` 0..1, ON TOP of the per-fragment
+// alpha (so the silhouette is preserved while the whole figure fades).
+export default function FrontFigurePlane({ colorTex, depthTex, opacityU = null }) {
   const material = useMemo(
     () => buildDisplacementMaterial(colorTex, depthTex, {
       displacementScale: DISPLACEMENT_SCALE,
       useTextureAlpha: true,
       alphaTest: ALPHA_TEST,
       opacityMultiplier: FIGURE_OPACITY,
+      opacityU,
     }),
-    [colorTex, depthTex],
+    [colorTex, depthTex, opacityU],
   )
 
   useEffect(() => () => material.dispose(), [material])

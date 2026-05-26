@@ -13,12 +13,15 @@ const DISPLACEMENT_SCALE = 0.22
 // BackPlane — cosmic periphery at z = -0.5, depth-displaced.
 // `depthOn` is a debug toggle: when false, displacementScale collapses to 0 so
 // the back reads as a flat sheet (useful for isolating what depth contributes).
-export default function BackPlane({ colorTex, depthTex, depthOn = true }) {
+// `opacityU` — optional TSL `uniform()` node. When provided, the plane fades
+// in/out with `opacityU.value` 0..1 (used by AdmirerScene3D for stage gating).
+export default function BackPlane({ colorTex, depthTex, depthOn = true, opacityU = null }) {
   const material = useMemo(
     () => buildDisplacementMaterial(colorTex, depthTex, {
       displacementScale: depthOn ? DISPLACEMENT_SCALE : 0,
+      opacityU,
     }),
-    [colorTex, depthTex, depthOn],
+    [colorTex, depthTex, depthOn, opacityU],
   )
 
   useEffect(() => () => material.dispose(), [material])

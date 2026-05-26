@@ -62,8 +62,9 @@ export function setMiddlePlaneAspect(a) {
 // ---- Depth-displacement material helper ----
 // Mirrors the TSL shader pattern from aureola-integration/IntegrationBase
 // (and ultimately bestiary/Workbench). Both back + front planes use this;
-// only the displacementScale varies, and the front overrides opacityNode for
-// the figure's alpha channel.
+// only the displacementScale varies, the front overrides opacityNode for
+// the figure's alpha channel, and consumers can pass `opacityU` (a TSL
+// `uniform()`) to multiply a live fade value into the final opacity.
 //
 //   opts:
 //     displacementScale  (required, e.g. 0.35 back, 0.22 front)
@@ -71,6 +72,7 @@ export function setMiddlePlaneAspect(a) {
 //     opacityMultiplier  (multiplies the texture alpha when useTextureAlpha; e.g.
 //                         0.85 to make the figure slightly translucent)
 //     alphaTest          (discard fragments below this alpha threshold)
+//     opacityU           (TSL uniform node — folded as multiplicative fade)
 export function buildDisplacementMaterial(colorTex, depthTex, opts = {}) {
   const displacementScale = opts.displacementScale ?? 0.15
   const opacityMultiplier = opts.opacityMultiplier ?? 1.0
@@ -83,6 +85,10 @@ export function buildDisplacementMaterial(colorTex, depthTex, opts = {}) {
       ? sampled.a
       : sampled.a.mul(opacityMultiplier)
     if (opts.alphaTest !== undefined) m.alphaTest = opts.alphaTest
+  }
+  if (opts.opacityU) {
+    m.transparent = true
+    m.opacityNode = m.opacityNode ? m.opacityNode.mul(opts.opacityU) : opts.opacityU
   }
   const depthValue = texture(depthTex).r
   m.positionNode = positionLocal.add(

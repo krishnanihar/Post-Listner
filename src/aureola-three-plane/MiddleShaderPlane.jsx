@@ -42,7 +42,7 @@ const FLOWER_CENTERS = [
   [LATTICE_R * 0.5, -LATTICE_R * 0.866025],
 ]
 
-function buildMiddleMaterial() {
+function buildMiddleMaterial(opacityU = null) {
   const m = new MeshBasicNodeMaterial()
   m.transparent = true
   m.depthWrite = false
@@ -94,7 +94,11 @@ function buildMiddleMaterial() {
   const lineColor = mix(goldColor, cyanColor, colorMix)
 
   // 40% opacity baseline, pre-multiplied into colorNode for additive blend.
-  const contribution = lineColor.mul(0.40).mul(totalAlpha)
+  // When `opacityU` is provided, multiply it in so the whole flower fades
+  // in/out with the stage-driven uniform. opacityNode is ignored under
+  // additive blending — fades must travel through colorNode.
+  let contribution = lineColor.mul(0.40).mul(totalAlpha)
+  if (opacityU) contribution = contribution.mul(opacityU)
   m.colorNode = contribution
   m.opacityNode = float(1)
 
@@ -108,8 +112,8 @@ function buildMiddleMaterial() {
 //
 // `baseRate` is the slider-driven base rotation rate (rad/s, default 0.05).
 // `z` is the slider-driven world Z position (default 0; range -1 to +1).
-export default function MiddleShaderPlane({ getTilt, baseRate, z }) {
-  const material = useMemo(() => buildMiddleMaterial(), [])
+export default function MiddleShaderPlane({ getTilt, baseRate, z, opacityU = null }) {
+  const material = useMemo(() => buildMiddleMaterial(opacityU), [opacityU])
   useEffect(() => () => material.dispose(), [material])
 
   const { viewport } = useThree()
