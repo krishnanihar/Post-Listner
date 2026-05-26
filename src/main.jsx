@@ -8,6 +8,7 @@ import Desktop from './desktop/Desktop.jsx'
 import CloudTest from './journal/CloudTest.jsx'
 import AureolaTest from './aureola/AureolaTest.jsx'
 import AureolaIntegrationTest from './aureola-integration/AureolaIntegrationTest.jsx'
+import AureolaThreePlaneTest from './aureola-three-plane/AureolaThreePlaneTest.jsx'
 
 const ROUTES = {
   '/conduct': ConductorView,
@@ -17,6 +18,7 @@ const ROUTES = {
   '/cloud-test': CloudTest,
   '/aureola-test': AureolaTest,
   '/aureola-integration-test': AureolaIntegrationTest,
+  '/aureola-three-plane-test': AureolaThreePlaneTest,
 }
 
 // Device + session detection at the root:
