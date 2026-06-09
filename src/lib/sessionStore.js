@@ -1,109 +1,130 @@
-// Per-user state for the Admirer. localStorage in Phase A; IndexedDB later.
-// All reads return safe defaults if storage is unavailable or empty.
+// Per-user state for the Admirer. Local-first: IndexedDB (archive.js) is the
+// spine; this module is a SYNCHRONOUS façade over an in-memory cache hydrated
+// from the archive at app start. Reads hit the cache; writes update the cache
+// synchronously AND write through to the archive (fire-and-forget, tolerant of
+// environments without IndexedDB — e.g. jsdom unit tests). Legacy localStorage
+// data is imported into the archive once.
 
-const KEYS = {
+import {
+  openArchive, getAllSessions, putSession, getMeta, putMeta, eraseAll,
+} from './archive.js'
+import {
+  buildSessionRecord,
+  isFirstSessionFrom,
+  recencySummaryFrom,
+  yearTierFrom,
+} from './sessionRecord.js'
+
+const LEGACY = {
   ENTRIES: 'musicking_entries',
   LEXICON: 'musicking_lexicon',
   RESTRICTED: 'musicking_restricted',
   USER_NAME: 'musicking_user_name',
+  MIGRATED: 'musicking_migrated_to_idb',
 }
 
-function readJson(key, fallback) {
+let cache = { sessions: [], lexicon: {}, restricted: [], name: '' }
+
+function writeThrough(fn) {
+  Promise.resolve().then(fn).catch((e) => console.warn('[archive] write failed', e))
+}
+
+export async function hydrateSessionStore() {
   try {
-    const raw = localStorage.getItem(key)
-    return raw ? JSON.parse(raw) : fallback
-  } catch {
-    return fallback
+    await openArchive()
+    await maybeMigrateLegacy()
+    cache = {
+      sessions: await getAllSessions(),
+      lexicon: (await getMeta('lexicon')) || {},
+      restricted: (await getMeta('restricted')) || [],
+      name: (await getMeta('name')) || '',
+    }
+  } catch (e) {
+    console.warn('[archive] hydrate failed — running from empty cache', e)
   }
 }
 
-function writeJson(key, value) {
-  try { localStorage.setItem(key, JSON.stringify(value)) } catch { /* quota */ }
+async function maybeMigrateLegacy() {
+  try {
+    if (typeof localStorage === 'undefined') return
+    if (localStorage.getItem(LEGACY.MIGRATED)) return
+    const existing = await getAllSessions()
+    if (existing.length === 0) {
+      const raw = localStorage.getItem(LEGACY.ENTRIES)
+      const entries = raw ? JSON.parse(raw) : []
+      const list = Array.isArray(entries) ? entries : []
+      for (let i = 0; i < list.length; i++) {
+        const e = list[i]
+        // id must be unique even if two legacy entries share a ts — disambiguate by index.
+        await putSession(buildSessionRecord({ id: `${e.ts || 0}-legacy-${i}`, startedAt: e.ts || 0, summary: e.summary || '' }))
+      }
+      const lex = JSON.parse(localStorage.getItem(LEGACY.LEXICON) || '{}')
+      const res = JSON.parse(localStorage.getItem(LEGACY.RESTRICTED) || '[]')
+      const nm = localStorage.getItem(LEGACY.USER_NAME) || ''
+      if (lex && typeof lex === 'object') await putMeta('lexicon', lex)
+      if (Array.isArray(res)) await putMeta('restricted', res)
+      if (nm) await putMeta('name', nm)
+    }
+    localStorage.setItem(LEGACY.MIGRATED, '1')
+  } catch (e) {
+    console.warn('[archive] legacy migration skipped', e)
+  }
 }
 
 export function getEntries() {
-  const e = readJson(KEYS.ENTRIES, [])
-  return Array.isArray(e) ? e : []
+  return [...cache.sessions]
 }
 
-export function appendEntry(entry) {
-  const all = getEntries()
-  all.push(entry)
-  writeJson(KEYS.ENTRIES, all)
+// Accepts a full SessionRecord (preferred) or a legacy { summary, ts }.
+export function appendEntry(record) {
+  const rec = record && record.schemaVersion
+    ? record
+    : buildSessionRecord({ startedAt: record?.ts ?? Date.now(), summary: record?.summary || '', rand: Math.random() })
+  cache.sessions.push(rec)
+  writeThrough(() => putSession(rec))
 }
 
 export function getIsFirstSession() {
-  return getEntries().length === 0
+  return isFirstSessionFrom(cache.sessions)
 }
 
 export function getLexicon() {
-  const l = readJson(KEYS.LEXICON, {})
-  return (l && typeof l === 'object') ? l : {}
+  return { ...cache.lexicon }
 }
 
 export function addLexicon(term, userPhrasing) {
   if (!term || !userPhrasing) return
-  const l = getLexicon()
-  l[term] = userPhrasing
-  writeJson(KEYS.LEXICON, l)
+  cache.lexicon = { ...cache.lexicon, [term]: userPhrasing }
+  writeThrough(() => putMeta('lexicon', cache.lexicon))
 }
 
 export function getRestricted() {
-  const r = readJson(KEYS.RESTRICTED, [])
-  return Array.isArray(r) ? r : []
+  return [...cache.restricted]
 }
 
 export function addRestricted(repertoire) {
-  if (!repertoire) return
-  const r = getRestricted()
-  if (r.includes(repertoire)) return
-  r.push(repertoire)
-  writeJson(KEYS.RESTRICTED, r)
+  if (!repertoire || cache.restricted.includes(repertoire)) return
+  cache.restricted = [...cache.restricted, repertoire]
+  writeThrough(() => putMeta('restricted', cache.restricted))
 }
 
-// The user's name — captured as a typed field on the Entry screen.
-// Stored as a plain string (not JSON) for textual personalization only:
-// the Entry "welcome back" line now, the journal later. It is deliberately
-// NOT passed to the voice agent and never spoken — text-to-speech would
-// mispronounce non-Western names, and a wrong name is worse than no name.
 export function getUserName() {
-  try {
-    return localStorage.getItem(KEYS.USER_NAME) || ''
-  } catch {
-    return ''
-  }
+  return cache.name || ''
 }
 
 export function setUserName(name) {
   const trimmed = (name || '').trim()
   if (!trimmed) return
-  try { localStorage.setItem(KEYS.USER_NAME, trimmed) } catch { /* quota */ }
+  cache.name = trimmed
+  writeThrough(() => putMeta('name', trimmed))
 }
 
-// Coarse human recency phrase from the most recent entry's timestamp.
-// "first time" if no entries; otherwise rough buckets matching the brief.
-export function getRecencySummary() {
-  const entries = getEntries()
-  if (entries.length === 0) return 'first time'
-  const last = entries[entries.length - 1]
-  const ageDays = (Date.now() - (last.ts || 0)) / 86400000
-  if (ageDays < 1) return 'today'
-  if (ageDays < 2) return 'yesterday'
-  if (ageDays < 7) return 'a few days'
-  if (ageDays < 21) return 'a few weeks'
-  if (ageDays < 70) return 'a couple months'
-  return 'a long time'
+export function getRecencySummary(now = Date.now()) {
+  return recencySummaryFrom(cache.sessions, now)
 }
 
-// Year-tier per Ship-Blockers §1: tier 3 once the practitioner has ≥24
-// sessions AND ≥180 days have passed since their first entry; else tier 1.
-// `now` is injectable for testing. Used to gate year-3-only question seeds.
 export function getYearTier(now = Date.now()) {
-  const entries = getEntries()
-  if (entries.length < 24) return 1
-  const firstTs = entries[0]?.ts || 0
-  const daysSinceFirst = (now - firstTs) / 86400000
-  return daysSinceFirst >= 180 ? 3 : 1
+  return yearTierFrom(cache.sessions, now)
 }
 
 export function getTimeOfDay(now = new Date()) {
@@ -115,39 +136,31 @@ export function getTimeOfDay(now = new Date()) {
   return 'late'
 }
 
-// Build the flat object passed to the agent as dynamicVariables.
-// Keep keys exactly matching the brief Section X "Dynamic variables".
-//
-// ElevenLabs Conversational AI dynamic variables only accept primitive
-// types (string, number, boolean). Arrays get silently rejected and
-// terminate the conversation immediately after connect. Every value
-// here MUST be a primitive — collections are joined into strings.
+// Flat object passed to the agent as dynamicVariables — primitives only
+// (arrays silently kill the ElevenLabs conversation). Reads the cache.
 export function buildDynamicVariables() {
-  const entries = getEntries()
-  const lexiconObj = getLexicon()
-  // user_name is intentionally omitted — the agent never speaks the name
-  // (TTS mispronunciation risk); it is used only in the React UI.
+  const entries = cache.sessions
   return {
     is_first_session: entries.length === 0,
     session_count: entries.length,
     recency_summary: getRecencySummary(),
     time_of_day: getTimeOfDay(),
-    // Stringify lexicon as a CSV the agent can read verbatim. Keep small.
-    prior_lexicon: Object.entries(lexiconObj)
+    prior_lexicon: Object.entries(cache.lexicon)
       .slice(-12)
       .map(([k, v]) => `${k}: "${v}"`)
       .join('; '),
-    prior_entries_summary: entries
-      .slice(-5)
-      .map(e => e.summary)
-      .join(' | '),
-    // Comma-separated string — array values break the SDK.
-    restricted_repertoires: getRestricted().join(', '),
+    prior_entries_summary: entries.slice(-5).map((e) => e.summary).join(' | '),
+    restricted_repertoires: cache.restricted.join(', '),
   }
 }
 
+// Reset everything — cache (sync) + archive (best-effort async) + legacy keys.
 export function clearAll() {
-  for (const k of Object.values(KEYS)) {
-    try { localStorage.removeItem(k) } catch { /* ignore */ }
-  }
+  cache = { sessions: [], lexicon: {}, restricted: [], name: '' }
+  writeThrough(() => eraseAll())
+  try {
+    if (typeof localStorage !== 'undefined') {
+      for (const k of Object.values(LEGACY)) localStorage.removeItem(k)
+    }
+  } catch { /* ignore */ }
 }
