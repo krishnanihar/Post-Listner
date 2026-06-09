@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { eraseAll, getAllSessions } from '../archive.js'
 import {
-  hydrateSessionStore, appendEntry, getEntries, addLexicon, getLexicon, clearAll,
+  hydrateSessionStore, appendEntry, getEntries, getLexicon, clearAll,
 } from '../sessionStore.js'
 import { buildSessionRecord } from '../sessionRecord.js'
 

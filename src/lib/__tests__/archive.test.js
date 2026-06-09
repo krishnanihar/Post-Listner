@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
-  openArchive, getAllSessions, putSession, getMeta, putMeta, exportJson, eraseAll,
+  getAllSessions, putSession, getMeta, putMeta, exportJson, eraseAll,
 } from '../archive.js'
 
 const rec = (id, startedAt) => ({ schemaVersion: 1, id, startedAt, endedAt: startedAt, finalVector: { a: 0, v: 0, d: 0 }, avdTrajectory: [], landing: null, summary: id })
