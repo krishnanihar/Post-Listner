@@ -12,13 +12,15 @@ Both acts are a single React app, one Vite project, one Vercel deploy. Audio ass
 
 > **Status — 2026-05-24.** Two recent Admirer-phase refinement passes landed on `musicking` (not yet pushed). **2026-05-23 — silence / arrival / legibility:** server-side `turn_timeout: 30 + turn_eagerness: patient + skip_turn`, client-side `sendUserActivity()` keep-alive (the agent no longer runs away through user silence), arrival footsteps through the AdmirerRoom HRTF graph, dynamic per-session `first_message` override, and the on-screen transcript redesigned as a single active-**QuestionDisplay** at the top (replacing the bottom transcript tail). **2026-05-24 — BackgroundGlyph v3:** the Admirer's background visual is now an image-to-particles sacred-geometry layer (`docs/superpowers/plans/2026-05-24-background-glyph-v3-image-particles.md`) that forms over the conversation via editorial-moment release bursts and resolves to the source SVG with original fills. 367 tests passing, build clean, lint ≤ 149. The desktop journal Slices 1–5 from earlier still hold; **Slice 6 — the real collective — is next** after the Admirer-side polish settles. The real-device walkthrough (phone-tilt force coupling on BackgroundGlyph particles, full SDK transcript on a real conversation) is the one outstanding verification — Chrome DevTools confirms the visual pipeline but cannot synthesise DeviceOrientation.
 
+> **Status — 2026-06-09.** The `new-research/` spec-integration program began on `musicking` (not yet pushed) — program plan `docs/superpowers/plans/2026-06-09-spec-integration-avd-spine.md`. **Slice 1 (AVD spine + shader binding):** a continuous *signed* AVD vector `(a,v,d) ∈ [−1,+1]³` (`src/lib/avdRuntime.js` + `avdSpring.js` + `avdStore.js`) now drives the three-plane WebGPU/TSL shader — Arousal→rotation, Valence→colour/saturation, Depth→ring reveal. This is a NEW spine, separate from the legacy `[0,1]` `src/engine/avd.js`. **Slice 2 (Admirer→AVD writeback):** the Admirer migrated to authored question seeds (**Option B**) — the client owns the deck, the agent re-voices each seed (`nextQuestion`) and classifies each answer (`recordAnswer`), and every answer moves the vector (design `docs/superpowers/specs/2026-06-09-slice2-admirer-avd-writeback-design.md`, plan `docs/superpowers/plans/2026-06-09-slice2-admirer-avd-writeback.md`). The live agent prompt is patched to the re-voicer role. **442 tests passing, build clean, lint ≤ 149.** **Outstanding:** the real-device reliability spike — confirming the agent asks `nextQuestion` lines in order, calls `recordAnswer`, and the visuals move (headless tools can't synthesise the live conversation). **Slice 3 (next): AVD→scene-deck routing** — `selectScene` is built/staged; song selection still on the legacy `startGeneration→descriptorsToStems` path until then.
+
 ## Tech Stack
 
 - **React 19** + **Vite 7** (ES modules)
 - **Tailwind CSS v4** via `@tailwindcss/vite` plugin
 - **Framer Motion** for animations and transitions
 - **React Three Fiber** + **three.js** (`@react-three/fiber`, `@react-three/drei`, `@react-three/postprocessing`) — the conductor routes and the desktop journal's 3D book
-- **Vitest 4** + **jsdom** for pure-function unit tests (367 tests across `src/lib/__tests__/`, `src/orchestra/__tests__/`, `src/conductor-glb/`, `src/hooks/__tests__/`)
+- **Vitest 4** + **jsdom** for pure-function unit tests (442 tests across `src/lib/__tests__/`, `src/orchestra/__tests__/`, `src/conductor-glb/`, `src/hooks/__tests__/`)
 - **Web Audio API** — raw nodes only, no external audio libraries
   - PostListener: `src/engine/audio.js` (synthesis, MP3 playback for Spectrum/Moment)
   - Orchestra (v3): `src/orchestra/OrchestraEngine.js` (4-stem spatial graph, per-stem mono filter chain → HRTF panner with pre-HRTF mono reverb send, 6 image-source early reflections, binaural hall IR convolver, constant 10 Hz alpha binaural beats bypassing the compressor)
@@ -58,21 +60,23 @@ During the **admirer** phase, when the Admirer calls the `startGeneration` tool,
 
 ### The Admirer (musicking — Act 1)
 
-The **admirer** phase is a ~5-minute spoken conversation with "the Admirer" — an **ElevenLabs Conversational AI agent**. It elicits the user's musical direction and picks the matched song.
+The **admirer** phase is a ~5-minute spoken conversation with "the Admirer" — an **ElevenLabs Conversational AI agent**. It elicits the user's musical direction and picks the matched song. **As of Slice 2 (2026-06-09) the conversation is driven by authored question seeds (Option B): the client owns the deck, the agent only re-voices each seed and classifies each answer, and every answer moves the continuous AVD vector. See Build C below.**
 
 **Agent config — all in code.**
-- `scripts/create-admirer-agent.js` — **source of truth**: `SYSTEM_PROMPT`, `first_message` (the Arrival speech), the 6 client tools, the `turn` config. Run once to create the agent.
-- `scripts/update-admirer-agent.js` — PATCHes the live agent's prompt + `turn` + `tts`, regex-extracted from the create script so the two can't drift. Re-run after any prompt change.
+- `scripts/create-admirer-agent.js` — **source of truth**: `SYSTEM_PROMPT` (the re-voicer role — see Build C), `first_message` (the Arrival speech), the 8 client tools, the `turn` config. Run once to create the agent.
+- `scripts/update-admirer-agent.js` — PATCHes the live agent's prompt + `turn` + `tts`. It **imports `SYSTEM_PROMPT`/`TOOLS`/`FIRST_MESSAGE` directly from the create script (ES module)** so the two can't drift (it splits `TOOLS` into client vs. `built_in` system tools). Re-run after any prompt change.
 - `docs/admirer-agent-dashboard.md` — a human-readable mirror of the config; keep it in sync.
 - Agent ID → `VITE_ELEVENLABS_AGENT_ID`. LLM `gemini-2.5-flash-lite`. `speculative_turn: false` is mandatory (it caused duplicate utterances). `turn_timeout: 30` (the documented max) / `turn_eagerness: 'patient'` — paired with a client-side `sendUserActivity()` keep-alive in `Admirer.jsx` that pings every 10 s while hold-to-speak is idle, so the Admirer never advances through user silence. The `skip_turn` system tool is enabled so the LLM can also explicitly hold its own turn after asking a question.
 
 **Client wiring.**
 - `src/hooks/useAdmirerAgent.js` — wraps `@elevenlabs/react` `useConversation` (under a `ConversationProvider`). **Push-to-talk**: the mic starts muted; holding the `HoldToSpeak` button unmutes (`setMuted`). Forwards conversation messages into `liveSession` (Build B).
-- `src/lib/admirerTools.js` — `buildAdmirerTools(callbacks)` builds the 6 client tools the agent calls: `recordLexicon`, `commitArtifact`, `markRestricted`, `playFragment`, `startGeneration`, `commitEntry`. Host callbacks live in `Admirer.jsx`.
+- `src/lib/admirerTools.js` — `buildAdmirerTools(callbacks)` builds the 8 client tools the agent calls: `recordLexicon`, `commitArtifact`, `markRestricted`, `playFragment`, `nextQuestion` (Slice 2, blocking), `recordAnswer` (Slice 2), `startGeneration`, `commitEntry`. Host callbacks live in `Admirer.jsx`.
 - `src/lib/sessionStore.js` — cross-session state: the typed user name (never spoken — TTS would mispronounce it), the verbatim lexicon, restricted repertoires, prior entries. `buildDynamicVariables()` builds the per-session dynamic variables (primitives only — arrays silently kill the conversation).
 - `src/phases/Settle.jsx` — the brief closing phase after the song.
 
 **The listening run — the blocking `playFragment`.** Mid-conversation the Admirer plays ~3 short musical fragments; the user rates each Yes/No. `playFragment` is a **blocking** client tool (`expects_response: true`, `response_timeout_secs: 30`, `disable_interruptions: true` — set on the tool record): the agent calls it and waits, silent, while the client plays the clip and the user **taps** Yes/No. `Admirer.jsx`'s `onPlayFragment` returns a Promise that resolves with the rating (`"yes"`/`"no"`/`"none"`) — that string is the tool result the agent reads to choose the next fragment. `src/phases/FragmentControls.jsx` renders the playing indicator + Yes/No buttons; `src/lib/fragmentBank.js` holds the 8 fragments (each a full archetype master, capped client-side at `FRAGMENT_DURATION_MS` = 14s). Rating is tap-only during the run. See `docs/admirer-blocking-tool-spike.md`.
+
+**Build C — authored seeds + AVD writeback (Slice 2, 2026-06-09).** The Admirer no longer invents or sequences its own questions. The client owns an authored deck and decides which seed to ask; the agent is reduced to re-voicing it and reading the answer. Per turn: the agent calls **`nextQuestion`** (a blocking client tool, like `playFragment`) → `Admirer.jsx`'s `onNextQuestion` runs `selectNextSeed(...)` (`src/lib/seedSelection.js`) against the deck (`src/lib/questionSeeds.js`) by session #, year-tier (`sessionStore.getYearTier()`), and least-resolved AVD axis, returns the seed text → the agent speaks it (adapted only for pronouns/callback/transition) → after the spoken answer the agent calls **`recordAnswer({seedId, texture, intensity, rationale})`** → `onRecordAnswer` maps the texture (calm/sharp/melancholic/exalted) to an AVD target (`src/lib/textureToAvd.js`, read-trust α=0.6 blend with the seed's intent) and calls `avdStore.commitTurn(target, {gain})` → the three-plane shader responds. **Selection (tap) seeds** carry their own per-option AVD and are written client-side by the tap (`onSelectOption`); the agent is told not to `recordAnswer` for them, and `onRecordAnswer` structurally ignores `selection`/`closing` seeds. The biography questions (session-1-only) and the recurring locate seeds all flow through `nextQuestion`; the seed **wording is editable data** — selection logic + tests key off structure (`id`/`kind`/`probes`/`gain`/`tier`), never text. Song selection still rides `startGeneration` (AVD→scene routing is the planned Slice 3). The on-screen `QuestionDisplay` is unaffected — it still reads the agent's spoken transcript, which now carries the re-voiced seed.
 
 **Build A — the shared spatial room.** The Admirer's voice is routed through a Web-Audio HRTF "room" so it externalizes; the room then expands into the orchestra as the act-1 → act-2 transition.
 - `src/orchestra/AdmirerRoom.js` — an HRTF room for one source (mirrors `OrchestraEngine`'s per-source chain): captured voice → mono → HRTF panner + pre-HRTF reverb send → 6 early reflections + hall-IR convolver → master lowpass. `setExpansion(t)` / `beginExpansion()` interpolate `INTIMATE ↔ EXPANDED`. The voice is captured from the SDK's hidden `<audio>` element via `createMediaStreamSource` (`captureAdmirerVoice` — the SDK exposes no output node; see `docs/admirer-spatial-spike.md`).
@@ -121,7 +125,7 @@ Pure-function modules. Most have unit tests in `src/lib/__tests__/`.
 Added or rewritten during the `musicking` redesign and its refinement passes. All pure-function (no React, no DOM) except where noted; all have unit tests in `src/lib/__tests__/` except where noted browser-only.
 
 - **`admirerFirstMessage.js`** — `buildFirstMessage({ isFirstSession, recencySummary, timeOfDay })` returns the per-session opening line. First-time = full threshold opening; returning = short recognition line. Unit-tested.
-- **`admirerTools.js`** — `buildAdmirerTools(callbacks)` constructs the 6 client tools the Admirer agent calls (recordLexicon, commitArtifact, markRestricted, playFragment, startGeneration, commitEntry).
+- **`admirerTools.js`** — `buildAdmirerTools(callbacks)` constructs the 8 client tools the Admirer agent calls (recordLexicon, commitArtifact, markRestricted, playFragment, `nextQuestion`, `recordAnswer`, startGeneration, commitEntry).
 - **`descriptorsToStems.js`** — maps the agent's `startGeneration` descriptors `{tempo, mood, era, instrumentation}` to one of the 24 archetype × variation stem sets.
 - **`extractQuestion.js`** — pure: extracts the trailing question sentence from a multi-sentence agent utterance (so "welcome. … what's around you?" collapses to "what's around you?"). Returns `null` if no `?`. Used by `QuestionDisplay`. Unit-tested.
 - **`fragmentBank.js`** — the 8 named locate-phase fragments (`warm-acoustic-now`, …) the agent plays during the listening run.
@@ -131,6 +135,15 @@ Added or rewritten during the `musicking` redesign and its refinement passes. Al
 - **`momentBus.js`** — tiny pub/sub for editorial release moments in the Admirer phase. `fireMoment(amount, eventId?)` is idempotent on `eventId`. `subscribeMoments` immediately emits the current value. `resetMoments` clears both the ratio AND the seen-id set. Unit-tested.
 - **`phaseTheme.js`** — `inkForPhase(phase)` returns the right ink colour for each phase (entry/admirer/settle = `#1C1814` for cream paper; orchestra = `#E8E4DD` for the dark theme). `App.jsx` sets `--ink` on its outer wrapper from this; cross-phase surfaces read `var(--ink, currentColor)`. Unit-tested.
 - **`roomPresets.js`** — `INTIMATE` / `EXPANDED` Web-Audio acoustic presets + `roomAt(t)` interpolation. Used by `AdmirerRoom`. Unit-tested.
+
+**Continuous AVD spine + Admirer writeback (spec integration, 2026-06-09).** A NEW signed `[−1,+1]³` AVD vector, distinct from the legacy `[0,1]` `src/engine/avd.js`. All pure + unit-tested.
+- **`avdRuntime.js`** — pure AVD math: `ewmaStep(current, target, turnIndex, factor?)` (EWMA, η=0.35 cold-start turns 1–3 → 0.18 steady, Depth at 0.6×, clamp ±1) + `selectScene(vector, scenes, currentId)` (nearest-centroid with a 0.12 hysteresis gate — built/staged for Slice 3). Constants `ETA_*`, `HYSTERESIS_GATE`, etc.
+- **`avdSpring.js`** — critically-damped (ζ=1, ω=6) spring `stepSpring(value, velocity, target, dt, omega?, out?)` for per-frame visual easing of the shader uniforms (optional zero-alloc `out`); `toUnit` maps `[−1,1]→[0,1]`.
+- **`avdStore.js`** — subscribable store (momentBus idiom): `getAvd`, `getTurnCount`, `commitTurn(target, {confidence, gain})` (applies the EWMA per turn; confidence×gain scale the step), `setAvd` (finite-guarded direct write), `subscribeAvd`, `resetAvd`. The Admirer writes it; `AvdShaderDriver` reads it; the test route's debug sliders drive it.
+- **`textureToAvd.js`** — `TEXTURE_BASE` (calm/sharp/melancholic/exalted → signed AVD), `textureToTarget(texture, intensity)`, `blendTarget(observed, intent, alpha=0.6)`.
+- **`questionSeeds.js`** — the Admirer's authored seed deck (DATA; wording is Knih's to edit): `SEEDS` (biography session-1-only + locate + the `locate-color` selection seed + closing), `getSeed(id)`, `LOCATE_BUDGET=3` (counts the arrival opener).
+- **`seedSelection.js`** — `selectNextSeed({vector, askedIds, sessionCount, yearTier, deck})`: biography-first on session 1, the non-probing locate opener next, then the least-resolved AVD axis; tier-3 gating + per-session budget; returns `null` when spent (agent then proceeds to fragments/`startGeneration`).
+- **`avdShaderDriver`** (`src/aureola-three-plane/AvdShaderDriver.jsx`) + the `arousalU`/`valenceU`/`depthU` uniforms in `runtime.js` bind the eased vector into `MiddleShaderPlane`. `sessionStore.js` gained `getYearTier(now)` (tier 3 at ≥24 sessions AND ≥180 days).
 
 ### Server-side proxy (`api/`)
 
@@ -155,7 +168,7 @@ ElevenLabs API key (`ELEVENLABS_API_KEY`, no VITE_ prefix) stays on the server. 
 
 ### Key Modules — Engine
 
-- **`src/engine/avd.js`** — Singleton `AVDEngine`. State `{a, v, d}`, history, per-phase data.
+- **`src/engine/avd.js`** — *Legacy* singleton `AVDEngine`, range `[0,1]`. State `{a, v, d}`, history, per-phase data. Used only by the unrouted 9-phase rite + Orchestra's closing-card pick. **Not the musicking AVD spine** — the musicking flow uses the new *signed* `[−1,1]` spine (`src/lib/avdRuntime.js`/`avdSpring.js`/`avdStore.js`, see the lib section above); this legacy engine is left untouched pending retirement.
 - **`src/engine/audio.js`** — Singleton `AudioEngine`. Web Audio synthesis: stereo pairs, layered builds, build-and-drop, MP3 crossfade looping.
 - **`src/engine/elevenlabs.js`** — ElevenLabs Music API wrapper used by legacy `scripts/generate-assets.js`. Not called in v3.
 
@@ -185,7 +198,7 @@ Original chamber code under `src/chamber/`:
 | # | Phase | File | What it does |
 |---|-------|------|-------------|
 | 0 | Entry | `Entry.score.jsx` | Headphones prompt → intro video → typed name capture → device-motion permission (the "begin" tap) → routes to Admirer. |
-| 1 | Admirer | `Admirer.jsx` | ~5-min ElevenLabs Conversational AI conversation — arrival, a boundary object, ~2 questions, the 3-fragment listening run, then `startGeneration`. Loads the matched `StemPlayer` silently. See **The Admirer (musicking — Act 1)**. |
+| 1 | Admirer | `Admirer.jsx` | ~5-min ElevenLabs Conversational AI conversation — arrival, authored question seeds the agent re-voices (`nextQuestion`) with each answer moving the AVD vector (`recordAnswer`→`commitTurn`), the 3-fragment listening run, then `startGeneration`. Loads the matched `StemPlayer` silently. See **The Admirer (musicking — Act 1)** + **Build C**. |
 | 2 | Orchestra | `Orchestra.jsx` | 3-phase song-driven spatial conducting experience (Briefing 12s + Bloom 24s + Throne for the rest of the song + 4s end fade + 7s closing card). Voice-free. See **Orchestra Timeline (v3)**. |
 | 3 | Settle | `Settle.jsx` | Brief closing card after the song ends; routes back to entry. |
 
@@ -428,6 +441,11 @@ Two refinement passes followed in late May 2026:
 
 - `docs/superpowers/plans/2026-05-23-admirer-silence-arrival-legibility.md` — silence handling (`sendUserActivity()` keep-alive + `turn_timeout: 30` + `turn_eagerness: 'patient'` + `skip_turn` system tool), arrival footsteps through the AdmirerRoom HRTF graph, dynamic per-session `first_message` override, and the on-screen question display redesigned as a single active-question line at the top via `QuestionDisplay` + `extractQuestion`.
 - `docs/superpowers/plans/2026-05-24-background-glyph-v3-image-particles.md` — full rebuild of the Admirer's background visual. The v1 (chord chains) and v2 (stroke-dashoffset on filled paths) approaches rendered the source sacred-geometry tiles as wireframes; v3 uses the canonical image-to-particles pattern (rasterise → `getImageData()` → ~800 particle targets → force-field physics → SVG fade-in overlay). Single source of truth for momentBus dispatches lives in `Admirer.jsx`. Verification report at `docs/admirer-glyph-v3-verification-2026-05-24.md`.
+
+The **`new-research/` spec-integration program** (migrate the `musicking` build toward the four `new-research/compass_artifact_*.md` thesis specs) began 2026-06-09. It is sequenced into slices; each lands its own spec/plan and is built subagent-driven with spec + quality review:
+
+- `docs/superpowers/plans/2026-06-09-spec-integration-avd-spine.md` — the program roadmap (6 slices) + **Slice 1 (AVD spine + shader binding)**, fully detailed and built: the signed `[−1,1]³` AVD runtime (`avdRuntime`/`avdSpring`/`avdStore`) bound to the three-plane WebGPU/TSL shader, with AVD debug sliders on `/aureola-three-plane-test`.
+- `docs/superpowers/specs/2026-06-09-slice2-admirer-avd-writeback-design.md` + `docs/superpowers/plans/2026-06-09-slice2-admirer-avd-writeback.md` — **Slice 2 (Admirer→AVD writeback)**, built: Option-B authored seeds, the `nextQuestion`/`recordAnswer` tools, texture→AVD blend, and the re-voicer agent prompt. Outstanding: a real-device reliability spike. Next: **Slice 3 — AVD→scene-deck routing**.
 
 ## Experimental conducting routes
 
