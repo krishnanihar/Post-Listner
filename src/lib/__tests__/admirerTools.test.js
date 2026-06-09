@@ -7,13 +7,15 @@ describe('buildAdmirerTools', () => {
     localStorage.clear()
   })
 
-  it('exposes all 6 tool names', () => {
+  it('exposes all 8 tool names', () => {
     const tools = buildAdmirerTools({})
     expect(Object.keys(tools).sort()).toEqual([
       'commitArtifact',
       'commitEntry',
       'markRestricted',
+      'nextQuestion',
       'playFragment',
+      'recordAnswer',
       'recordLexicon',
       'startGeneration',
     ])
