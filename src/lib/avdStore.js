@@ -1,0 +1,64 @@
+// Subscribable in-memory store for the session's continuous AVD vector.
+// Mirrors the repo's pub/sub idiom (momentBus.js, formationStage.js):
+// module-scope state, a Set of listeners, immediate emit on subscribe, and a
+// reset that re-arms a fresh session.
+//
+// commitTurn() applies the spec EWMA (avdRuntime) using the running turn
+// counter so cold-start turns 1–3 move faster. setAvd() writes the vector
+// directly — used by the dev debug sliders and (later) by embodied-tilt
+// nudges. The Admirer slice will compute targets and call commitTurn().
+
+import { ewmaStep, clampUnitSigned } from './avdRuntime.js'
+
+const NEUTRAL = { a: 0, v: 0, d: 0 }
+
+let vector = { ...NEUTRAL }
+let turnCount = 0
+const listeners = new Set()
+
+export function getAvd() {
+  return { ...vector }
+}
+
+export function getTurnCount() {
+  return turnCount
+}
+
+// Commit one conversational turn: EWMA-step the vector toward `target`
+// (using the current turn index for the eta schedule), then advance the turn
+// counter. Returns the new vector.
+export function commitTurn(target) {
+  vector = ewmaStep(vector, target, turnCount)
+  turnCount += 1
+  emit()
+  return getAvd()
+}
+
+// Write the vector directly (dev sliders / tilt nudges). Unspecified axes are
+// left unchanged; every axis is clamped to [-1, 1]. Does NOT touch the turn
+// counter.
+export function setAvd(partial) {
+  vector = {
+    a: clampUnitSigned(partial.a ?? vector.a),
+    v: clampUnitSigned(partial.v ?? vector.v),
+    d: clampUnitSigned(partial.d ?? vector.d),
+  }
+  emit()
+}
+
+export function subscribeAvd(fn) {
+  listeners.add(fn)
+  fn(getAvd())
+  return () => listeners.delete(fn)
+}
+
+export function resetAvd() {
+  vector = { ...NEUTRAL }
+  turnCount = 0
+  emit()
+}
+
+function emit() {
+  const snapshot = getAvd()
+  for (const l of listeners) l(snapshot)
+}
