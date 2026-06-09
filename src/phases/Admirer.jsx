@@ -224,7 +224,10 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   // Skips the closing seed (no AVD effect); uses seed.gain (or 0.8 as fallback).
   const onRecordAnswer = useCallback(({ seedId, texture, intensity }) => {
     const seed = getSeed(seedId)
-    if (seed && seed.kind === 'closing') return
+    // Closing seeds carry no AVD; selection seeds are written by the tap
+    // handler (onSelectOption), so ignore any recordAnswer the agent sends
+    // for them — this is the structural guard against a double commitTurn.
+    if (seed && (seed.kind === 'closing' || seed.kind === 'selection')) return
     const observed = textureToTarget(texture, intensity ?? 1)
     const target = blendTarget(observed, seed?.intent)
     commitTurn(target, { gain: seed?.gain ?? 0.8 })

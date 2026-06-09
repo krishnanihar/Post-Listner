@@ -87,7 +87,6 @@ export function buildAdmirerTools(callbacks = {}) {
         seedId: seed.id,
         kind: seed.kind,
         text: seed.text,
-        callbackHint: seed.callbackHint || '',
         ...(seed.options ? { options: seed.options.map((o) => o.label) } : {}),
       }
     },
