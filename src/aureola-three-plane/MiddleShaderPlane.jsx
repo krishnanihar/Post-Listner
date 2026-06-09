@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { AdditiveBlending, MeshBasicNodeMaterial } from 'three/webgpu'
 import {
   cos,
+  dot,
   float,
   max,
   mix,
@@ -14,11 +15,14 @@ import {
   vec3,
 } from 'three/tsl'
 import {
+  arousalU,
   BACK_CONSTANTS,
+  depthU,
   middlePlaneAspectU,
   middleRotationU,
   setMiddlePlaneAspect,
   tiltMagU,
+  valenceU,
 } from './runtime'
 
 const SEGMENTS_W = 256
@@ -30,6 +34,8 @@ const SEGMENTS_H = 144
 // when aspect-corrected to ~16:9.
 const LATTICE_R = 0.111
 const LINE_WIDTH = 0.005
+// Arousal scales the base rotation rate: 1× at A=-1, (1 + AROUSAL_RATE_GAIN)× at A=+1.
+const AROUSAL_RATE_GAIN = 1.5
 
 // Hex-arranged circle centers around (0,0). sin(60°) ≈ 0.866025.
 const FLOWER_CENTERS = [
@@ -76,22 +82,33 @@ function buildMiddleMaterial(opacityU = null) {
   const distFromOrigin = ur.length()
   const alchemicalR = LATTICE_R * 2.5
   const alchemicalRing = smoothstep(LINE_WIDTH, 0, distFromOrigin.sub(alchemicalR).abs())
-  const alchemicalFade = smoothstep(8, 12, tiltMagU)
+  // Depth (in [-1,1]) reveals the outer rings: maps to up to +15° of
+  // tilt-equivalent reveal so high-Depth sessions show the fuller geometry.
+  const depthReveal = depthU.mul(0.5).add(0.5).mul(15) // [-1,1] -> [0,15]
+  const tiltPlusDepth = tiltMagU.add(depthReveal)
+  const alchemicalFade = smoothstep(8, 12, tiltPlusDepth)
   const alchemicalContribution = alchemicalRing.mul(alchemicalFade)
 
   // --- Zodiacal ring (fades in at tilt > 20°) ---
   const zodiacalR = LATTICE_R * 3.5
   const zodiacalRing = smoothstep(LINE_WIDTH, 0, distFromOrigin.sub(zodiacalR).abs())
-  const zodiacalFade = smoothstep(18, 22, tiltMagU)
+  const zodiacalFade = smoothstep(18, 22, tiltPlusDepth)
   const zodiacalContribution = zodiacalRing.mul(zodiacalFade)
 
   const totalAlpha = max(lineAlpha, max(alchemicalContribution, zodiacalContribution))
 
-  // --- Color: warm gold #F5E6C8 → electric cyan #3FD5F0 with tilt ---
+  // --- Color: warm gold #F5E6C8 → electric cyan #3FD5F0 ---
+  // Tilt pushes toward cyan; positive Valence pulls back toward warm gold and
+  // raises saturation, negative Valence cools + desaturates (Admirer §5).
   const goldColor = vec3(0.961, 0.902, 0.784)
   const cyanColor = vec3(0.247, 0.835, 0.941)
-  const colorMix = saturate(tiltMagU.div(30))
-  const lineColor = mix(goldColor, cyanColor, colorMix)
+  const valenceUnit = valenceU.mul(0.5).add(0.5) // [-1,1] -> [0,1]
+  const colorMix = saturate(tiltMagU.div(30).mul(float(1).sub(valenceUnit.mul(0.6))))
+  const lineColorRaw = mix(goldColor, cyanColor, colorMix)
+  // Desaturate toward luminance when Valence is low (0.4 at V=-1, 1.0 at V=+1).
+  const lum = dot(lineColorRaw, vec3(0.299, 0.587, 0.114))
+  const sat = mix(float(0.4), float(1.0), valenceUnit)
+  const lineColor = mix(vec3(lum), lineColorRaw, sat)
 
   // 40% opacity baseline, pre-multiplied into colorNode for additive blend.
   // When `opacityU` is provided, multiply it in so the whole flower fades
@@ -134,7 +151,10 @@ export default function MiddleShaderPlane({ getTilt, baseRate, z, opacityU = nul
     tiltMagU.value = tiltMag
     // Brief: 1× base at 0 tilt, 3× base at ±30°. Linear → boost = 1 + clamped(tilt)/15.
     const boost = 1 + Math.min(tiltMag, 30) / 15
-    middleRotationU.value += dt * baseRate * boost
+    // Arousal (eased, [-1,1]) further scales the rate.
+    const arousalUnit = (arousalU.value + 1) / 2 // [0,1]
+    const arousalBoost = 1 + arousalUnit * AROUSAL_RATE_GAIN
+    middleRotationU.value += dt * baseRate * boost * arousalBoost
   })
 
   return (
