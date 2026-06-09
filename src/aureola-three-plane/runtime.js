@@ -59,6 +59,22 @@ export function setMiddlePlaneAspect(a) {
   middlePlaneAspectU.value = a
 }
 
+// ---- AVD → shader bridges ----
+// Eased continuous AVD vector (each component in [-1, 1]), written every frame
+// by AvdShaderDriver from the spring-smoothed avdStore value. The middle-plane
+// shader reads these for rotation speed (A), color bias + saturation (V), and
+// outer-ring reveal (D). See Ship-Blockers §2 and the Admirer §5 modulation
+// table.
+export const arousalU = uniform(0)
+export const valenceU = uniform(0)
+export const depthU = uniform(0)
+
+export function setAvdUniforms(a, v, d) {
+  arousalU.value = a
+  valenceU.value = v
+  depthU.value = d
+}
+
 // ---- Depth-displacement material helper ----
 // Mirrors the TSL shader pattern from aureola-integration/IntegrationBase
 // (and ultimately bestiary/Workbench). Both back + front planes use this;
