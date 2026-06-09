@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { buildAdmirerTools } from '../admirerTools'
 import * as sessionStore from '../sessionStore'
+import { resetAvd, commitTurn } from '../avdStore.js'
 
 describe('buildAdmirerTools', () => {
   beforeEach(() => {
@@ -85,5 +86,25 @@ describe('buildAdmirerTools', () => {
     tools.commitArtifact({ label: 'my mom\'s tape', content: 'verbal description' })
     expect(onCommitArtifact).toHaveBeenCalledOnce()
     expect(onCommitArtifact.mock.calls[0][0].label).toBe("my mom's tape")
+  })
+})
+
+describe('startGeneration — AVD routing', () => {
+  beforeEach(() => resetAvd())
+
+  it('uses the AVD path once a turn has committed', () => {
+    commitTurn({ a: 1, v: 1, d: 1 }) // pushes toward sky-seeker; turnCount → 1
+    let bundle = null
+    const tools = buildAdmirerTools({ onStartGeneration: (b) => { bundle = b } })
+    const res = tools.startGeneration({ era: 2015 })
+    expect(res.ok).toBe(true)
+    expect(bundle.archetypeId).toBe('sky-seeker')
+  })
+
+  it('falls back to the descriptor path when no turn has committed', () => {
+    let bundle = null
+    const tools = buildAdmirerTools({ onStartGeneration: (b) => { bundle = b } })
+    tools.startGeneration({ mood: 'tense' }) // descriptorsToStems: tense → quiet-insurgent
+    expect(bundle.archetypeId).toBe('quiet-insurgent')
   })
 })

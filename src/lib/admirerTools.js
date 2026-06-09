@@ -11,6 +11,8 @@ import {
 } from './sessionStore.js'
 import { getFragment } from './fragmentBank.js'
 import { mapDescriptorsToStems } from './descriptorsToStems.js'
+import { getAvd, getTurnCount } from './avdStore.js'
+import { mapAvdToStems } from './avdToStems.js'
 
 // Callbacks the host phase can wire (all optional):
 //   onPlayFragment({id, url, descriptors})    — called when playFragment fires
@@ -58,7 +60,13 @@ export function buildAdmirerTools(callbacks = {}) {
 
     startGeneration: (descriptors = {}) => {
       const restricted = getRestricted()
-      const bundle = mapDescriptorsToStems(descriptors, { restricted })
+      // Once the conversation has moved the AVD vector (≥1 committed turn), the
+      // vector chooses the archetype; era still picks the variation. With no
+      // committed turns (vector still neutral — e.g. recordAnswer never fired)
+      // fall back to the legacy descriptor pick so song variety never regresses.
+      const bundle = getTurnCount() > 0
+        ? mapAvdToStems(getAvd(), { restricted, era: descriptors.era })
+        : mapDescriptorsToStems(descriptors, { restricted })
       cb.onStartGeneration?.(bundle)
       return {
         ok: true,
