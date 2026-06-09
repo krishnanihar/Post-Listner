@@ -5,8 +5,8 @@
 
 export const SPRING_OMEGA = 6 // rad/s
 
-// Map signed AVD [-1, 1] to [0, 1] for shader/uniform consumers that want a
-// unit range.
+// Map signed AVD [-1, 1] to [0, 1] — used by the visual layer when feeding
+// AVD into shader uniforms that want a unit range.
 export function toUnit(signed) {
   return (signed + 1) / 2
 }

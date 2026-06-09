@@ -72,4 +72,15 @@ describe('avdStore', () => {
     setAvd({ a: 0.9 })
     expect(listener).not.toHaveBeenCalled()
   })
+
+  it('setAvd ignores non-finite values, keeping the current axis', () => {
+    setAvd({ a: 0.5 })
+    setAvd({ a: NaN, v: undefined, d: 'x' })
+    expect(getAvd()).toEqual({ a: 0.5, v: 0, d: 0 })
+  })
+
+  it('commitTurn returns the new vector', () => {
+    const returned = commitTurn({ a: 1, v: 0, d: 0 })
+    expect(returned).toEqual(getAvd())
+  })
 })

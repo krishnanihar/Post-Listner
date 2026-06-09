@@ -43,9 +43,9 @@ function distTo(vector, anchor) {
 
 // Nearest-centroid scene selection with a hysteresis gate. `scenes` is an
 // array of { id, anchor: [a, v, d] }. Switches away from `currentSceneId`
-// only when the nearest scene beats the current one by MORE than
-// HYSTERESIS_GATE in Euclidean distance. With no current scene, picks the
-// plain nearest. Empty deck → returns currentSceneId unchanged.
+// only when the current scene is farther from the vector than the best scene
+// by MORE than HYSTERESIS_GATE (Euclidean distance). With no current scene,
+// picks the plain nearest. Empty deck → returns currentSceneId unchanged.
 export function selectScene(vector, scenes, currentSceneId = null) {
   if (!scenes || scenes.length === 0) return currentSceneId
 

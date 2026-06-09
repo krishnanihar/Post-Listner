@@ -34,14 +34,20 @@ export function commitTurn(target) {
   return getAvd()
 }
 
+function pickAxis(next, current) {
+  return typeof next === 'number' && Number.isFinite(next)
+    ? clampUnitSigned(next)
+    : current
+}
+
 // Write the vector directly (dev sliders / tilt nudges). Unspecified axes are
 // left unchanged; every axis is clamped to [-1, 1]. Does NOT touch the turn
 // counter.
 export function setAvd(partial) {
   vector = {
-    a: clampUnitSigned(partial.a ?? vector.a),
-    v: clampUnitSigned(partial.v ?? vector.v),
-    d: clampUnitSigned(partial.d ?? vector.d),
+    a: pickAxis(partial.a, vector.a),
+    v: pickAxis(partial.v, vector.v),
+    d: pickAxis(partial.d, vector.d),
   }
   emit()
 }
