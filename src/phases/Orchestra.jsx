@@ -14,6 +14,7 @@ import {
 import StemPlayer from '../lib/stemPlayer.js'
 import { scoreArchetype } from '../lib/scoreArchetype.js'
 import { distillGlyph } from '../lib/glyph.js'
+import { useVisibilityAudioPause } from '../hooks/useVisibilityAudioPause.js'
 
 export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx, relayRef, glyphRef }) {
   const [phase, setPhase] = useState(() => isPreloadComplete() ? 'awaiting-tap' : 'loading') // loading | awaiting-tap | briefing | experience | closing
@@ -32,6 +33,10 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
   // Slice 3 — raw conducting path [[pan, filterNorm, t], ...] accumulated
   // during the experience phase, distilled into the journal glyph at song end.
   const glyphBufRef = useRef([])
+
+  // Battery: suspend stem playback while the app is backgrounded. Safe here —
+  // the live Admirer conversation is already over by the Orchestra phase.
+  useVisibilityAudioPause(useCallback(() => audioCtxRef.current, []), true)
 
   // Score the archetype now so we know which Forer line to show on the
   // closing card. This is purely a read — scoreArchetype is deterministic
