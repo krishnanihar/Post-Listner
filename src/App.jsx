@@ -11,8 +11,7 @@ import { startOrchestraPreload } from './orchestra/preloader'
 import ReflectionSurface from './phases/ReflectionSurface'
 import { resetLiveSession } from './lib/liveSession.js'
 import { inkForPhase } from './lib/phaseTheme.js'
-import { hydrateSessionStore } from './lib/sessionStore.js'
-import { requestPersistence, exportJson, eraseAll } from './lib/archive.js'
+import { exportJson, eraseAll } from './lib/archive.js'
 
 const PHASES = ['entry', 'admirer', 'orchestra', 'settle']
 
@@ -74,10 +73,6 @@ function App() {
       audioEngine.init()
       audioEngine.resume()
     }
-  }, [])
-
-  useEffect(() => {
-    hydrateSessionStore().then(() => { requestPersistence() })
   }, [])
 
   useEffect(() => {

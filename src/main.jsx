@@ -7,6 +7,8 @@ import ConductGlb from './conductor-glb/ConductGlb.jsx'
 import Desktop from './desktop/Desktop.jsx'
 import CloudTest from './journal/CloudTest.jsx'
 import AureolaThreePlaneTest from './aureola-three-plane/AureolaThreePlaneTest.jsx'
+import { hydrateSessionStore } from './lib/sessionStore.js'
+import { requestPersistence } from './lib/archive.js'
 
 const ROUTES = {
   '/conduct': ConductorView,
@@ -40,4 +42,13 @@ const Root = pickRoot()
 // (mount → cleanup tears the LiveKit session down → remount races into
 // a still-disconnecting SDK). Re-enable once the hook has a session
 // registry that absorbs StrictMode cleanly.
-createRoot(document.getElementById('root')).render(<Root />)
+// Local-first: hydrate the IndexedDB session archive into the in-memory cache
+// BEFORE first render, so synchronous sessionStore reads (e.g. a returning
+// user's name + recency on the Entry screen, or a ?phase=admirer deep-link)
+// are correct on the cold render. hydrateSessionStore always resolves —
+// internal errors are swallowed → empty cache = first-session defaults — so a
+// missing/blocked IndexedDB never prevents the app from mounting.
+hydrateSessionStore().finally(() => {
+  createRoot(document.getElementById('root')).render(<Root />)
+  requestPersistence()
+})
