@@ -132,6 +132,12 @@ export default function ThreePlaneDebugPanel({
   setMiddleBaseRate,
   gamma,
   beta,
+  avdA,
+  avdV,
+  avdD,
+  setAvdA,
+  setAvdV,
+  setAvdD,
 }) {
   const stop = useCallback((e) => e.stopPropagation(), [])
   const tiltMag = Math.sqrt(gamma * gamma + beta * beta)
@@ -185,6 +191,40 @@ export default function ThreePlaneDebugPanel({
           step="0.01"
           value={middleBaseRate}
           onChange={(e) => setMiddleBaseRate(parseFloat(e.target.value))}
+          style={STYLES.slider}
+        />
+      </div>
+
+      <div style={STYLES.sliderRow}>
+        <div style={STYLES.sliderLabel}>
+          <span>Arousal</span>
+          <span>{fmt(avdA)}</span>
+        </div>
+        <input
+          type="range" min="-1" max="1" step="0.05" value={avdA}
+          onChange={(e) => setAvdA(parseFloat(e.target.value))}
+          style={STYLES.slider}
+        />
+      </div>
+      <div style={STYLES.sliderRow}>
+        <div style={STYLES.sliderLabel}>
+          <span>Valence</span>
+          <span>{fmt(avdV)}</span>
+        </div>
+        <input
+          type="range" min="-1" max="1" step="0.05" value={avdV}
+          onChange={(e) => setAvdV(parseFloat(e.target.value))}
+          style={STYLES.slider}
+        />
+      </div>
+      <div style={STYLES.sliderRow}>
+        <div style={STYLES.sliderLabel}>
+          <span>Depth</span>
+          <span>{fmt(avdD)}</span>
+        </div>
+        <input
+          type="range" min="-1" max="1" step="0.05" value={avdD}
+          onChange={(e) => setAvdD(parseFloat(e.target.value))}
           style={STYLES.slider}
         />
       </div>

@@ -10,6 +10,8 @@ import { WebGPURenderer } from 'three/webgpu'
 import { usePhoneMotion } from '../hooks/usePhoneMotion'
 import ThreePlaneScene from './ThreePlaneScene'
 import ThreePlaneDebugPanel from './ThreePlaneDebugPanel'
+import AvdShaderDriver from './AvdShaderDriver'
+import { setAvd, resetAvd } from '../lib/avdStore'
 
 const STYLES = {
   root: {
@@ -94,6 +96,18 @@ export default function AureolaThreePlaneTest() {
   const [frontVisible, setFrontVisible] = useState(true)
   const [middleZ, setMiddleZ] = useState(0)
   const [middleBaseRate, setMiddleBaseRate] = useState(0.05)
+
+  // AVD slider state
+  const [avdA, setAvdAState] = useState(0)
+  const [avdV, setAvdVState] = useState(0)
+  const [avdD, setAvdDState] = useState(0)
+
+  // Reset the store when this route mounts/unmounts so it starts neutral.
+  useEffect(() => { resetAvd(); return () => resetAvd() }, [])
+
+  const setAvdA = useCallback((x) => { setAvdAState(x); setAvd({ a: x }) }, [])
+  const setAvdV = useCallback((x) => { setAvdVState(x); setAvd({ v: x }) }, [])
+  const setAvdD = useCallback((x) => { setAvdDState(x); setAvd({ d: x }) }, [])
 
   // Throttled display of gamma/beta for the readout — avoids re-rendering
   // the panel every frame.
@@ -184,6 +198,7 @@ export default function AureolaThreePlaneTest() {
             dpr={[1, 2]}
           >
             <Suspense fallback={null}>
+              <AvdShaderDriver />
               <ThreePlaneScene
                 getTilt={getTilt}
                 middleVisible={middleVisible}
@@ -216,6 +231,12 @@ export default function AureolaThreePlaneTest() {
         setMiddleBaseRate={setMiddleBaseRate}
         gamma={tiltDisplay.gamma}
         beta={tiltDisplay.beta}
+        avdA={avdA}
+        avdV={avdV}
+        avdD={avdD}
+        setAvdA={setAvdA}
+        setAvdV={setAvdV}
+        setAvdD={setAvdD}
       />
 
       {needsIosTap && !webgpuFailed && (

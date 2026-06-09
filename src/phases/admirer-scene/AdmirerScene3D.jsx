@@ -13,6 +13,7 @@ import { usePhoneMotion } from '../../hooks/usePhoneMotion.js'
 import { subscribeMoments } from '../../lib/momentBus.js'
 import { subscribeFormationStage } from '../../lib/formationStage.js'
 import ThreePlaneScene from '../../aureola-three-plane/ThreePlaneScene'
+import AvdShaderDriver from '../../aureola-three-plane/AvdShaderDriver'
 import ParticleFormation from './ParticleFormation'
 import BackgroundGlyph from '../BackgroundGlyph'
 
@@ -137,6 +138,7 @@ export default function AdmirerScene3D() {
         style={{ position: 'absolute', inset: 0 }}
       >
         <Suspense fallback={null}>
+          <AvdShaderDriver />
           <ThreePlaneScene
             getTilt={getTilt}
             middleVisible
