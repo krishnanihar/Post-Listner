@@ -14,6 +14,7 @@ import { subscribeMoments } from '../../lib/momentBus.js'
 import { subscribeFormationStage } from '../../lib/formationStage.js'
 import ThreePlaneScene from '../../aureola-three-plane/ThreePlaneScene'
 import AvdShaderDriver from '../../aureola-three-plane/AvdShaderDriver'
+import { resetAvd } from '../../lib/avdStore.js'
 import ParticleFormation from './ParticleFormation'
 import BackgroundGlyph from '../BackgroundGlyph'
 
@@ -86,6 +87,12 @@ export default function AdmirerScene3D() {
   const middleOpacityU = useMemo(() => uniform(0), [])
   const backOpacityU = useMemo(() => uniform(0), [])
   const frontOpacityU = useMemo(() => uniform(0), [])
+
+  // Start the AVD store neutral when the Admirer scene mounts so any leftover
+  // state (e.g. slider values from the /aureola-three-plane-test route in the
+  // same session) doesn't bleed in. The Admirer doesn't write AVD yet — Slice
+  // 2 wires commitTurn here.
+  useEffect(() => { resetAvd(); return () => resetAvd() }, [])
 
   useEffect(() => {
     if (!supported) return undefined
