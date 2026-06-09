@@ -15,6 +15,7 @@ import { subscribeFormationStage } from '../../lib/formationStage.js'
 import ThreePlaneScene from '../../aureola-three-plane/ThreePlaneScene'
 import AvdShaderDriver from '../../aureola-three-plane/AvdShaderDriver'
 import { resetAvd } from '../../lib/avdStore.js'
+import { prefersReducedMotion } from '../../lib/reducedMotion.js'
 import ParticleFormation from './ParticleFormation'
 import BackgroundGlyph from '../BackgroundGlyph'
 
@@ -82,6 +83,7 @@ export default function AdmirerScene3D() {
   // Synchronously decide WebGPU vs fallback so we don't mount + tear down
   // the Canvas if support is missing.
   const [supported] = useState(() => hasWebGPU())
+  const [reducedMotion] = useState(() => prefersReducedMotion())
   const [webgpuFailed, setWebgpuFailed] = useState(false)
 
   const middleOpacityU = useMemo(() => uniform(0), [])
@@ -95,7 +97,7 @@ export default function AdmirerScene3D() {
   useEffect(() => { resetAvd(); return () => resetAvd() }, [])
 
   useEffect(() => {
-    if (!supported) return undefined
+    if (!supported || reducedMotion) return undefined
     let raf
     const tick = () => {
       const m = readMotion()
@@ -111,7 +113,7 @@ export default function AdmirerScene3D() {
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [readMotion, supported])
+  }, [readMotion, supported, reducedMotion])
 
   const getTilt = useCallback(() => tiltRef.current, [])
 

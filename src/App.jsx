@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion, MotionConfig } from 'framer-motion'
 import { Analytics } from '@vercel/analytics/react'
 import Entry from './phases/Entry.score'
 import Admirer from './phases/Admirer'
@@ -172,6 +172,7 @@ function App() {
   void sessionData
 
   return (
+    <MotionConfig reducedMotion="user">
     <div
       className="h-full w-full relative"
       style={{ '--ink': inkForPhase(phase) }}
@@ -194,6 +195,7 @@ function App() {
       {(phase === 'admirer' || phase === 'orchestra') && <ReflectionSurface />}
       <Analytics />
     </div>
+    </MotionConfig>
   )
 }
 
