@@ -6,6 +6,7 @@ import { resetAvd, commitTurn } from '../avdStore.js'
 describe('buildAdmirerTools', () => {
   beforeEach(() => {
     localStorage.clear()
+    resetAvd() // keep startGeneration's descriptor-fallback tests order-independent
   })
 
   it('exposes all 8 tool names', () => {
