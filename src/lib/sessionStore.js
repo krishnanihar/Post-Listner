@@ -95,6 +95,17 @@ export function getRecencySummary() {
   return 'a long time'
 }
 
+// Year-tier per Ship-Blockers §1: tier 3 once the practitioner has ≥24
+// sessions AND ≥180 days have passed since their first entry; else tier 1.
+// `now` is injectable for testing. Used to gate year-3-only question seeds.
+export function getYearTier(now = Date.now()) {
+  const entries = getEntries()
+  if (entries.length < 24) return 1
+  const firstTs = entries[0]?.ts || 0
+  const daysSinceFirst = (now - firstTs) / 86400000
+  return daysSinceFirst >= 180 ? 3 : 1
+}
+
 export function getTimeOfDay(now = new Date()) {
   const h = now.getHours()
   if (h < 5) return 'late'

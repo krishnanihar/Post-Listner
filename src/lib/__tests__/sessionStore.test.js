@@ -10,6 +10,7 @@ import {
   getEntries,
   buildDynamicVariables,
   clearAll,
+  getYearTier,
 } from '../sessionStore'
 
 describe('sessionStore', () => {
@@ -58,5 +59,20 @@ describe('sessionStore', () => {
     expect(vars.restricted_repertoires).toContain('temple bhajans')
     expect(typeof vars.time_of_day).toBe('string')
     expect(vars.prior_lexicon).toContain('Carnatic')
+  })
+
+  describe('getYearTier', () => {
+    it('is tier 1 with fewer than 24 entries', () => {
+      for (let i = 0; i < 23; i++) appendEntry({ summary: 's', ts: 0 })
+      expect(getYearTier(200 * 86400000)).toBe(1)
+    })
+    it('is tier 1 with 24+ entries but under 180 days', () => {
+      for (let i = 0; i < 24; i++) appendEntry({ summary: 's', ts: 0 })
+      expect(getYearTier(100 * 86400000)).toBe(1)
+    })
+    it('is tier 3 with 24+ entries and 180+ days since the first', () => {
+      for (let i = 0; i < 24; i++) appendEntry({ summary: 's', ts: 0 })
+      expect(getYearTier(180 * 86400000)).toBe(3)
+    })
   })
 })
