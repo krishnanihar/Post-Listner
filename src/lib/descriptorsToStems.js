@@ -30,7 +30,7 @@ const MOOD_TO_ARCHETYPE = {
 const DEFAULT_ARCHETYPE = 'hearth-keeper'
 
 // Pick the variation whose `era` value is numerically closest to the requested era.
-function pickVariationByEra(archetype, requestedEra) {
+export function pickVariationByEra(archetype, requestedEra) {
   const vs = archetype.variations
   if (!requestedEra || typeof requestedEra !== 'number') {
     return vs[0]
