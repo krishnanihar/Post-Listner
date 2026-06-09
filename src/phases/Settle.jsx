@@ -5,6 +5,7 @@ import Paper from '../score/Paper'
 import { COLORS, FONTS } from '../score/tokens'
 import { useAdmirerAgent } from '../hooks/useAdmirerAgent.js'
 import { getEntries } from '../lib/sessionStore.js'
+import { daysOfPractice, nextMilestone } from '../lib/longitudinal.js'
 
 const AGENT_ID = import.meta.env.VITE_ELEVENLABS_AGENT_ID
 // First-session close = one observation + refusal-to-know list. ~14s.
@@ -17,7 +18,10 @@ function SettleInner({ onComplete }) {
 
   // Settle runs AFTER the opening phase's commitEntry, so getEntries().length
   // is 1 (not 0) on the very first session. Use <= 1 as the first-session check.
-  const isFirst = getEntries().length <= 1
+  const entries = getEntries()
+  const isFirst = entries.length <= 1
+  const days = daysOfPractice(entries)
+  const milestone = nextMilestone(entries.length)
 
   const { connect, disconnect, status } = useAdmirerAgent({
     sessionStage: 'closing',
@@ -66,6 +70,31 @@ function SettleInner({ onComplete }) {
             </motion.div>
           )}
         </AnimatePresence>
+          <div style={{
+            fontFamily: FONTS.serif,
+            fontStyle: 'italic',
+            fontSize: 11,
+            letterSpacing: 0.3,
+            color: COLORS.inkCreamSecondary,
+            opacity: 0.45,
+            textAlign: 'center',
+          }}>
+            {days <= 1 ? 'your first day of practice' : `${days} days of practice`}
+          </div>
+          {milestone && (
+            <div style={{
+              fontFamily: FONTS.serif,
+              fontStyle: 'italic',
+              fontSize: 12,
+              letterSpacing: 0.3,
+              color: COLORS.inkCreamSecondary,
+              opacity: 0.55,
+              textAlign: 'center',
+              maxWidth: 280,
+            }}>
+              Next time, if you choose, the room opens.
+            </div>
+          )}
       </div>
     </Paper>
   )
