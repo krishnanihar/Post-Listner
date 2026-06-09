@@ -44,22 +44,33 @@ export async function hydrateSessionStore() {
   }
 }
 
+// Tolerant JSON parse — a malformed legacy value must not abort the whole
+// migration (which would drop the other fields AND leave the MIGRATED flag
+// unset, re-running every startup). Returns `fallback` on any parse failure.
+function safeParse(raw, fallback) {
+  if (raw == null) return fallback
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return fallback
+  }
+}
+
 async function maybeMigrateLegacy() {
   try {
     if (typeof localStorage === 'undefined') return
     if (localStorage.getItem(LEGACY.MIGRATED)) return
     const existing = await getAllSessions()
     if (existing.length === 0) {
-      const raw = localStorage.getItem(LEGACY.ENTRIES)
-      const entries = raw ? JSON.parse(raw) : []
+      const entries = safeParse(localStorage.getItem(LEGACY.ENTRIES), [])
       const list = Array.isArray(entries) ? entries : []
       for (let i = 0; i < list.length; i++) {
         const e = list[i]
         // id must be unique even if two legacy entries share a ts — disambiguate by index.
         await putSession(buildSessionRecord({ id: `${e.ts || 0}-legacy-${i}`, startedAt: e.ts || 0, summary: e.summary || '' }))
       }
-      const lex = JSON.parse(localStorage.getItem(LEGACY.LEXICON) || '{}')
-      const res = JSON.parse(localStorage.getItem(LEGACY.RESTRICTED) || '[]')
+      const lex = safeParse(localStorage.getItem(LEGACY.LEXICON), {})
+      const res = safeParse(localStorage.getItem(LEGACY.RESTRICTED), [])
       const nm = localStorage.getItem(LEGACY.USER_NAME) || ''
       if (lex && typeof lex === 'object') await putMeta('lexicon', lex)
       if (Array.isArray(res)) await putMeta('restricted', res)
