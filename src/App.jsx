@@ -12,7 +12,7 @@ import ReflectionSurface from './phases/ReflectionSurface'
 import { resetLiveSession } from './lib/liveSession.js'
 import { inkForPhase } from './lib/phaseTheme.js'
 import { hydrateSessionStore } from './lib/sessionStore.js'
-import { requestPersistence } from './lib/archive.js'
+import { requestPersistence, exportJson, eraseAll } from './lib/archive.js'
 
 const PHASES = ['entry', 'admirer', 'orchestra', 'settle']
 
@@ -78,6 +78,22 @@ function App() {
 
   useEffect(() => {
     hydrateSessionStore().then(() => { requestPersistence() })
+  }, [])
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return undefined
+    const download = async () => {
+      const json = await exportJson()
+      const blob = new Blob([json], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'postlistener-archive.json'
+      a.click()
+      URL.revokeObjectURL(url)
+    }
+    window.__plArchive = { export: download, erase: eraseAll }
+    return () => { delete window.__plArchive }
   }, [])
 
   useEffect(() => {
