@@ -19,6 +19,8 @@ import { mapDescriptorsToStems } from './descriptorsToStems.js'
 //   onCommitArtifact({label, content})        — called when commitArtifact fires
 //   onMarkRestricted(repertoire)              — called when markRestricted fires
 //   onRecordLexicon({term, userPhrasing})     — called when recordLexicon fires
+//   onNextQuestion()                          — returns the next authored seed (or null)
+//   onRecordAnswer({seedId, texture, intensity, rationale})
 export function buildAdmirerTools(callbacks = {}) {
   const cb = callbacks
 
@@ -69,6 +71,32 @@ export function buildAdmirerTools(callbacks = {}) {
       const entry = { summary: summary || '', ts: Date.now() }
       appendEntry(entry)
       cb.onCommitEntry?.(entry)
+      return { ok: true }
+    },
+
+    // nextQuestion BLOCKS the agent (registered expects_response: true). The
+    // host selects the next authored seed and returns its text; the agent
+    // speaks that line, lightly re-voiced. Returns { done: true } when the
+    // session's question budget is spent — the agent then moves on (fragments
+    // / startGeneration).
+    nextQuestion: async () => {
+      if (!cb.onNextQuestion) return { done: true }
+      const seed = await cb.onNextQuestion()
+      if (!seed) return { done: true }
+      return {
+        seedId: seed.id,
+        kind: seed.kind,
+        text: seed.text,
+        callbackHint: seed.callbackHint || '',
+        ...(seed.options ? { options: seed.options.map((o) => o.label) } : {}),
+      }
+    },
+
+    // recordAnswer is the agent's structured texture judgment of the user's
+    // spoken answer (Admirer spec §3.3). The host blends it into an AVD target
+    // and commits the turn.
+    recordAnswer: ({ seedId, texture, intensity, rationale } = {}) => {
+      cb.onRecordAnswer?.({ seedId, texture, intensity, rationale })
       return { ok: true }
     },
   }

@@ -5,7 +5,7 @@ import Paper from '../score/Paper'
 import { COLORS, FONTS } from '../score/tokens'
 import { useAdmirerAgent } from '../hooks/useAdmirerAgent.js'
 import { buildFirstMessage } from '../lib/admirerFirstMessage.js'
-import { buildDynamicVariables } from '../lib/sessionStore.js'
+import { buildDynamicVariables, getEntries, getYearTier } from '../lib/sessionStore.js'
 import StemPlayer from '../lib/stemPlayer.js'
 import { addLexiconWord, subscribeLiveSession, getLiveSession } from '../lib/liveSession.js'
 import { fireMoment, resetMoments } from '../lib/momentBus.js'
@@ -16,6 +16,10 @@ import FragmentControls from './FragmentControls'
 import { useAdmirerRoom } from '../hooks/useAdmirerRoom.js'
 import { useIdleKeepAlive } from '../hooks/useIdleKeepAlive.js'
 import AdmirerScene3D from './admirer-scene/AdmirerScene3D'
+import { selectNextSeed } from '../lib/seedSelection.js'
+import { getSeed } from '../lib/questionSeeds.js'
+import { textureToTarget, blendTarget } from '../lib/textureToAvd.js'
+import { getAvd, commitTurn, resetAvd } from '../lib/avdStore.js'
 
 const AGENT_ID = import.meta.env.VITE_ELEVENLABS_AGENT_ID
 
@@ -46,6 +50,11 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   // Holds the resolve() of the in-flight playFragment promise — the agent's
   // playFragment tool call is blocked on it until the user rates.
   const pendingRatingRef = useRef(null)
+  // Tracks which seed ids have been asked this session so seeds aren't repeated.
+  const askedSeedIdsRef = useRef([])
+  // Holds the currently active selection seed (kind === 'selection') so the
+  // options row can be rendered. Null when no selection seed is pending.
+  const [activeSeed, setActiveSeed] = useState(null)
 
   // Tear down the current fragment's audio element + cap timer. Pure
   // cleanup — does not touch React state or the rating promise.
@@ -192,6 +201,46 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     if (term) fireMoment(0.05, `lexicon:${term}`)
   }, [])
 
+  // nextQuestion: blocking tool — client selects the next authored seed and
+  // returns it to the agent for re-voicing. Tracks asked ids so seeds are
+  // not repeated. When a selection seed is returned, also sets activeSeed
+  // state so the options row renders.
+  const onNextQuestion = useCallback(() => {
+    const seed = selectNextSeed({
+      vector: getAvd(),
+      askedIds: askedSeedIdsRef.current,
+      sessionCount: getEntries().length,
+      yearTier: getYearTier(),
+    })
+    if (!seed) return null
+    askedSeedIdsRef.current = [...askedSeedIdsRef.current, seed.id]
+    if (seed.kind === 'selection') {
+      setActiveSeed(seed)
+    }
+    return seed
+  }, [])
+
+  // recordAnswer: agent's texture judgment of a spoken answer → AVD movement.
+  // Skips the closing seed (no AVD effect); uses seed.gain (or 0.8 as fallback).
+  const onRecordAnswer = useCallback(({ seedId, texture, intensity }) => {
+    const seed = getSeed(seedId)
+    if (seed && seed.kind === 'closing') return
+    const observed = textureToTarget(texture, intensity ?? 1)
+    const target = blendTarget(observed, seed?.intent)
+    commitTurn(target, { gain: seed?.gain ?? 0.8 })
+  }, [])
+
+  // onSelectOption: called when the user taps an option on a selection seed.
+  // The chosen option's avd is the observed value (no texture classification).
+  const onSelectOption = useCallback((seedId, label) => {
+    const seed = getSeed(seedId)
+    const opt = seed?.options?.find((o) => o.label === label)
+    if (!opt) return
+    const target = blendTarget(opt.avd, seed.intent)
+    commitTurn(target, { gain: seed.gain ?? 0.8 })
+    setActiveSeed(null)
+  }, [])
+
   // Build the agent's opening line from session state — first-time users
   // get the threshold opening; returning users get a short recognition line
   // keyed off recencySummary + timeOfDay. Computed once on mount so it
@@ -251,7 +300,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   } = useAdmirerAgent({
     sessionStage: 'opening',
     firstMessage,
-    callbacks: { onPlayFragment, onStartGeneration, onCommitEntry, onRecordLexicon },
+    callbacks: { onPlayFragment, onStartGeneration, onCommitEntry, onRecordLexicon, onNextQuestion, onRecordAnswer },
   })
 
   // Build A — the spatial room. Routes the agent's voice through an HRTF
@@ -288,10 +337,15 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   // a faint hint of its form before the Admirer's first word. The
   // 'mount' eventId makes this idempotent: dev-mode double-mount or a
   // hot-reload re-fire won't double the initial release.
+  // Also resets the AVD vector and the per-session asked-seed list so
+  // each new conversation starts fresh.
   useEffect(() => {
     resetMoments()
     resetFormationStage()
     fireMoment(0.08, 'mount')
+    resetAvd()
+    askedSeedIdsRef.current = []
+    return () => resetAvd()
   }, [])
 
   // Connect on mount.
@@ -459,6 +513,42 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
               showButtons={awaitingRating}
               onRate={handleRate}
             />
+            {/* Selection-seed option buttons — shown when the active seed is a
+                tap-to-choose seed. Same button styling as FragmentControls. */}
+            <AnimatePresence>
+              {activeSeed && (
+                <motion.div
+                  key="selection-options"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 4 }}
+                  transition={{ duration: 0.4, ease: 'easeOut' }}
+                  style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}
+                >
+                  {activeSeed.options.map((opt) => (
+                    <button
+                      key={opt.label}
+                      onClick={() => onSelectOption(activeSeed.id, opt.label)}
+                      style={{
+                        fontFamily: FONTS.serif,
+                        fontStyle: 'italic',
+                        fontSize: 15,
+                        letterSpacing: 0.5,
+                        color: COLORS.inkCream,
+                        background: 'transparent',
+                        border: `1px solid ${COLORS.inkCreamSecondary}`,
+                        borderRadius: 2,
+                        padding: '8px 28px',
+                        cursor: 'pointer',
+                        opacity: 0.85,
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         )}
 
