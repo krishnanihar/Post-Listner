@@ -39,7 +39,7 @@ class AudioEngine {
 
   init() {
     if (this.ctx) return
-    this.ctx = new (window.AudioContext || window.webkitAudioContext)()
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' })
     this.masterGain = this.ctx.createGain()
     this.masterGain.gain.value = 0.7
     this.masterGain.connect(this.ctx.destination)
