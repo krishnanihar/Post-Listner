@@ -12,11 +12,13 @@ export function toUnit(signed) {
 }
 
 // One spring step. Returns { value, velocity }. Pass the previous value +
-// velocity back in each frame. `omega` defaults to SPRING_OMEGA.
-export function stepSpring(value, velocity, target, dt, omega = SPRING_OMEGA) {
+// velocity back in each frame. `omega` defaults to SPRING_OMEGA. Pass `out`
+// (an existing { value, velocity } object) to mutate it in place and avoid a
+// per-frame allocation in hot render loops; omit it to get a fresh object.
+export function stepSpring(value, velocity, target, dt, omega = SPRING_OMEGA, out = {}) {
   const err = value - target
   const exp = Math.exp(-omega * dt)
-  const newValue = target + (err + (velocity + omega * err) * dt) * exp
-  const newVelocity = (velocity - (velocity + omega * err) * omega * dt) * exp
-  return { value: newValue, velocity: newVelocity }
+  out.value = target + (err + (velocity + omega * err) * dt) * exp
+  out.velocity = (velocity - (velocity + omega * err) * omega * dt) * exp
+  return out
 }

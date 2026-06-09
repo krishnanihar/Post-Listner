@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react'
+import { toUnit } from '../lib/avdSpring.js'
 import { useFrame, useThree } from '@react-three/fiber'
 import { AdditiveBlending, MeshBasicNodeMaterial } from 'three/webgpu'
 import {
@@ -34,7 +35,7 @@ const SEGMENTS_H = 144
 // when aspect-corrected to ~16:9.
 const LATTICE_R = 0.111
 const LINE_WIDTH = 0.005
-// Arousal scales the base rotation rate: 1× at A=-1, (1 + AROUSAL_RATE_GAIN)× at A=+1.
+// Arousal multiplies the (already tilt-boosted) rotation rate: ×1 at A=-1, ×(1 + AROUSAL_RATE_GAIN) at A=+1. Combined with the max tilt boost (×3) the effective top rate is baseRate × 7.5.
 const AROUSAL_RATE_GAIN = 1.5
 
 // Hex-arranged circle centers around (0,0). sin(60°) ≈ 0.866025.
@@ -152,7 +153,7 @@ export default function MiddleShaderPlane({ getTilt, baseRate, z, opacityU = nul
     // Brief: 1× base at 0 tilt, 3× base at ±30°. Linear → boost = 1 + clamped(tilt)/15.
     const boost = 1 + Math.min(tiltMag, 30) / 15
     // Arousal (eased, [-1,1]) further scales the rate.
-    const arousalUnit = (arousalU.value + 1) / 2 // [0,1]
+    const arousalUnit = toUnit(arousalU.value) // [0,1]
     const arousalBoost = 1 + arousalUnit * AROUSAL_RATE_GAIN
     middleRotationU.value += dt * baseRate * boost * arousalBoost
   })

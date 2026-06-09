@@ -19,9 +19,9 @@ export default function AvdShaderDriver() {
 
   useFrame((_, dt) => {
     const t = targetRef.current
-    aRef.current = stepSpring(aRef.current.value, aRef.current.velocity, t.a, dt)
-    vRef.current = stepSpring(vRef.current.value, vRef.current.velocity, t.v, dt)
-    dRef.current = stepSpring(dRef.current.value, dRef.current.velocity, t.d, dt)
+    stepSpring(aRef.current.value, aRef.current.velocity, t.a, dt, undefined, aRef.current)
+    stepSpring(vRef.current.value, vRef.current.velocity, t.v, dt, undefined, vRef.current)
+    stepSpring(dRef.current.value, dRef.current.velocity, t.d, dt, undefined, dRef.current)
     setAvdUniforms(aRef.current.value, vRef.current.value, dRef.current.value)
   })
 

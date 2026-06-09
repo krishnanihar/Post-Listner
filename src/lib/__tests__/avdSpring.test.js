@@ -53,4 +53,11 @@ describe('avdSpring — stepSpring (critically damped, no overshoot)', () => {
     for (let i = 0; i < 15; i++) s = stepSpring(s.value, s.velocity, 1, 1 / 60)
     expect(s.value).toBeGreaterThan(0.4)
   })
+
+  it('mutates and returns the provided out object (zero-alloc path)', () => {
+    const state = { value: 0, velocity: 0 }
+    const ret = stepSpring(state.value, state.velocity, 1, 1 / 60, undefined, state)
+    expect(ret).toBe(state)            // same reference, no allocation
+    expect(state.value).toBeGreaterThan(0)
+  })
 })
