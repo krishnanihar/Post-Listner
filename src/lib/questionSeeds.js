@@ -55,7 +55,9 @@ export const SEEDS = [
 ]
 
 // How many locate/selection seeds to ask per session (biography is extra,
-// session 1 only). ~3 per the spec's ~16-min arc.
+// session 1 only). ~3 per the spec's ~16-min arc. NOTE: the arrival opener
+// (locate-arrival) counts toward this budget, so a session asks the opener
+// + (LOCATE_BUDGET - 1) axis questions.
 export const LOCATE_BUDGET = 3
 
 export function getSeed(id) {

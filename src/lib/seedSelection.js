@@ -28,16 +28,21 @@ export function selectNextSeed({
   const bio = eligible.find((s) => s.kind === 'biography')
   if (bio) return bio
 
-  // Per-session locate/selection budget.
+  // Per-session budget on conversational seeds. NOTE: the arrival opener
+  // counts toward this, so a session asks the opener + (LOCATE_BUDGET - 1)
+  // further questions. Bump LOCATE_BUDGET if you want all three axes probed
+  // in addition to the opener.
   const askedCount = deck.filter((s) => asked.has(s.id) && isConversational(s)).length
   if (askedCount >= LOCATE_BUDGET) return null
 
   const pool = eligible.filter(isConversational)
   if (pool.length === 0) return null
 
-  // Arrival (no probed axis) is asked first.
-  const arrival = pool.find((s) => s.probes == null)
-  if (arrival) return arrival
+  // The opener is the non-probing LOCATE seed (e.g. "what's around you").
+  // Keyed on kind too, so a null-probe SELECTION seed (e.g. the color tap) is
+  // never mistaken for the opener. Asked before the axis-probing seeds.
+  const opener = pool.find((s) => s.kind === 'locate' && s.probes == null)
+  if (opener) return opener
 
   // Otherwise: least-resolved probed axis first; non-probing seeds score 1
   // (treated as "resolved") so probes win ties; deck order breaks exact ties.

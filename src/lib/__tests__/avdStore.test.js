@@ -96,6 +96,6 @@ describe('avdStore', () => {
 
   it('confidence and gain multiply', () => {
     commitTurn({ a: 1, v: 0, d: 0 }, { confidence: 0.5, gain: 0.8 })
-    expect(getAvd().a).toBeCloseTo(0.35 * 0.4, 6) // 0.14
+    expect(getAvd().a).toBeCloseTo(0.35 * 0.4, 6) // factor = 0.5*0.8 = 0.4 → 0.14
   })
 })
