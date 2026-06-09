@@ -26,9 +26,12 @@ export function getTurnCount() {
 
 // Commit one conversational turn: EWMA-step the vector toward `target`
 // (using the current turn index for the eta schedule), then advance the turn
-// counter. Returns the new vector.
-export function commitTurn(target) {
-  vector = ewmaStep(vector, target, turnCount)
+// counter. `confidence` (read quality, 0..1) and `gain` (seed step weight)
+// scale the step; both default to 1 so callers can omit them. Returns the
+// new vector.
+export function commitTurn(target, { confidence = 1, gain = 1 } = {}) {
+  const factor = Math.max(0, confidence) * Math.max(0, gain)
+  vector = ewmaStep(vector, target, turnCount, factor)
   turnCount += 1
   emit()
   return getAvd()

@@ -83,4 +83,19 @@ describe('avdStore', () => {
     const returned = commitTurn({ a: 1, v: 0, d: 0 })
     expect(returned).toEqual(getAvd())
   })
+
+  it('commitTurn with default gain/confidence matches the plain EWMA step', () => {
+    commitTurn({ a: 1, v: 0, d: 0 })
+    expect(getAvd().a).toBeCloseTo(0.35, 6) // cold-start eta, factor 1
+  })
+
+  it('gain scales the step down', () => {
+    commitTurn({ a: 1, v: 0, d: 0 }, { gain: 0.3 })
+    expect(getAvd().a).toBeCloseTo(0.35 * 0.3, 6) // 0.105
+  })
+
+  it('confidence and gain multiply', () => {
+    commitTurn({ a: 1, v: 0, d: 0 }, { confidence: 0.5, gain: 0.8 })
+    expect(getAvd().a).toBeCloseTo(0.35 * 0.4, 6) // 0.14
+  })
 })

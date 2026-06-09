@@ -22,9 +22,12 @@ export function clampUnitSigned(x) {
 }
 
 // One EWMA step toward `target`. `turnIndex` is the zero-based index of the
-// turn being committed (0,1,2 are cold start). Returns a fresh vector.
-export function ewmaStep(current, target, turnIndex) {
-  const eta = etaForTurn(turnIndex)
+// turn being committed (0,1,2 are cold start). `factor` scales the step
+// (default 1) — used to fold in answer-confidence and seed-gain so low-stakes
+// turns observe more than they steer. Returns a fresh vector.
+export function ewmaStep(current, target, turnIndex, factor = 1) {
+  const f = Math.max(0, factor)
+  const eta = etaForTurn(turnIndex) * f
   const etaD = eta * DEPTH_ETA_SCALE
   return {
     a: clampUnitSigned(current.a + eta * (target.a - current.a)),
