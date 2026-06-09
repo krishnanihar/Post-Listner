@@ -5,7 +5,7 @@ import Paper from '../score/Paper'
 import { COLORS, FONTS } from '../score/tokens'
 import { useAdmirerAgent } from '../hooks/useAdmirerAgent.js'
 import { buildFirstMessage } from '../lib/admirerFirstMessage.js'
-import { buildDynamicVariables, getEntries, getYearTier } from '../lib/sessionStore.js'
+import { appendEntry, buildDynamicVariables, getEntries, getYearTier } from '../lib/sessionStore.js'
 import StemPlayer from '../lib/stemPlayer.js'
 import { addLexiconWord, subscribeLiveSession, getLiveSession } from '../lib/liveSession.js'
 import { fireMoment, resetMoments } from '../lib/momentBus.js'
@@ -20,6 +20,8 @@ import { selectNextSeed } from '../lib/seedSelection.js'
 import { getSeed } from '../lib/questionSeeds.js'
 import { textureToTarget, blendTarget } from '../lib/textureToAvd.js'
 import { getAvd, commitTurn, resetAvd } from '../lib/avdStore.js'
+import { avdRecorder } from '../lib/avdRecorder.js'
+import { buildSessionRecord } from '../lib/sessionRecord.js'
 
 const AGENT_ID = import.meta.env.VITE_ELEVENLABS_AGENT_ID
 
@@ -177,11 +179,28 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     }
   }, [getAudioCtx, revealAudioRef, clearFragmentPlayback, resolveRating])
 
-  // When the agent finalizes, hand off to orchestra.
+  // When the agent finalizes, build + persist the rich session record, then
+  // hand off to orchestra.
   const onCommitEntry = useCallback((entry) => {
     clearFragmentPlayback()
     resolveRating('none')
     setFragmentPlaying(false)
+    try {
+      const rec = avdRecorder.isRecording() ? avdRecorder.stop(Date.now()) : null
+      const bundle = stemsBundleRef.current
+      const record = buildSessionRecord({
+        startedAt: rec?.startedAt ?? Date.now(),
+        endedAt: rec?.endedAt ?? Date.now(),
+        finalVector: rec?.finalVector ?? getAvd(),
+        avdTrajectory: rec?.trajectory ?? [],
+        landing: bundle ? { archetypeId: bundle.archetypeId, variationId: bundle.variationId } : null,
+        summary: entry?.summary || '',
+        rand: Math.random(),
+      })
+      appendEntry(record)
+    } catch (e) {
+      console.warn('[admirer] session record persist failed', e)
+    }
     setTimeout(() => {
       // Slice 3 — carry the Admirer's one-line summary forward so App can
       // relay it in the entry message at settle.
@@ -348,7 +367,11 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     fireMoment(0.08, 'mount')
     resetAvd()
     askedSeedIdsRef.current = []
-    return () => resetAvd()
+    avdRecorder.start(Date.now())
+    return () => {
+      if (avdRecorder.isRecording()) avdRecorder.stop(Date.now())
+      resetAvd()
+    }
   }, [])
 
   // Connect on mount.

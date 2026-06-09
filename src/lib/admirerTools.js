@@ -6,7 +6,6 @@
 import {
   addLexicon,
   addRestricted,
-  appendEntry,
   getRestricted,
 } from './sessionStore.js'
 import { getFragment } from './fragmentBank.js'
@@ -77,7 +76,6 @@ export function buildAdmirerTools(callbacks = {}) {
 
     commitEntry: ({ summary } = {}) => {
       const entry = { summary: summary || '', ts: Date.now() }
-      appendEntry(entry)
       cb.onCommitEntry?.(entry)
       return { ok: true }
     },

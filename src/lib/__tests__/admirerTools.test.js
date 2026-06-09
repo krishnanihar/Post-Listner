@@ -73,12 +73,14 @@ describe('buildAdmirerTools', () => {
     expect(bundle.archetypeId).not.toBe('hearth-keeper')
   })
 
-  it('commitEntry appends a session entry and calls onCommitEntry', () => {
+  it('commitEntry calls onCommitEntry with the summary (persistence moved to host)', () => {
     const onCommitEntry = vi.fn()
     const tools = buildAdmirerTools({ onCommitEntry })
     tools.commitEntry({ summary: 'a session that went warm' })
-    expect(sessionStore.getEntries().length).toBe(1)
     expect(onCommitEntry).toHaveBeenCalledOnce()
+    expect(onCommitEntry.mock.calls[0][0].summary).toBe('a session that went warm')
+    // persistence is now the host's responsibility — the tool no longer appends
+    expect(sessionStore.getEntries().length).toBe(0)
   })
 
   it('commitArtifact stores label + calls onCommitArtifact', () => {
