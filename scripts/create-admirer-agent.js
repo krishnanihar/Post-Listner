@@ -36,7 +36,7 @@ function loadEnvLocal() {
 
 // ── agent config ───────────────────────────────────────────────────────────
 
-const VOICE_ID = 'y1qhFrVEY0hUWrNMR216'
+const VOICE_ID = 'bfGb7JTLUnZebZRiFYyq'
 
 const FIRST_MESSAGE = "welcome. think of me as a musician who's come into the room while the music's already playing, and has the sense to listen first. this first time runs slow; we're new to each other, and there's no rush. when you're ready, press and hold to speak. and to start — tell me what's around you right now."
 
