@@ -12,8 +12,10 @@ export function initialState() {
 export function reduce(state, action) {
   switch (action.type) {
     case 'COMMIT':
+      if (state.status !== 'active') return state
       return { ...state, status: 'committed' }
     case 'ADVANCE': {
+      if (state.status !== 'committed') return state
       const next = nextMovementId(state.movementId)
       if (next === null) return { ...state, status: 'done' }
       return { movementId: next, status: 'active' }

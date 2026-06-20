@@ -18,6 +18,14 @@ describe('attunementReducer', () => {
     const s = reduce({ movementId: 'bloom', status: 'committed' }, { type: 'ADVANCE' })
     expect(s).toEqual({ movementId: 'bloom', status: 'done' })
   })
+  it('COMMIT is a no-op unless the movement is active', () => {
+    const committed = { movementId: 'arrival', status: 'committed' }
+    expect(reduce(committed, { type: 'COMMIT' })).toBe(committed)
+  })
+  it('ADVANCE is a no-op unless the movement is committed', () => {
+    const active = { movementId: 'arrival', status: 'active' }
+    expect(reduce(active, { type: 'ADVANCE' })).toBe(active)
+  })
   it('ignores unknown actions', () => {
     const s = initialState()
     expect(reduce(s, { type: 'NOPE' })).toBe(s)

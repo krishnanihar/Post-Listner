@@ -5,7 +5,7 @@
 export function phraseReaction(movementId, payload = {}) {
   switch (movementId) {
     case 'leanLift': {
-      if (typeof payload.valence !== 'number') return ''
+      if (typeof payload.valence !== 'number' || typeof payload.depth !== 'number') return ''
       const warm = payload.valence >= 0 ? 'warm' : 'cool and austere'
       const depth = payload.depth >= 0 ? 'inward' : 'open'
       return `The listener leaned ${warm} and ${depth}.`

@@ -24,6 +24,9 @@ describe('phraseReaction', () => {
   it('face — names the world', () => {
     expect(phraseReaction('face', { archetypeId: 'hearth-keeper' })).toMatch(/hearth-keeper/)
   })
+  it('lean with missing depth → empty string (no silent "open")', () => {
+    expect(phraseReaction('leanLift', { valence: 0.6 })).toBe('')
+  })
   it('unknown / empty payload → empty string (nothing to say)', () => {
     expect(phraseReaction('arrival', {})).toBe('')
     expect(phraseReaction('face', {})).toBe('')
