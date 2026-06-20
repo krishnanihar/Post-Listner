@@ -13,6 +13,7 @@
 import { EARLY_REFLECTIONS } from './constants.js'
 import { sphericalToCartesian } from '../chamber/utils/math.js'
 import { roomAt } from '../lib/roomPresets.js'
+import { equalPowerGains } from '../lib/equalPower.js'
 
 const HALL_IR_URL = '/chamber/hall-ir.wav'
 const VOICE_ELEVATION_DEG = 5
@@ -262,6 +263,161 @@ export default class AdmirerRoom {
       try { stepGain.disconnect() } catch { /* ignore */ }
       try { stepPanner.disconnect() } catch { /* ignore */ }
     }, { once: true })
+  }
+
+  // Lean movement: two looping textures at fixed L/R azimuths. Returns a
+  // handle whose setBalance(b∈[-1,1]) constant-power cross-fades them by the
+  // phone's roll. Both feed directBus + reverbBus so the room shapes them.
+  playTexturePair(leftBuffer, rightBuffer) {
+    if (this._disposed || !this.ctx || !leftBuffer || !rightBuffer) return null
+    const ctx = this.ctx
+    const make = (buffer, azimuthDeg, initGain) => {
+      const src = ctx.createBufferSource()
+      src.buffer = buffer
+      src.loop = true
+      const gain = ctx.createGain()
+      gain.channelCount = 1
+      gain.channelCountMode = 'explicit'
+      gain.gain.value = initGain
+      const panner = ctx.createPanner()
+      panner.panningModel = 'HRTF'
+      panner.distanceModel = 'inverse'
+      panner.refDistance = 1
+      panner.maxDistance = 20
+      panner.rolloffFactor = 1
+      const p = sphericalToCartesian(azimuthDeg, 0, 1.8)
+      panner.positionX.value = p.x
+      panner.positionY.value = p.y
+      panner.positionZ.value = p.z
+      src.connect(gain)
+      gain.connect(panner)
+      panner.connect(this.directBus)
+      panner.connect(this.reverbBus)
+      src.start(ctx.currentTime)
+      return { src, gain, panner }
+    }
+    const init = equalPowerGains(0)
+    const left = make(leftBuffer, -60, init.left)
+    const right = make(rightBuffer, 60, init.right)
+    return {
+      setBalance: (b) => {
+        if (this._disposed) return
+        const g = equalPowerGains(b)
+        const now = ctx.currentTime
+        left.gain.gain.setTargetAtTime(g.left, now, 0.05)
+        right.gain.gain.setTargetAtTime(g.right, now, 0.05)
+      },
+      stop: () => {
+        for (const n of [left, right]) {
+          try { n.src.stop() } catch { /* ignore */ }
+          try { n.src.disconnect(); n.gain.disconnect(); n.panner.disconnect() } catch { /* ignore */ }
+        }
+      },
+    }
+  }
+
+  // Face movement: N looping sources arranged at given azimuths (the archetype
+  // ring). spotlight(yawDeg) raises the source nearest the facing direction
+  // and dips the rest via constant-power weighting on angular proximity.
+  playRingSources(entries) {
+    if (this._disposed || !this.ctx || !entries?.length) return null
+    const ctx = this.ctx
+    const nodes = entries.map(({ buffer, azimuthDeg }) => {
+      const src = ctx.createBufferSource()
+      src.buffer = buffer
+      src.loop = true
+      const gain = ctx.createGain()
+      gain.gain.value = 0.25
+      const panner = ctx.createPanner()
+      panner.panningModel = 'HRTF'
+      panner.distanceModel = 'inverse'
+      panner.refDistance = 1
+      panner.maxDistance = 20
+      panner.rolloffFactor = 1
+      const p = sphericalToCartesian(azimuthDeg, 0, 2.4)
+      panner.positionX.value = p.x
+      panner.positionY.value = p.y
+      panner.positionZ.value = p.z
+      src.connect(gain)
+      gain.connect(panner)
+      panner.connect(this.directBus)
+      panner.connect(this.reverbBus)
+      src.start(ctx.currentTime)
+      return { src, gain, panner, azimuthDeg }
+    })
+    return {
+      spotlight: (yawDeg) => {
+        if (this._disposed) return
+        const now = ctx.currentTime
+        for (const n of nodes) {
+          // 1 when facing it, →0.18 at 90° away.
+          const prox = Math.max(0, 1 - Math.abs(n.azimuthDeg - yawDeg) / 90)
+          n.gain.gain.setTargetAtTime(0.18 + 0.62 * prox, now, 0.08)
+        }
+      },
+      stop: () => {
+        for (const n of nodes) {
+          try { n.src.stop() } catch { /* ignore */ }
+          try { n.src.disconnect(); n.gain.disconnect(); n.panner.disconnect() } catch { /* ignore */ }
+        }
+      },
+    }
+  }
+
+  // Rise movement: one looping build whose gain follows the conducting gesture
+  // size (setSwell), plus markBeat() — a short percussive transient on the
+  // down-stroke. Seated front-center.
+  playRiseBed(buffer) {
+    if (this._disposed || !this.ctx || !buffer) return null
+    const ctx = this.ctx
+    const src = ctx.createBufferSource()
+    src.buffer = buffer
+    src.loop = true
+    const gain = ctx.createGain()
+    gain.gain.value = 0.2
+    const panner = ctx.createPanner()
+    panner.panningModel = 'HRTF'
+    panner.distanceModel = 'inverse'
+    panner.refDistance = 1
+    panner.maxDistance = 20
+    panner.rolloffFactor = 1
+    const p = sphericalToCartesian(0, 5, 1.8)
+    panner.positionX.value = p.x
+    panner.positionY.value = p.y
+    panner.positionZ.value = p.z
+    src.connect(gain)
+    gain.connect(panner)
+    panner.connect(this.directBus)
+    panner.connect(this.reverbBus)
+    src.start(ctx.currentTime)
+    return {
+      setSwell: (g) => {
+        if (this._disposed) return
+        gain.gain.setTargetAtTime(0.15 + 0.85 * Math.max(0, Math.min(1, g)), ctx.currentTime, 0.12)
+      },
+      markBeat: (intensity = 1) => {
+        if (this._disposed) return
+        const now = ctx.currentTime
+        const noise = ctx.createBufferSource()
+        const len = Math.floor(ctx.sampleRate * 0.08)
+        const buf = ctx.createBuffer(1, len, ctx.sampleRate)
+        const data = buf.getChannelData(0)
+        for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len)
+        noise.buffer = buf
+        const ng = ctx.createGain()
+        ng.gain.value = 0.4 * Math.max(0, Math.min(1, intensity))
+        noise.connect(ng)
+        ng.connect(panner)
+        noise.start(now)
+        noise.addEventListener('ended', () => {
+          try { noise.disconnect(); ng.disconnect() } catch { /* ignore */ }
+        }, { once: true })
+      },
+      stop: () => {
+        try { src.stop() } catch { /* ignore */ }
+        try { src.disconnect(); gain.disconnect(); panner.disconnect() } catch { /* ignore */ }
+      },
+    }
   }
 
   // Apply the room preset at expansion t (0 intimate … 1 expanded).
