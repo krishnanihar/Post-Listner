@@ -15,18 +15,30 @@ export default function Face({ live, onCommit, onAdvance, committed }) {
   const ring = useMemo(() => archetypeRing(), [])
   const [relYaw, setRelYaw] = useState(0)
   const holdRef = useRef(null)
+  const prevYawRef = useRef(null)
   const firedRef = useRef(false)
 
   useEffect(() => {
     let raf = 0
+    const STABLE_DEG = 3 // turning faster than this per frame restarts the hold
     const tick = () => {
       const y = live.current.relYaw
       setRelYaw(y)
       if (!firedRef.current) {
-        if (holdRef.current === null) holdRef.current = performance.now()
-        else if (performance.now() - holdRef.current > HOLD_MS) { firedRef.current = true; onCommit() }
+        // Only count the hold while the user has settled on a direction — if
+        // they're still turning, restart it. ("Hold facing", not "wait 1.1s".)
+        const moving = prevYawRef.current !== null && Math.abs(y - prevYawRef.current) > STABLE_DEG
+        if (moving) {
+          holdRef.current = null
+        } else if (holdRef.current === null) {
+          holdRef.current = performance.now()
+        } else if (performance.now() - holdRef.current > HOLD_MS) {
+          firedRef.current = true
+          onCommit()
+        }
+        prevYawRef.current = y
       }
-      raf = requestAnimationFrame(tick)
+      if (!firedRef.current) raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)

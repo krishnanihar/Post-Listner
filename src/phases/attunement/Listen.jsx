@@ -18,11 +18,12 @@ export default function Listen({ fragments, playFragment, onAdvance }) {
       for (idxRef.current = 0; idxRef.current < fragments.length; idxRef.current++) {
         if (cancelled) return
         setPlaying(true); setAwaiting(false)
-        const rating = await playFragment(fragments[idxRef.current], {
-          onAwaitRating: () => { setPlaying(false); setAwaiting(true) },
-          getRater: (fn) => { rateRef.current = fn },
-        })
-        void rating
+        try {
+          await playFragment(fragments[idxRef.current], {
+            onAwaitRating: () => { setPlaying(false); setAwaiting(true) },
+            getRater: (fn) => { rateRef.current = fn },
+          })
+        } catch { /* a fragment failed to play — skip it and continue the run */ }
       }
       if (!cancelled) onAdvance()
     }

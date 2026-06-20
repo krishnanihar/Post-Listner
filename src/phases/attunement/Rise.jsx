@@ -22,7 +22,7 @@ export default function Rise({ onCommit, onAdvance, committed }) {
       const p = Math.min(1, (performance.now() - startRef.current) / RISE_MS)
       setProgress(p)
       if (p >= 1 && !firedRef.current) { firedRef.current = true; onCommit() }
-      else raf = requestAnimationFrame(tick)
+      if (!firedRef.current) raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)

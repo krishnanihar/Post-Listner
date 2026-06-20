@@ -29,7 +29,7 @@ export default function LeanLift({ live, onCommit, onAdvance, committed }) {
       } else if (Math.abs(b) <= 0.45) {
         holdStartRef.current = null
       }
-      raf = requestAnimationFrame(tick)
+      if (!firedRef.current) raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
