@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-20
 **Branch:** `musicking` (extends the spec-integration program)
-**Status:** Design approved; ready for implementation planning.
+**Status:** Implemented on `feat/attunement-room` (2026-06-20). Outstanding: live agent patch (`node scripts/update-admirer-agent.js`) + on-device verification of the full six-beat arc and bloom handoff.
 
 > Working title "The Attunement Room" is a design label, not a spoken name. The
 > internal phase key stays `admirer` to preserve existing seams (see §11);
