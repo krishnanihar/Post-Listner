@@ -10,7 +10,10 @@ describe('buildFirstMessage', () => {
     })
     expect(msg).toMatch(/welcome/i)
     expect(msg).toMatch(/musician/i)
-    expect(msg).toMatch(/press and hold/i)
+    // Gesture-only input: the opening invites a tap to begin, never speech.
+    expect(msg).toMatch(/tap to begin/i)
+    expect(msg).not.toMatch(/press and hold/i)
+    expect(msg).not.toMatch(/speak/i)
     expect(msg.length).toBeGreaterThan(50)
   })
 

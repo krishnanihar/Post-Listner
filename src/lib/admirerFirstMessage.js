@@ -1,24 +1,27 @@
 // Pure: returns the per-session opening line the Admirer agent should
 // speak as its first utterance. Passed as conversation_initiation_data
 // override (overrides.agent.firstMessage) at startSession time, so the
-// static "welcome. this first time runs slow..." baked into the agent on
-// ElevenLabs only plays when no override is provided.
+// static welcome baked into the agent on ElevenLabs only plays when no
+// override is provided.
 //
-// First-time users get the threshold opening verbatim — it lands the
-// tone, introduces the Admirer by role (no proper name), names the
-// push-to-talk affordance, and ends on the warm-up question.
+// Gesture-only input: the listener never speaks. The companion is a voice
+// that welcomes and accompanies; the listener answers the room with their
+// body (gestures) and a tap to begin. So the opening line invites no spoken
+// answer and names no speak button — it just greets and hands the room over.
+//
+// First-time users get the threshold opening — it lands the tone, introduces
+// the Admirer by role (no proper name), and signals the listener will respond
+// with attention, not words, when they tap to begin.
 //
 // Returning users get a short recognition line driven by recencySummary
-// and timeOfDay — no "welcome", no "this first time runs slow". The
-// system prompt still branches further by is_first_session for the
-// conversation that follows; this just changes the very first thing
+// and timeOfDay. The system prompt still branches further by is_first_session
+// for the conversation that follows; this just changes the very first thing
 // the voice says.
 
-const FIRST_SESSION_MESSAGE = "welcome. think of me as a musician who's come into the room while the music's already playing, and has the sense to listen first. this first time runs slow; we're new to each other, and there's no rush. when you're ready, press and hold to speak. and to start — what's around you right now?"
+const FIRST_SESSION_MESSAGE = "welcome. think of me as a musician who's come into the room while the music's already playing, and has the sense to listen first. this first time runs slow; we're new to each other, and there's no rush. you won't need to say a word — just stay with me, and answer with your attention. when you're ready, tap to begin."
 
 // Returning-user variants. Each is a small fragment that gets joined with
-// the constant tail (the push-to-talk reminder + an opener question that
-// is shorter than the first-time grand-tour).
+// the constant tail (a short re-welcome that invites no spoken answer).
 const RECENCY_FRAGMENTS = {
   'today': "back already.",
   'yesterday': "yesterday, and again.",
@@ -35,7 +38,7 @@ const TIME_OF_DAY_TAIL = {
   'late': "late tonight.",
 }
 
-const TAIL = "press and hold to speak when you want. what's around you now?"
+const TAIL = "stay with me. tap to begin when you're ready."
 
 export function buildFirstMessage({ isFirstSession, recencySummary, timeOfDay }) {
   if (isFirstSession) return FIRST_SESSION_MESSAGE
