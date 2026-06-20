@@ -105,7 +105,20 @@ export function useAdmirerRoom({ getAudioCtx, status }) {
     return () => { mounted = false; cancelAnimationFrame(raf) }
   }, [readMotion])
 
-  return useCallback(() => {
+  // beginExpansion — the act-1 → act-2 handoff: animate the room open over
+  // ~3.5s. setExpansion(t) lets the score drive the room open in discrete
+  // steps per movement; getRoom() exposes the live AdmirerRoom so the host
+  // can start the multi-source movement playback (texture pair / ring / rise
+  // bed). All three are no-ops until the room is built.
+  const beginExpansion = useCallback(() => {
     if (roomRef.current) roomRef.current.beginExpansion(3500)
   }, [])
+
+  const setExpansion = useCallback((t) => {
+    if (roomRef.current) roomRef.current.setExpansion(t)
+  }, [])
+
+  const getRoom = useCallback(() => roomRef.current, [])
+
+  return { beginExpansion, setExpansion, getRoom }
 }
