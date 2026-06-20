@@ -143,20 +143,31 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     })
   }, [clearFragmentPlayback, resolveRating])
 
+  // Monotonic token so the last-requested load wins; superseded in-flight
+  // loads self-abandon (no orphan started players).
+  const loadTokenRef = useRef(0)
+
   // Load the matched song's stems silently in the background so the Orchestra
-  // can pick them up via revealAudioRef without an audio gap. Stops a prior
-  // (speculative) player before swapping.
+  // can pick them up via revealAudioRef without an audio gap. Race-safe: the
+  // last call wins; an earlier call that resolves after a newer one has started
+  // abandons itself without starting or writing anything.
   const loadStemsSilently = useCallback(async (bundle) => {
     const ctx = getAudioCtx?.()
     if (!ctx) {
       console.warn('[attunement] no audio context — orchestra will fall back to static track')
       return
     }
+    const token = ++loadTokenRef.current
+    const prev = playerRef.current
     try {
-      if (playerRef.current && revealAudioRef?.current === playerRef.current) {
-        try { playerRef.current.stop?.() } catch { /* ignore */ }
-      }
       const player = await StemPlayer.load(ctx, bundle.stems, bundle.masterUrl)
+      // A newer load was requested while we were decoding — abandon this one.
+      // It was never start()ed, so it has no live audio graph to tear down.
+      if (token !== loadTokenRef.current) return
+      // Stop the previously-started player (if any) before replacing it.
+      if (prev && prev !== player) {
+        try { prev.stop?.() } catch { /* ignore */ }
+      }
       player.setVolume(0, 0)
       player.start()
       playerRef.current = player
@@ -453,9 +464,15 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
         try { fragmentAudioRef.current.pause() } catch { /* ignore */ }
         fragmentAudioRef.current = null
       }
+      // Only stop the player if the rite was ABANDONED (not committed). On a
+      // committed bloom this player is the live handoff — Orchestra mounts next
+      // (AnimatePresence mode="wait" unmounts us first) and calls
+      // detachAndGetSources() on it; stopping it here nulls its sources and the
+      // song dies at the seam.
       const player = playerRef.current
-      if (player && revealAudioRef?.current === player) {
+      if (player && !committedRef.current && revealAudioRef?.current === player) {
         try { player.stop?.() } catch { /* ignore */ }
+        if (revealAudioRef) revealAudioRef.current = null
       }
       playerRef.current = null
     }
