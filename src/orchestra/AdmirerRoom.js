@@ -278,6 +278,7 @@ export default class AdmirerRoom {
       const gain = ctx.createGain()
       gain.channelCount = 1
       gain.channelCountMode = 'explicit'
+      gain.channelInterpretation = 'speakers'
       gain.gain.value = initGain
       const panner = ctx.createPanner()
       panner.panningModel = 'HRTF'
@@ -299,15 +300,17 @@ export default class AdmirerRoom {
     const init = equalPowerGains(0)
     const left = make(leftBuffer, -60, init.left)
     const right = make(rightBuffer, 60, init.right)
+    let stopped = false
     return {
       setBalance: (b) => {
-        if (this._disposed) return
+        if (this._disposed || stopped) return
         const g = equalPowerGains(b)
         const now = ctx.currentTime
         left.gain.gain.setTargetAtTime(g.left, now, 0.05)
         right.gain.gain.setTargetAtTime(g.right, now, 0.05)
       },
       stop: () => {
+        stopped = true
         for (const n of [left, right]) {
           try { n.src.stop() } catch { /* ignore */ }
           try { n.src.disconnect(); n.gain.disconnect(); n.panner.disconnect() } catch { /* ignore */ }
@@ -327,6 +330,9 @@ export default class AdmirerRoom {
       src.buffer = buffer
       src.loop = true
       const gain = ctx.createGain()
+      gain.channelCount = 1
+      gain.channelCountMode = 'explicit'
+      gain.channelInterpretation = 'speakers'
       gain.gain.value = 0.25
       const panner = ctx.createPanner()
       panner.panningModel = 'HRTF'
@@ -345,17 +351,22 @@ export default class AdmirerRoom {
       src.start(ctx.currentTime)
       return { src, gain, panner, azimuthDeg }
     })
+    let stopped = false
+    const azimuths = nodes.map((n) => n.azimuthDeg)
+    const minAz = Math.min(...azimuths)
+    const maxAz = Math.max(...azimuths)
     return {
       spotlight: (yawDeg) => {
-        if (this._disposed) return
+        if (this._disposed || stopped) return
+        const y = Math.max(minAz, Math.min(maxAz, yawDeg))
         const now = ctx.currentTime
         for (const n of nodes) {
-          // 1 when facing it, →0.18 at 90° away.
-          const prox = Math.max(0, 1 - Math.abs(n.azimuthDeg - yawDeg) / 90)
+          const prox = Math.max(0, 1 - Math.abs(n.azimuthDeg - y) / 90)
           n.gain.gain.setTargetAtTime(0.18 + 0.62 * prox, now, 0.08)
         }
       },
       stop: () => {
+        stopped = true
         for (const n of nodes) {
           try { n.src.stop() } catch { /* ignore */ }
           try { n.src.disconnect(); n.gain.disconnect(); n.panner.disconnect() } catch { /* ignore */ }
@@ -374,6 +385,9 @@ export default class AdmirerRoom {
     src.buffer = buffer
     src.loop = true
     const gain = ctx.createGain()
+    gain.channelCount = 1
+    gain.channelCountMode = 'explicit'
+    gain.channelInterpretation = 'speakers'
     gain.gain.value = 0.2
     const panner = ctx.createPanner()
     panner.panningModel = 'HRTF'
@@ -390,13 +404,14 @@ export default class AdmirerRoom {
     panner.connect(this.directBus)
     panner.connect(this.reverbBus)
     src.start(ctx.currentTime)
+    let stopped = false
     return {
       setSwell: (g) => {
-        if (this._disposed) return
+        if (this._disposed || stopped) return
         gain.gain.setTargetAtTime(0.15 + 0.85 * Math.max(0, Math.min(1, g)), ctx.currentTime, 0.12)
       },
       markBeat: (intensity = 1) => {
-        if (this._disposed) return
+        if (this._disposed || stopped) return
         const now = ctx.currentTime
         const noise = ctx.createBufferSource()
         const len = Math.floor(ctx.sampleRate * 0.08)
@@ -405,6 +420,9 @@ export default class AdmirerRoom {
         for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len)
         noise.buffer = buf
         const ng = ctx.createGain()
+        ng.channelCount = 1
+        ng.channelCountMode = 'explicit'
+        ng.channelInterpretation = 'speakers'
         ng.gain.value = 0.4 * Math.max(0, Math.min(1, intensity))
         noise.connect(ng)
         ng.connect(panner)
@@ -414,6 +432,7 @@ export default class AdmirerRoom {
         }, { once: true })
       },
       stop: () => {
+        stopped = true
         try { src.stop() } catch { /* ignore */ }
         try { src.disconnect(); gain.disconnect(); panner.disconnect() } catch { /* ignore */ }
       },
