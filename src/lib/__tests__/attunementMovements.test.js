@@ -31,4 +31,13 @@ describe('attunementMovements', () => {
   it('getMovement returns null for an unknown id', () => {
     expect(getMovement('nope')).toBe(null)
   })
+  it('move movements carry a non-empty ask; arrival and bloom have ask: null', () => {
+    for (const id of ['leanLift', 'rise', 'face']) {
+      const ask = getMovement(id).ask
+      expect(typeof ask).toBe('string')
+      expect(ask.length).toBeGreaterThan(0)
+    }
+    expect(getMovement('arrival').ask).toBe(null)
+    expect(getMovement('bloom').ask).toBe(null)
+  })
 })

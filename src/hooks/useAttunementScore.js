@@ -12,8 +12,9 @@ import { archetypeRing, nearestArchetypeToYaw, archetypeAnchorVector, preloadDec
 // expansion, and fires onBloom when Face commits. onExpansion(t) lets the host
 // open the AdmirerRoom; onSpeculativePreload(archetypeId) starts the silent
 // StemPlayer load during Rise; onReact(movementId, payload) feeds the
-// companion voice a contextual update.
-export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom, onReact } = {}) {
+// companion voice a contextual update; onAsk(movementId, askText) fires once on
+// movement entry so the companion can voice that movement's question aloud.
+export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom, onReact, onAsk } = {}) {
   const [state, dispatch] = useReducer(reduce, undefined, initialState)
   const readMotion = usePhoneMotion()
   const ring = useRef(archetypeRing()).current
@@ -37,7 +38,14 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
     peakSwellRef.current = 0
     rodeClimaxRef.current = false
     liveRef.current = { pan: 0.5, filterNorm: 0.5, relYaw: 0, swell: 0 }
-  }, [state.movementId])
+    // On movement entry, ask the companion to voice this movement's question.
+    // Fires exactly once per movement: this effect is keyed on state.movementId,
+    // and onAsk is a stable host useCallback so its identity never changes
+    // mid-movement (no spurious re-runs). Movements with ask:null (arrival,
+    // bloom) say nothing on entry.
+    const m = getMovement(state.movementId)
+    if (m?.ask) onAsk?.(state.movementId, m.ask)
+  }, [state.movementId, onAsk])
 
   // Sample gestures each frame for the active move-movement.
   useEffect(() => {
