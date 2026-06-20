@@ -33,6 +33,7 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
     baselineYawRef.current = null
     peakSwellRef.current = 0
     rodeClimaxRef.current = false
+    liveRef.current = { pan: 0.5, filterNorm: 0.5, relYaw: 0 }
   }, [state.movementId])
 
   // Sample gestures each frame for the active move-movement.
@@ -89,21 +90,25 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
       onReact?.('face', { archetypeId: id })
     }
     dispatch({ type: 'COMMIT' })
-    const m = getMovement(state.movementId)
-    if (m) onExpansion?.(m.expansionTo)
-  }, [movement, state.status, state.movementId, ring, onReact, onExpansion])
+  }, [movement, state.status, ring, onReact])
 
   const advance = useCallback(() => {
+    // COMMIT first so talk/tap movements (arrival, listen) — which never go
+    // through commit() — become 'committed' and the status-guarded reducer
+    // will ADVANCE. COMMIT no-ops if already committed; React batches both
+    // dispatches into one render, so there's no intermediate flash. Calling
+    // advance() twice stays safe (both dispatches are idempotent guards).
+    dispatch({ type: 'COMMIT' })
     dispatch({ type: 'ADVANCE' })
-  }, [])
+    if (movement) onExpansion?.(movement.expansionTo)
+  }, [movement, onExpansion])
 
   // When Face has committed and we advance into Bloom, fire the handoff.
   useEffect(() => {
     if (state.movementId === 'bloom' && state.status === 'active') {
-      onExpansion?.(1)
       onBloom?.()
     }
-  }, [state.movementId, state.status, onExpansion, onBloom])
+  }, [state.movementId, state.status, onBloom])
 
   return { state, movement, commit, advance, live: liveRef }
 }
