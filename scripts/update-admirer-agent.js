@@ -17,7 +17,7 @@ import { dirname, resolve } from 'node:path'
 
 // Import the source-of-truth constants directly. The create script has
 // a main-guard, so importing it does NOT POST a new agent.
-import { TOOLS, SYSTEM_PROMPT, FIRST_MESSAGE } from './create-admirer-agent.js'
+import { TOOLS, SYSTEM_PROMPT, FIRST_MESSAGE, VOICE_ID } from './create-admirer-agent.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
@@ -92,6 +92,10 @@ const patch = {
       // Keep eleven_flash_v2 (already fastest). Slight speed bump makes
       // the cadence feel less drawn-out without sounding hurried.
       speed: 1.05,
+      // Sync the voice from the create script's source of truth so a voice
+      // change in VOICE_ID actually reaches the live agent on update (not just
+      // on create).
+      voice_id: VOICE_ID,
     },
   },
 }
@@ -125,7 +129,8 @@ console.log('  turn_timeout:      30.0')
 console.log('  turn_eagerness:    patient')
 console.log('  speculative_turn:  false  (was true; caused duplicate utterances)')
 console.log('  tts.speed:         1.05')
+console.log(`  tts.voice_id:      ${VOICE_ID}`)
 console.log('')
-console.log('Prompt change: agent is now a re-voicer + classifier (Option B).')
-console.log('New tools: nextQuestion (blocking) + recordAnswer (non-blocking).')
-console.log('Hard-refresh the browser and run the Slice 2 reliability spike to verify.')
+console.log('Prompt change: agent is now the Attunement Room companion voice.')
+console.log('The client owns the score; pacing tools (nextQuestion/playFragment/startGeneration) removed.')
+console.log('Hard-refresh the browser to pick up the new voice + prompt.')
