@@ -4,8 +4,9 @@
 // Programmatically creates the "Admirer (musicking v0)" Conversational AI agent
 // on ElevenLabs. Source of truth for the agent's config:
 //   - System prompt: this script (must stay in sync with docs/admirer-agent-dashboard.md)
-//   - Voice ID:      y1qhFrVEY0hUWrNMR216 (memory: project_admirer_voice_id)
-//   - Tools:         6 client tools matching src/lib/admirerTools.js
+//   - Voice ID:      this script (VOICE_ID)
+//   - Tools:         gesture-only companion — no client tools; only the
+//                    skip_turn system tool. The client/score owns all pacing.
 //
 // Run with: node scripts/create-admirer-agent.js
 // Requires: ELEVENLABS_API_KEY in .env.local (no VITE_ prefix — server-side use).
@@ -38,65 +39,55 @@ function loadEnvLocal() {
 
 const VOICE_ID = 'bfGb7JTLUnZebZRiFYyq'
 
-const FIRST_MESSAGE = "welcome. think of me as a musician who's come into the room while the music's already playing, and has the sense to listen first. this first time runs slow; we're new to each other, and there's no rush. when you're ready, press and hold to speak. and to start — tell me what's around you right now."
+const FIRST_MESSAGE = "welcome. think of me as a musician who's come into the room while the music's already playing, and has the sense to listen first. this first time runs slow; we're new to each other, and there's no rush. you won't need to say a word — just stay with me, and answer with your attention. when you're ready, tap to begin."
 
-const SYSTEM_PROMPT = `You are a companion presence in the Attunement Room — a voice that accompanies the listener as the room moves through its own score. You do not control the pacing. The room does. The client drives every movement: when to lean, when to rise, when to face. You speak briefly and warmly, and you stay out of the way.
+const SYSTEM_PROMPT = `You are a companion voice in the Attunement Room — a warm presence that POSES the room's questions and narrates lightly as the room moves through its own score. You do not control the pacing. The room does. The client drives every movement: when to lean, when to listen, when to rise, when to face.
 
-Your register: attentive, dry, warm (warmth comes from precision, not temperature words), unhurried. The same voice as always — an attentive fellow musician who arrived while music was already playing.
+The listener NEVER speaks. They cannot. They answer the room only with their body — with gestures. So you never invite, expect, or wait for speech. You speak; they move.
+
+Your register: attentive, dry, warm (warmth comes from precision, not temperature words), unhurried. An attentive fellow musician who arrived while music was already playing.
 
 You NEVER:
+- Invite, expect, or wait for the listener to speak, answer aloud, "tell you", or "say" anything
+- Tell the listener to press, hold, tap, or say anything — the room and its visuals handle every prompt to act
+- Ask the listener anything except the exact invitation you are cued to voice (see below)
 - Therapize ("I hear you saying", "that must have been hard")
 - Wellness-talk ("breathe with me", "honor your truth")
 - Speak grandly ("music is the universal language")
 - Get sentimental ("what a gift")
 - Psychoanalyze or interpret what music choices "reveal"
-- Ask the user to come back
-- Claim to understand ("I get it") — silence or "mm" instead
-- Summarize the user ("so you're someone who...")
-- Invent biography that the user hasn't disclosed
-- Instruct gestures — the room shows the listener what to do; you do not narrate it
-- Pace the room: you do NOT call nextQuestion, playFragment, or startGeneration (those tools do not exist for you)
+- Ask the listener to come back
+- Summarize the listener ("so you're someone who...")
+- Invent biography the listener hasn't disclosed
+- Call any tools — you have none (except holding your turn; see skip_turn)
 
 You ALWAYS:
-- Echo the user's words back to them VERBATIM. If they say "Carnatic", you say "Carnatic". If they say "my mom's tape", you say "your mom's tape". Call recordLexicon to store vivid words.
+- Speak briefly and warmly. Short, compact sentences. Concrete words over abstract ones.
 - Leave gaps. Let things sit.
-- Treat deflection as information. Move on silently.
-- Use short, compact sentences. Concrete words over abstract ones.
+- Stay out of the way. The room is the experience; you accompany it.
 
-## Arrival — your one spoken exchange
+## Posing the room's questions
 
-Your first message has already been delivered. It greeted the listener and ended on one question: "what's around you right now?" When the listener answers, give a small dry acknowledgment, then classify the texture of their answer and call recordAnswer once:
-- seedId: "arrival"
-- texture: one of "calm", "sharp", "melancholic", "exalted"
-- intensity: 0.0–1.0
-- rationale: one short sentence
+When the room reaches a new movement, you receive a cue shaped exactly like:
 
-After that, you do not ask questions. The room takes over.
+  Now ask the listener, in your own warm words: "<invitation>"
 
-## During the room — contextual updates
+When you get that cue, immediately voice that invitation as ONE short, warm question — re-voiced in your own register, but faithful to its meaning — then stop. Do not add instructions, do not explain the room, do not ask the listener to say or do anything beyond the invitation itself. Voice it once, then fall quiet and let them move.
 
-As the listener moves through the room's beats (lean, listen, rise, face), you will receive natural-language contextual updates describing what they just did. Examples:
+## Reacting to what the listener did
+
+Between movements you receive a short report of what the listener just did with their body. Examples:
 - "The listener leaned warm and inward."
 - "The listener rode the climax."
 - "The listener turned to face the hearth-keeper world."
 
-For each update, you may say at most ONE short, warm sentence reacting to what they did. Keep it to under ten words. Do not instruct, do not narrate the next movement, do not explain the room. Just react, the way a fellow musician might nod at a choice.
+For each report, you may say at most ONE short, warm line reacting to what they did — under ten words. Do not instruct, do not narrate the next movement, do not explain the room. Just react, the way a fellow musician might nod at a choice. Saying nothing is also fine.
 
-If a contextual update says the bloom is starting (e.g. "The music takes over now."), fall silent. Do not speak again — the song has begun.
+If a report says the room is blooming or handing off (e.g. "The music takes over now."), fall silent. Do not speak again — the song has begun.
 
-## Tool-call pacing
+## Holding your turn
 
-Fire at most one tool per user turn, MID-response. The echo at the start of your response IS the acknowledgment — do not say a separate acknowledgment word.
-
-Call recordLexicon when the listener uses a vivid word for something they love. Fire it mid-speech.
-
-Call recordAnswer once, at arrival, as described above.
-
-Call commitEntry only if explicitly asked by the system.
-
-Call skip_turn after asking the arrival question, so you remain silent while the listener thinks.
-
-NEVER repeat your own previous response. If a contextual update or brief silence would tempt you to say something you already said, stay silent or say "mm".
+After you voice an invitation, the listener answers with their body, not their voice — so there is no spoken reply coming. Call skip_turn to hold your turn and stay quiet until the room cues you again. Do NOT fill the silence with extra lines, and NEVER repeat your own previous response.
 
 ## Dynamic variables you have access to
 
@@ -109,109 +100,30 @@ NEVER repeat your own previous response. If a contextual update or brief silence
 - prior_entries_summary (string)
 - restricted_repertoires (array of strings — never reference or generate in these)`
 
-const FRAGMENT_IDS = [
-  'warm-acoustic-now',
-  'warm-folk-recent',
-  'shadow-piano-late',
-  'shadow-synth-old',
-  'lifted-cinematic',
-  'lifted-postclassical',
-  'patient-glow',
-  'tense-postrock',
-]
-
-// Helper to build a client tool with parameters as JSON Schema.
-// Most tools are fire-and-forget (expects_response false).
-function clientTool({
-  name, description, properties, required,
-  expectsResponse = false,
-  responseTimeoutSecs = 1,
-  disableInterruptions = false,
-}) {
-  return {
-    type: 'client',
-    name,
-    description,
-    expects_response: expectsResponse,
-    execution_mode: 'immediate',
-    pre_tool_speech: 'auto',
-    response_timeout_secs: responseTimeoutSecs,
-    disable_interruptions: disableInterruptions,
-    parameters: {
-      type: 'object',
-      properties,
-      required: required || [],
-    },
-  }
-}
-
+// Gesture-only companion: the listener never speaks and the client/score owns
+// all pacing and commit. The companion therefore has NO client tools. The only
+// tool is the system tool skip_turn, which lets the LLM hold its turn and stay
+// silent after voicing an invitation (the listener answers with their body, so
+// no spoken reply is coming).
+//
+// update-admirer-agent.js splits TOOLS into client tools (prompt.tools) and
+// system tools (prompt.built_in_tools). With no client tools the client array
+// is simply empty — a valid shape — and built_in_tools carries skip_turn.
 const TOOLS = [
-  clientTool({
-    name: 'recordLexicon',
-    description: 'Store a verbatim word or phrase the user used for a musical concept. Always call this whenever the user names something specific — a tradition, an instrument, a person\'s recording. Pass the user\'s word EXACTLY as they said it.',
-    properties: {
-      term: { type: 'string', description: 'Canonical name for the concept (e.g. \'qawwali\', \'mom_tape\')' },
-      userPhrasing: { type: 'string', description: 'The user\'s exact words. Do not rephrase or translate.' },
-    },
-    required: ['term', 'userPhrasing'],
-  }),
-  clientTool({
-    name: 'commitArtifact',
-    description: 'Call when the user shares their boundary object during musical biography — a track they played, a recording they described, or a verbal description.',
-    properties: {
-      label: { type: 'string', description: 'A short label using the user\'s words' },
-      content: { type: 'string', description: 'Short description of what was shared' },
-    },
-    required: ['label'],
-  }),
-  clientTool({
-    name: 'markRestricted',
-    description: 'Call when the user explicitly indicates a musical repertoire should not be referenced or generated. Once marked, the orchestra will refuse to generate in that idiom.',
-    properties: {
-      repertoire: { type: 'string', description: 'Name of the closed repertoire in the user\'s own words' },
-    },
-    required: ['repertoire'],
-  }),
-  clientTool({
-    name: 'recordAnswer',
-    description: 'Call after the person has answered a SPOKEN question (not a tap/selection question). Provide your honest read of the answer\'s emotional texture: the register it came through in, how strongly, and a one-line rationale. This feeds the orchestra\'s direction — classify honestly, not charitably.',
-    properties: {
-      seedId: { type: 'string', description: 'The seed id for this answer. Use "arrival" for the opening question.' },
-      texture: {
-        type: 'string',
-        description: 'The dominant emotional register of the answer.',
-        enum: ['calm', 'sharp', 'melancholic', 'exalted'],
-      },
-      intensity: {
-        type: 'number',
-        description: 'How strongly that texture came through, from 0.0 (barely) to 1.0 (unmistakably).',
-      },
-      rationale: { type: 'string', description: 'One short sentence explaining your read.' },
-    },
-    required: ['seedId', 'texture', 'intensity', 'rationale'],
-  }),
-  clientTool({
-    name: 'commitEntry',
-    description: 'Call once at the end of the session, when instructed by the system. This advances the experience from conversation to conducting. After calling, DO NOT speak again until the closing session.',
-    properties: {
-      summary: { type: 'string', description: 'Short summary of the session (under 80 characters)' },
-    },
-    required: ['summary'],
-  }),
-  // System tool — when enabled, the LLM may choose to stay silent for a
-  // turn rather than respond. The companion uses it after the arrival question
-  // to hold its turn while the listener thinks, preventing the server's
-  // turn_timeout from firing through user silence.
+  // System tool — when enabled, the LLM may choose to stay silent for a turn
+  // rather than respond. The companion uses it after voicing an invitation to
+  // hold its turn while the listener answers with gestures, preventing the
+  // server's turn_timeout from forcing a fill line.
   {
     type: 'system',
     name: 'skip_turn',
-    description: 'Stay silent and let the user have time. The agent does not produce a response for this turn — the user is still thinking, or has asked for a moment.',
+    description: 'Stay silent and hold your turn. Produce no response this turn — the listener answers with their body, not their voice, so there is no spoken reply to wait for.',
   },
 ]
 
 // Export source-of-truth constants so update-admirer-agent.js can import
 // them directly without re-triggering the agent create POST.
-export { TOOLS, SYSTEM_PROMPT, FIRST_MESSAGE, FRAGMENT_IDS, VOICE_ID }
+export { TOOLS, SYSTEM_PROMPT, FIRST_MESSAGE, VOICE_ID }
 
 // Only POST when running as a CLI; allow this module to be imported
 // (e.g. by update-admirer-agent.js) without re-creating the agent.
@@ -234,30 +146,27 @@ if (isMain) {
       },
       // Turn-taking — kept in sync with scripts/update-admirer-agent.js.
       turn: {
-        // 30s (was 7s). The documented maximum. Combined with the client-side
-        // sendUserActivity() keep-alive in Admirer.jsx (pings every 10s while
-        // hold-to-speak is idle), this is the safety-net upper bound — the
-        // server will only advance after 30s of NO activity pings AND no audio.
+        // 30s (was 7s). The documented maximum. With gesture-only input there
+        // is no user audio at all; turn-taking is driven by the client/score
+        // and the agent's skip_turn. This is just the safety-net upper bound.
         turn_timeout: 30.0,
-        // 'patient' (was 'normal'). The Admirer is deliberately unhurried;
-        // patient mode waits longer at natural pauses before assuming the
-        // user has yielded the turn.
+        // 'patient' (was 'normal'). The companion is deliberately unhurried;
+        // patient mode waits longer before assuming the turn has yielded.
         turn_eagerness: 'patient',
-        // DISABLED — speculative_turn produced verbatim duplicate responses
-        // when the user paused mid-thought.
+        // DISABLED — speculative_turn produced verbatim duplicate responses.
         speculative_turn: false,
         mode: 'turn',
         turn_model: 'turn_v2',
       },
       agent: {
         // The Arrival speech, delivered automatically on session connect.
-        // Greets, introduces the Admirer by its role (no proper name — the
+        // Greets, introduces the companion by its role (no proper name — the
         // name is parked; see docs/research-arrival-and-naming-2026-05-20.md),
-        // marks the threshold, names the push-to-talk affordance, and ends on
-        // one easy warm-up question so the user's first spoken turn is
-        // low-stakes. The user's name is captured as a typed field on the
-        // Entry screen and is never spoken (TTS would mispronounce it), so
-        // this message is identical for every user. ~26s of speech.
+        // marks the threshold, and signals the listener answers with their
+        // attention (gestures), not their voice, then hands the room over on a
+        // tap to begin. The user's name is captured as a typed field on the
+        // Entry screen and is never spoken (TTS would mispronounce it), so this
+        // message is identical for every user. Gesture-only — no spoken turn.
         first_message: FIRST_MESSAGE,
         language: 'en',
         prompt: {
