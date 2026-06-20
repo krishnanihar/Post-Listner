@@ -6,8 +6,9 @@
 // StemPlayer load during Rise. Pure — unit-tested.
 
 import { ARCHETYPE_CENTROIDS, selectArchetypeByAvd } from './avdToStems.js'
+import { MAX_AZIMUTH_OFFSET_DEG } from '../orchestra/AdmirerRoom.js'
 
-const RING_HALF_WIDTH_DEG = 75 // matches MAX_AZIMUTH_OFFSET_DEG in AdmirerRoom
+const RING_HALF_WIDTH_DEG = MAX_AZIMUTH_OFFSET_DEG // 75 — matches the room's roll→azimuth limit
 
 // [{ id, anchor:[a,v,d], azimuthDeg }] sorted cold→warm, spread -75..+75.
 export function archetypeRing() {
@@ -23,6 +24,7 @@ export function archetypeRing() {
 
 // Archetype whose ring azimuth is nearest the (baseline-relative) facing yaw.
 export function nearestArchetypeToYaw(relYawDeg, ring = archetypeRing()) {
+  if (!ring.length) return null
   let best = ring[0]
   let bestDist = Infinity
   for (const r of ring) {

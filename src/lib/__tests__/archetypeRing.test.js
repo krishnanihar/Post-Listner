@@ -29,6 +29,10 @@ describe('archetypeRing', () => {
     expect(nearestArchetypeToYaw(75, ring)).toBe(right.id)
   })
 
+  it('nearestArchetypeToYaw returns null for an empty ring', () => {
+    expect(nearestArchetypeToYaw(0, [])).toBe(null)
+  })
+
   it('archetypeAnchorVector returns the signed centroid as {a,v,d}', () => {
     const sky = archetypeAnchorVector('sky-seeker')
     expect(sky).toMatchObject({ a: expect.any(Number), v: expect.any(Number), d: expect.any(Number) })

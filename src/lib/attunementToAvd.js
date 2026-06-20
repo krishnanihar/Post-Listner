@@ -29,7 +29,8 @@ export function riseHedonic(rodeClimax) { return !!rodeClimax }
 // flicks and agonized holds are both discounted; a decisive 0.4–2s hold is
 // full confidence. Mirrors Spectrum's dwell weighting.
 export function dwellConfidence(dwellMs) {
-  if (dwellMs < 400) return Math.max(0, dwellMs / 400) * 0.9 + 0.1 * (dwellMs > 0 ? 1 : 0)
+  if (dwellMs <= 0) return 0
+  if (dwellMs < 400) return (dwellMs / 400) * 0.9 + 0.1
   if (dwellMs <= 2000) return 1
   return Math.max(0.7, 1 - (dwellMs - 2000) / 6000)
 }
