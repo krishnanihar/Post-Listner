@@ -7,17 +7,13 @@ import { useAdmirerAgent } from '../hooks/useAdmirerAgent.js'
 import { buildFirstMessage } from '../lib/admirerFirstMessage.js'
 import { appendEntry, buildDynamicVariables } from '../lib/sessionStore.js'
 import StemPlayer from '../lib/stemPlayer.js'
-import { addLexiconWord, subscribeLiveSession, getLiveSession } from '../lib/liveSession.js'
+import { subscribeLiveSession, getLiveSession } from '../lib/liveSession.js'
 import { fireMoment, resetMoments } from '../lib/momentBus.js'
 import { advanceFormationStage, resetFormationStage } from '../lib/formationStage.js'
 import QuestionDisplay from './QuestionDisplay'
-import HoldToSpeak from './HoldToSpeak'
 import { useAdmirerRoom } from '../hooks/useAdmirerRoom.js'
-import { useIdleKeepAlive } from '../hooks/useIdleKeepAlive.js'
 import AdmirerScene3D from './admirer-scene/AdmirerScene3D'
-import { getSeed } from '../lib/questionSeeds.js'
-import { textureToTarget, blendTarget } from '../lib/textureToAvd.js'
-import { getAvd, commitTurn, resetAvd } from '../lib/avdStore.js'
+import { getAvd, resetAvd } from '../lib/avdStore.js'
 import { mapAvdToStems } from '../lib/avdToStems.js'
 import { avdRecorder } from '../lib/avdRecorder.js'
 import { buildSessionRecord } from '../lib/sessionRecord.js'
@@ -221,25 +217,6 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     }, 600)
   }, [onNext, clearFragmentPlayback, resolveRating])
 
-  // Mirror each verbatim lexicon word the agent records (via the
-  // recordLexicon client tool) into the live session, so the reflection
-  // surface can show the user's own words accumulating.
-  const onRecordLexicon = useCallback(({ term, userPhrasing } = {}) => {
-    addLexiconWord(userPhrasing)
-    if (term) fireMoment(0.05, `lexicon:${term}`)
-  }, [])
-
-  // recordAnswer: the companion's texture judgment of the one spoken arrival
-  // answer → AVD movement. Selection/closing seeds carry no spoken AVD; ignore
-  // them structurally. (The score owns every other axis write now.)
-  const onRecordAnswer = useCallback(({ seedId, texture, intensity }) => {
-    const seed = getSeed(seedId)
-    if (seed && (seed.kind === 'closing' || seed.kind === 'selection')) return
-    const observed = textureToTarget(texture, intensity ?? 1)
-    const target = blendTarget(observed, seed?.intent)
-    commitTurn(target, { gain: seed?.gain ?? 0.8 })
-  }, [])
-
   // Build the agent's opening line from session state — first-time users
   // get the threshold opening; returning users get a short recognition line.
   // Computed once on mount so it is stable across re-renders.
@@ -252,18 +229,19 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     })
   }, [])
 
+  // Voice-only companion: the listener never speaks (gesture-only input), so
+  // we never unmute the mic. We keep the SDK in voice mode (the agent must
+  // SPEAK), but the mic — muted on connect by useAdmirerAgent — stays muted
+  // for the whole session. No setMuted / sendUserActivity needed here.
   const {
     connect,
     status,
     isSpeaking,
-    isMuted,
-    setMuted,
-    sendUserActivity,
     sendContextualUpdate,
   } = useAdmirerAgent({
     sessionStage: 'opening',
     firstMessage,
-    callbacks: { onCommitEntry, onRecordLexicon, onRecordAnswer },
+    callbacks: { onCommitEntry },
   })
 
   // Build A — the spatial room. Routes the companion voice through an HRTF
@@ -290,6 +268,21 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     try { sendContextualUpdate?.(prose) } catch { /* voice is optional */ }
   }, [sendContextualUpdate])
 
+  // Score → companion asking: when a movement begins, cue the companion to
+  // voice that movement's question aloud (the listener answers with gestures,
+  // never speech). The cue is a contextual update, not a forced utterance —
+  // contextual updates *inform* the agent and may not always trigger immediate
+  // speech in voice mode (the same SDK behavior flagged for onScoreReact above);
+  // this must be verified on device. If it doesn't speak on cue, the fallback
+  // is sendUserMessage(...) (exposed by useAdmirerAgent). Voice is optional, so
+  // a throw here is swallowed.
+  const onScoreAsk = useCallback((movementId, askText) => {
+    if (!askText) return
+    try {
+      sendContextualUpdate?.(`Now ask the listener, in your own warm words: ${askText}`)
+    } catch { /* voice is optional */ }
+  }, [sendContextualUpdate])
+
   // Score → bloom (the act-1 → act-2 handoff). Ensure the faced archetype's
   // stems are the loaded ones, snap the geometry fully formed, animate the
   // room open, then build + persist the record and hand off to Orchestra
@@ -314,10 +307,13 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     onSpeculativePreload,
     onBloom,
     onReact: onScoreReact,
+    onAsk: onScoreAsk,
   })
 
-  // FIX 1 — arrival escape hatch: show "continue" after 5 s in arrival, or
-  // immediately on agent-connect failure, so Act 1 is never permanently stalled.
+  // Arrival is now gesture-only: there is no spoken answer to wait for, so the
+  // tap-to-continue affordance is the single way out of arrival. Show it after
+  // 2.5 s (was 5 s) so the listener isn't left waiting, or immediately on an
+  // agent-connect failure, so Act 1 is never permanently stalled.
   // All setState calls are deferred via setTimeout to satisfy the
   // react-hooks/set-state-in-effect lint rule (no synchronous setState in body).
   useEffect(() => {
@@ -330,19 +326,9 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
       const t = setTimeout(() => setShowArrivalContinue(true), 0)
       return () => clearTimeout(t)
     }
-    const t = setTimeout(() => setShowArrivalContinue(true), 5000)
+    const t = setTimeout(() => setShowArrivalContinue(true), 2500)
     return () => clearTimeout(t)
   }, [score.movement?.id, hasError])
-
-  // While the user is in the arrival beat (the one spoken movement) and NOT
-  // holding the speak button, ping sendUserActivity every 10s so the server's
-  // turn-timeout never fires and the companion does not advance through
-  // silence. Only arrival needs this — the rest of the arc is gesture-paced.
-  useIdleKeepAlive({
-    enabled: status === 'connected' && isMuted && score.movement?.id === 'arrival',
-    intervalMs: 10000,
-    ping: sendUserActivity,
-  })
 
   // Per-movement room playback: start/stop the right multi-source handle as
   // the movement changes. Fragment masters stand in as textures for the Lean
@@ -414,41 +400,25 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     return () => { mounted = false; cancelAnimationFrame(raf) }
   }, [score.movement?.id, score.live])
 
-  // Transcript watcher: drives the per-turn release bursts (agent question,
-  // user turn) AND advances the arrival beat when the user finishes their
-  // first spoken answer. Single source of truth for these momentBus dispatches.
+  // Transcript watcher: drives the per-turn release bursts when the companion
+  // voices a question. The listener never speaks (gesture-only input), so there
+  // are no user transcript lines to react to — arrival now advances via the
+  // tap-to-continue affordance, not a spoken answer. Single source of truth for
+  // these momentBus dispatches.
   const { transcript } = useSyncExternalStore(subscribeLiveSession, getLiveSession)
   const firedQuestionAtIndexRef = useRef(null)
-  const firedUserTurnAtIndexRef = useRef(null)
   if (firedQuestionAtIndexRef.current === null) firedQuestionAtIndexRef.current = new Set()
-  if (firedUserTurnAtIndexRef.current === null) firedUserTurnAtIndexRef.current = new Set()
 
-  const scoreAdvance = score.advance
-  const scoreMovementId = score.state.movementId
   useEffect(() => {
     const firedQ = firedQuestionAtIndexRef.current
-    const firedU = firedUserTurnAtIndexRef.current
     for (let i = 0; i < transcript.length; i++) {
       const line = transcript[i]
-      if (line.role === 'agent') {
-        if (!firedQ.has(i) && line.text.includes('?')) {
-          fireMoment(0.12, `question:${i}`)
-          firedQ.add(i)
-        }
-      } else if (line.role === 'user') {
-        if (!firedU.has(i)) {
-          fireMoment(0.05, `user:${i}`)
-          firedU.add(i)
-          // The arrival beat advances when the user finishes their first
-          // spoken answer. score.advance() COMMIT+ADVANCEs, so this is safe
-          // even if called more than once (idempotent guards in the reducer).
-          if (scoreMovementId === 'arrival') {
-            scoreAdvance()
-          }
-        }
+      if (line.role === 'agent' && !firedQ.has(i) && line.text.includes('?')) {
+        fireMoment(0.12, `question:${i}`)
+        firedQ.add(i)
       }
     }
-  }, [transcript, scoreAdvance, scoreMovementId])
+  }, [transcript])
 
   // Editorial moment dispatcher + session lifecycle. Each rite starts with
   // the release at 0 (resetMoments) plus an immediate 8% pre-release. The
@@ -510,17 +480,6 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     }
   }, [])
 
-  // Push-to-talk handlers — wired to the HoldToSpeak button (arrival only).
-  const handleHoldStart = useCallback(() => {
-    if (!setMuted) return
-    try { setMuted(false) } catch (e) { console.warn('[admirer] setMuted(false) threw:', e) }
-  }, [setMuted])
-
-  const handleHoldEnd = useCallback(() => {
-    if (!setMuted) return
-    try { setMuted(true) } catch (e) { console.warn('[admirer] setMuted(true) threw:', e) }
-  }, [setMuted])
-
   // Derive the visible state label from SDK signals + the active movement.
   const movementId = score.movement?.id
   let stateLabel
@@ -535,8 +494,10 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     stateLabel = 'speaking'
     stateKey = 'agent-speaking'
   } else if (movementId === 'arrival') {
-    stateLabel = isMuted ? 'your turn' : 'I’m listening'
-    stateKey = isMuted ? 'arrival-idle' : 'arrival-speaking'
+    // Gesture-only: the listener never speaks. The companion greets and asks;
+    // the listener taps to continue when ready.
+    stateLabel = 'your turn'
+    stateKey = 'arrival-idle'
   } else if (movementId === 'leanLift') {
     stateLabel = 'lean toward what pulls'
     stateKey = 'leanLift'
@@ -554,10 +515,6 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     stateLabel = ''
     stateKey = 'bloom'
   }
-
-  // Push-to-talk shows only during the arrival beat — the single spoken
-  // movement. Every later beat is paced by gesture or tap.
-  const showHoldToSpeak = !hasError && movementId === 'arrival'
 
   return (
     <Paper variant="cream">
@@ -663,23 +620,9 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
         {/* Spacer */}
         <div style={{ flex: 1 }} />
 
-        {/* Bottom region: hold-to-speak button — arrival beat only */}
-        {showHoldToSpeak && (
-          <div style={{
-            flex: '0 0 auto',
-            marginBottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)',
-          }}>
-            <HoldToSpeak
-              onHoldStart={handleHoldStart}
-              onHoldEnd={handleHoldEnd}
-              isAgentSpeaking={isSpeaking}
-              disabled={status !== 'connected'}
-            />
-          </div>
-        )}
-
-        {/* FIX 1 — arrival escape hatch: low-emphasis tap-to-continue shown
-            after 5 s (or immediately on error) so the arc never stalls. */}
+        {/* Arrival escape hatch: low-emphasis tap-to-continue shown after 2.5 s
+            (or immediately on error). The listener never speaks — this tap is
+            the only way out of arrival, so the arc never stalls. */}
         {score.movement?.id === 'arrival' && showArrivalContinue && (
           <div style={{
             flex: '0 0 auto',
