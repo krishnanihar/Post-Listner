@@ -10,9 +10,9 @@
 
 ## Voice
 
-Custom voice ID: `y1qhFrVEY0hUWrNMR216` (the user's authored Admirer voice — see project memory `project_admirer_voice_id`).
+Custom voice ID: `bfGb7JTLUnZebZRiFYyq` (source of truth: `VOICE_ID` in `scripts/create-admirer-agent.js`). Prior voice was `y1qhFrVEY0hUWrNMR216`.
 
-If that voice ID is not accessible to the dashboard account, fall back to `NtS6nEHDYMQC9QczMQuq` (the existing PostListener Admirer voice).
+Note: `update-admirer-agent.js` now PATCHes `tts.voice_id`, so the voice must exist in the patching account or the update fails `voice_not_found`. If `bfGb7JTLUnZebZRiFYyq` isn't accessible, add it to the account (or set `VOICE_ID` to a valid one) before patching.
 
 ## LLM
 
