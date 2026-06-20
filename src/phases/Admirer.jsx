@@ -46,6 +46,8 @@ const RATING_GRACE_MS = 10000
 // useConversation hook.
 function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   const [hasError, setHasError] = useState(false)
+  // FIX 1 — tap-to-continue escape hatch for the arrival beat.
+  const [showArrivalContinue, setShowArrivalContinue] = useState(false)
   const stemsBundleRef = useRef(null)
   const playerRef = useRef(null)
   // Idempotency guard for the orchestra handoff. The score's bloom is the
@@ -276,7 +278,13 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   // movement the listener just resolved (Task 5b + the context7 note —
   // contextual updates take prose, not JSON). Empty string = nothing worth
   // saying, so skip the send. Voice is optional, so failures are swallowed.
+  // FIX 3 — rise downbeat: play the transient (markBeat) but do NOT send a
+  // voice line per beat; return early so phraseReaction is never called for it.
   const onScoreReact = useCallback((movementId, payload) => {
+    if (movementId === 'rise' && payload.downbeat) {
+      roomHandleRef.current?.markBeat?.(payload.intensity ?? 1)
+      return // transient only — no per-beat voice line
+    }
     const prose = phraseReaction(movementId, payload)
     if (!prose) return
     try { sendContextualUpdate?.(prose) } catch { /* voice is optional */ }
@@ -286,18 +294,20 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   // stems are the loaded ones, snap the geometry fully formed, animate the
   // room open, then build + persist the record and hand off to Orchestra
   // (reusing onCommitEntry's body — the seam the Orchestra depends on).
-  const onBloom = useCallback(() => {
+  // FIX 2 — async: await the load so the 600ms onNext can't race a slow reload.
+  const onBloom = useCallback(async () => {
     const bundle = mapAvdToStems(getAvd(), {})
-    if (bundle.archetypeId !== stemsBundleRef.current?.archetypeId) {
-      loadStemsSilently(bundle)
-    }
+    // Gate the commit on the load so the 600ms onNext can't race a slow
+    // reload (which would let Orchestra detach a stale/empty player).
+    const needLoad = !playerRef.current || bundle.archetypeId !== stemsBundleRef.current?.archetypeId
+    if (needLoad) await loadStemsSilently(bundle)
     // Editorial moment: snap to fully formed; front figure fades in over the
     // handoff. eventIds keep both safe against re-fire.
     fireMoment(1.0, 'startGeneration')
     advanceFormationStage(2)
     beginExpansion()
     onCommitEntry({ summary: '' })
-  }, [beginExpansion, loadStemsSilently, onCommitEntry])
+  }, [loadStemsSilently, beginExpansion, onCommitEntry])
 
   const score = useAttunementScore({
     onExpansion: onScoreExpansion,
@@ -305,6 +315,24 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     onBloom,
     onReact: onScoreReact,
   })
+
+  // FIX 1 — arrival escape hatch: show "continue" after 5 s in arrival, or
+  // immediately on agent-connect failure, so Act 1 is never permanently stalled.
+  // All setState calls are deferred via setTimeout to satisfy the
+  // react-hooks/set-state-in-effect lint rule (no synchronous setState in body).
+  useEffect(() => {
+    const movId = score.movement?.id
+    if (movId !== 'arrival') {
+      const t = setTimeout(() => setShowArrivalContinue(false), 0)
+      return () => clearTimeout(t)
+    }
+    if (hasError) {
+      const t = setTimeout(() => setShowArrivalContinue(true), 0)
+      return () => clearTimeout(t)
+    }
+    const t = setTimeout(() => setShowArrivalContinue(true), 5000)
+    return () => clearTimeout(t)
+  }, [score.movement?.id, hasError])
 
   // While the user is in the arrival beat (the one spoken movement) and NOT
   // holding the speak button, ping sendUserActivity every 10s so the server's
@@ -371,6 +399,10 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
       if (h) {
         if (score.movement?.id === 'leanLift' && h.setBalance) {
           h.setBalance((score.live.current.pan - 0.5) * 2)
+        }
+        // FIX 3 — drive Rise audio reactivity each frame.
+        if (score.movement?.id === 'rise' && h.setSwell) {
+          h.setSwell(score.live.current.swell ?? 0)
         }
         if (score.movement?.id === 'face' && h.spotlight) {
           h.spotlight(score.live.current.relYaw)
@@ -643,6 +675,34 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
               isAgentSpeaking={isSpeaking}
               disabled={status !== 'connected'}
             />
+          </div>
+        )}
+
+        {/* FIX 1 — arrival escape hatch: low-emphasis tap-to-continue shown
+            after 5 s (or immediately on error) so the arc never stalls. */}
+        {score.movement?.id === 'arrival' && showArrivalContinue && (
+          <div style={{
+            flex: '0 0 auto',
+            marginBottom: 'calc(env(safe-area-inset-bottom, 0px) + 32px)',
+          }}>
+            <button
+              onClick={() => score.advance()}
+              style={{
+                fontFamily: FONTS.serif,
+                fontStyle: 'italic',
+                fontSize: 13,
+                letterSpacing: 0.3,
+                color: COLORS.inkCreamSecondary,
+                background: 'transparent',
+                border: `1px solid ${COLORS.inkCreamSecondary}`,
+                borderRadius: 20,
+                padding: '6px 18px',
+                cursor: 'pointer',
+                opacity: 0.7,
+              }}
+            >
+              continue
+            </button>
           </div>
         )}
       </div>

@@ -26,14 +26,17 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
   const peakSwellRef = useRef(0)
   const rodeClimaxRef = useRef(false)
   const lastPreloadRef = useRef(null)
-  const liveRef = useRef({ pan: 0.5, filterNorm: 0.5, relYaw: 0 })
+  const liveRef = useRef({ pan: 0.5, filterNorm: 0.5, relYaw: 0, swell: 0 })
+
+  // FIX 5 — tiny haptic helper; no-ops where vibration is unsupported.
+  const vibrate = (ms) => { try { navigator.vibrate?.(ms) } catch { /* unsupported */ } }
 
   useEffect(() => {
     enteredAtRef.current = performance.now()
     baselineYawRef.current = null
     peakSwellRef.current = 0
     rodeClimaxRef.current = false
-    liveRef.current = { pan: 0.5, filterNorm: 0.5, relYaw: 0 }
+    liveRef.current = { pan: 0.5, filterNorm: 0.5, relYaw: 0, swell: 0 }
   }, [state.movementId])
 
   // Sample gestures each frame for the active move-movement.
@@ -49,9 +52,13 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
         liveRef.current.filterNorm = m.filterNorm
       } else if (movement.id === 'rise') {
         if (m.gestureGain > peakSwellRef.current) peakSwellRef.current = m.gestureGain
+        // FIX 3 — expose live swell so the host can drive setSwell each frame.
+        liveRef.current.swell = m.gestureGain
         if (m.downbeat?.fired) {
           rodeClimaxRef.current = peakSwellRef.current > 0.5
           onReact?.('rise', { downbeat: true, intensity: m.downbeat.intensity })
+          // FIX 5 — tactile tick on the down-stroke.
+          vibrate(12)
         }
         // Speculative pre-load on the in-progress vector, once Rise is underway.
         const dec = preloadDecision(lastPreloadRef.current, getAvd())
@@ -79,14 +86,17 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
     if (movement.id === 'leanLift') {
       const target = leanLiftTarget(liveRef.current.pan, liveRef.current.filterNorm, cur)
       commitTurn(target, { gain: movement.gain, confidence: dwellConfidence(dwellMs) })
+      vibrate(15) // FIX 5
       onReact?.('leanLift', { valence: target.v, depth: target.d })
     } else if (movement.id === 'rise') {
       const target = riseTarget(peakSwellRef.current, rodeClimaxRef.current, cur)
       commitTurn(target, { gain: movement.gain })
+      vibrate(25) // FIX 5
       onReact?.('rise', { arousal: target.a, hedonic: riseHedonic(rodeClimaxRef.current) })
     } else if (movement.id === 'face') {
       const id = nearestArchetypeToYaw(liveRef.current.relYaw, ring)
       setAvd(archetypeAnchorVector(id)) // snap the vector onto the faced world
+      vibrate(20) // FIX 5
       onReact?.('face', { archetypeId: id })
     }
     dispatch({ type: 'COMMIT' })
