@@ -1,5 +1,5 @@
 // src/phases/attunement/Face.jsx
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { COLORS, FONTS } from '../../score/tokens'
 import { archetypeRing } from '../../lib/archetypeRing.js'
@@ -9,7 +9,10 @@ import { archetypeRing } from '../../lib/archetypeRing.js'
 const HOLD_MS = 1100
 
 export default function Face({ live, onCommit, onAdvance, committed }) {
-  const ring = useRef(archetypeRing()).current
+  // useMemo (not a ref) — ring is read during render (ring.map below), and the
+  // react-hooks compiler rule forbids reading ref.current in render. It's a
+  // stable pure computation, so memoizing it once is the correct tool.
+  const ring = useMemo(() => archetypeRing(), [])
   const [relYaw, setRelYaw] = useState(0)
   const holdRef = useRef(null)
   const firedRef = useRef(false)

@@ -10,12 +10,15 @@ const RISE_MS = 11000
 
 export default function Rise({ onCommit, onAdvance, committed }) {
   const [progress, setProgress] = useState(0)
-  const startRef = useRef(performance.now())
+  // Lazily stamp the start time on the first frame, not during render —
+  // calling performance.now() in render trips the react-hooks purity rule.
+  const startRef = useRef(null)
   const firedRef = useRef(false)
 
   useEffect(() => {
     let raf = 0
     const tick = () => {
+      if (startRef.current === null) startRef.current = performance.now()
       const p = Math.min(1, (performance.now() - startRef.current) / RISE_MS)
       setProgress(p)
       if (p >= 1 && !firedRef.current) { firedRef.current = true; onCommit() }
