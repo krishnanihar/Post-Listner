@@ -5,61 +5,63 @@ import Paper from '../score/Paper'
 import { COLORS, FONTS } from '../score/tokens'
 import { useAdmirerAgent } from '../hooks/useAdmirerAgent.js'
 import { buildFirstMessage } from '../lib/admirerFirstMessage.js'
-import { appendEntry, buildDynamicVariables, getEntries, getYearTier } from '../lib/sessionStore.js'
+import { appendEntry, buildDynamicVariables } from '../lib/sessionStore.js'
 import StemPlayer from '../lib/stemPlayer.js'
 import { addLexiconWord, subscribeLiveSession, getLiveSession } from '../lib/liveSession.js'
 import { fireMoment, resetMoments } from '../lib/momentBus.js'
 import { advanceFormationStage, resetFormationStage } from '../lib/formationStage.js'
 import QuestionDisplay from './QuestionDisplay'
 import HoldToSpeak from './HoldToSpeak'
-import FragmentControls from './FragmentControls'
 import { useAdmirerRoom } from '../hooks/useAdmirerRoom.js'
 import { useIdleKeepAlive } from '../hooks/useIdleKeepAlive.js'
 import AdmirerScene3D from './admirer-scene/AdmirerScene3D'
-import { selectNextSeed } from '../lib/seedSelection.js'
 import { getSeed } from '../lib/questionSeeds.js'
 import { textureToTarget, blendTarget } from '../lib/textureToAvd.js'
 import { getAvd, commitTurn, resetAvd } from '../lib/avdStore.js'
+import { mapAvdToStems } from '../lib/avdToStems.js'
 import { avdRecorder } from '../lib/avdRecorder.js'
 import { buildSessionRecord } from '../lib/sessionRecord.js'
+import { useAttunementScore } from '../hooks/useAttunementScore.js'
+import { archetypeRing } from '../lib/archetypeRing.js'
+import LeanLift from './attunement/LeanLift'
+import Rise from './attunement/Rise'
+import Face from './attunement/Face'
+import Listen from './attunement/Listen'
+import { FRAGMENTS } from '../lib/fragmentBank.js'
+import { phraseReaction } from '../lib/attunementReactions.js'
 
 const AGENT_ID = import.meta.env.VITE_ELEVENLABS_AGENT_ID
 
-// How long a locate-phase fragment plays before we stop it and raise the
+// How long a Listen-beat fragment plays before we stop it and raise the
 // rating prompt. Fragment URLs resolve to full master tracks (see
 // fragmentBank.js — they are NOT short clips), so this fixed cap, not the
 // audio element's 'ended' event, is what actually ends a fragment.
 const FRAGMENT_DURATION_MS = 14000
 
 // After a fragment ends, how long the Yes/No buttons wait for a tap before
-// the rating resolves on its own as "none" and the run moves on. Kept so
-// FRAGMENT_DURATION_MS + this stays well under the playFragment tool's
-// response_timeout_secs (30s — see scripts/create-admirer-agent.js).
+// the rating resolves on its own as "none" and the run moves on.
 const RATING_GRACE_MS = 10000
 
 // Inner component — has to live under ConversationProvider to call the
 // useConversation hook.
 function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   const [hasError, setHasError] = useState(false)
-  const [fragmentPlaying, setFragmentPlaying] = useState(false)
-  const [awaitingRating, setAwaitingRating] = useState(false)
-  const [generationStarted, setGenerationStarted] = useState(false)
   const stemsBundleRef = useRef(null)
   const playerRef = useRef(null)
+  // Idempotency guard for the orchestra handoff. The score's bloom is the
+  // intended trigger; this also makes a stray agent commitEntry call a no-op
+  // so the record is persisted and onNext fires exactly once.
+  const committedRef = useRef(false)
+  // Fragment-audio plumbing (reused by the Listen-beat adapter below).
   const fragmentAudioRef = useRef(null)
   const fragmentTimerRef = useRef(null)
   const ratingTimeoutRef = useRef(null)
-  // Holds the resolve() of the in-flight playFragment promise — the agent's
-  // playFragment tool call is blocked on it until the user rates.
+  // Holds the resolve() of the in-flight Listen fragment promise — the Listen
+  // component awaits it for each fragment and advances when the run is done.
   const pendingRatingRef = useRef(null)
-  // Tracks which seed ids have been asked this session so seeds aren't repeated.
-  const askedSeedIdsRef = useRef([])
-  // Holds the currently active selection seed (kind === 'selection') so the
-  // options row can be rendered. Null when no selection seed is pending.
-  const [activeSeed, setActiveSeed] = useState(null)
 
   // Tear down the current fragment's audio element + cap timer. Pure
-  // cleanup — does not touch React state or the rating promise.
+  // cleanup — does not touch the rating promise.
   const clearFragmentPlayback = useCallback(() => {
     if (fragmentTimerRef.current) {
       clearTimeout(fragmentTimerRef.current)
@@ -71,22 +73,19 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     }
   }, [])
 
-  // Resolve the in-flight playFragment promise with the user's rating
-  // ("yes" | "no" | "none"). This is what unblocks the agent's tool call,
-  // so the listening run is paced by the user, not the agent's clock.
+  // Resolve the in-flight fragment promise with the user's rating
+  // ("yes" | "no" | "none"). This is what advances the Listen run.
   const resolveRating = useCallback((answer) => {
     if (ratingTimeoutRef.current) {
       clearTimeout(ratingTimeoutRef.current)
       ratingTimeoutRef.current = null
     }
-    setAwaitingRating(false)
     const pending = pendingRatingRef.current
     pendingRatingRef.current = null
     if (pending) {
       // Editorial moment: the user just rated a fragment (yes/no/none).
-      // Burst-release 8% of particles. eventId is the fragment id so
-      // re-resolving the same fragment (shouldn't happen, but defensively)
-      // doesn't double-fire.
+      // Burst-release 8% of particles, keyed on the fragment id so a
+      // re-resolve doesn't double-fire.
       if (pending.fragmentId) {
         fireMoment(0.08, `fragment:${pending.fragmentId}`)
         // First fragment rated → advance formation stage 1 (back plane
@@ -98,93 +97,94 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     }
   }, [])
 
-  // The fragment audio has run its course (cap timer fired, or the audio
-  // ended). Stop playback and raise the Yes/No prompt. If the user does not
-  // tap within RATING_GRACE_MS, the rating resolves on its own as "none".
-  const finishFragment = useCallback(() => {
-    // No-op if the rating was already resolved (a tap, or a lifecycle
-    // teardown) — a late cap/ended callback must not re-raise the prompt.
-    if (!pendingRatingRef.current) return
-    clearFragmentPlayback()
-    setFragmentPlaying(false)
-    setAwaitingRating(true)
-    if (ratingTimeoutRef.current) clearTimeout(ratingTimeoutRef.current)
-    ratingTimeoutRef.current = setTimeout(() => resolveRating('none'), RATING_GRACE_MS)
-  }, [clearFragmentPlayback, resolveRating])
-
-  // Play a locate-phase fragment. Returns a promise that resolves to the
-  // user's rating ("yes" | "no" | "none") once they tap or the grace window
-  // elapses. The agent's playFragment tool blocks on this promise, so the
-  // agent stays silent for the whole fragment and cannot race ahead.
-  const onPlayFragment = useCallback((fragment) => {
+  // Listen-beat adapter. Listen.jsx calls
+  //   playFragment(fragment, { onAwaitRating, getRater }) -> Promise<rating>
+  // and awaits it per fragment. We play the fragment audio; when it ends or
+  // caps we call onAwaitRating() (so Listen shows the Yes/No buttons) and
+  // expose the resolver via getRater() (so a tap resolves it). The promise
+  // always resolves — a tap, or the grace timeout firing 'none'.
+  const onPlayFragmentForListen = useCallback((fragment, { onAwaitRating, getRater } = {}) => {
     return new Promise((resolve) => {
       clearFragmentPlayback()
-      // The blocking tool is strictly sequential, so a prior rating should
-      // never still be pending — resolve it "none" if one somehow is.
+      // The run is strictly sequential, so a prior rating should never still
+      // be pending — resolve it "none" defensively if one somehow is.
       if (pendingRatingRef.current) pendingRatingRef.current.resolve('none')
       pendingRatingRef.current = { resolve, fragmentId: fragment.id }
-      setFragmentPlaying(true)
-      setAwaitingRating(false)
+      // Expose the rating setter so a Yes/No tap inside Listen resolves it.
+      getRater?.((answer) => resolveRating(answer))
+
+      // Fragment audio has run its course (cap timer or 'ended'): stop
+      // playback, raise the rating prompt, and arm the grace timeout.
+      const raiseRating = () => {
+        if (!pendingRatingRef.current) return
+        clearFragmentPlayback()
+        onAwaitRating?.()
+        if (ratingTimeoutRef.current) clearTimeout(ratingTimeoutRef.current)
+        ratingTimeoutRef.current = setTimeout(() => resolveRating('none'), RATING_GRACE_MS)
+      }
+
       try {
         const audio = new Audio(fragment.url)
         audio.volume = 0.55
         // 'ended' is a fallback for a future pre-sliced short clip; for a
         // full master the cap timer below always fires first.
-        audio.addEventListener('ended', finishFragment, { once: true })
+        audio.addEventListener('ended', raiseRating, { once: true })
         audio.play().catch(() => {
           // Autoplay blocked — skip straight to the rating prompt so the
-          // tool still resolves and the agent is not left blocked.
-          finishFragment()
+          // promise still resolves and the run is not left hanging.
+          raiseRating()
         })
         fragmentAudioRef.current = audio
-        fragmentTimerRef.current = setTimeout(finishFragment, FRAGMENT_DURATION_MS)
+        fragmentTimerRef.current = setTimeout(raiseRating, FRAGMENT_DURATION_MS)
       } catch (e) {
-        console.warn('[admirer] playFragment failed:', e)
-        finishFragment()
+        console.warn('[attunement] listen playFragment failed:', e)
+        raiseRating()
       }
     })
-  }, [clearFragmentPlayback, finishFragment])
+  }, [clearFragmentPlayback, resolveRating])
 
-  // When the agent confirms a direction, start loading the StemPlayer
-  // silently in the background.
-  const onStartGeneration = useCallback(async (bundle) => {
-    // The listening run is over — kill any fragment still playing and
-    // resolve any rating still in flight.
-    clearFragmentPlayback()
-    resolveRating('none')
-    setFragmentPlaying(false)
-    // The conversation has resolved — let the room begin to open.
-    setGenerationStarted(true)
-    // Editorial moment: the agent has chosen the direction; the rite is
-    // about to hand off to the orchestra. Snap the geometry to fully
-    // formed (any remaining un-released particles release now). The
-    // 'startGeneration' eventId makes this safe against re-fires.
-    fireMoment(1.0, 'startGeneration')
-    // Formation stage 2 — front figure fades in over the orchestra handoff.
-    advanceFormationStage(2)
-    stemsBundleRef.current = bundle
+  // Load the matched song's stems silently in the background so the Orchestra
+  // can pick them up via revealAudioRef without an audio gap. Stops a prior
+  // (speculative) player before swapping.
+  const loadStemsSilently = useCallback(async (bundle) => {
     const ctx = getAudioCtx?.()
     if (!ctx) {
-      console.warn('[admirer] no audio context — orchestra will fall back to static track')
+      console.warn('[attunement] no audio context — orchestra will fall back to static track')
       return
     }
     try {
+      if (playerRef.current && revealAudioRef?.current === playerRef.current) {
+        try { playerRef.current.stop?.() } catch { /* ignore */ }
+      }
       const player = await StemPlayer.load(ctx, bundle.stems, bundle.masterUrl)
       player.setVolume(0, 0)
       player.start()
       playerRef.current = player
+      stemsBundleRef.current = bundle
       if (revealAudioRef) revealAudioRef.current = player
     } catch (e) {
-      console.warn('[admirer] StemPlayer.load failed:', e)
+      console.warn('[attunement] StemPlayer.load failed:', e)
     }
-  }, [getAudioCtx, revealAudioRef, clearFragmentPlayback, resolveRating])
+  }, [getAudioCtx, revealAudioRef])
 
-  // When the agent finalizes, build + persist the rich session record, then
-  // hand off to orchestra.
+  // Speculative silent pre-load during Rise: load the nearest archetype's
+  // stems as the in-progress vector resolves. If Face later changes the
+  // archetype, onBloom reloads. Skips when the archetype hasn't changed.
+  const preloadArchetypeRef = useRef(null)
+  const onSpeculativePreload = useCallback((archetypeId) => {
+    if (preloadArchetypeRef.current === archetypeId) return
+    preloadArchetypeRef.current = archetypeId
+    loadStemsSilently(mapAvdToStems(getAvd(), {}))
+  }, [loadStemsSilently])
+
+  // When the score finalizes, build + persist the rich session record, then
+  // hand off to orchestra. The 600ms delay lets the bloom's expansion ramp
+  // breathe before the phase swaps.
   const onCommitEntry = useCallback((entry) => {
+    if (committedRef.current) return
+    committedRef.current = true
     clearFragmentPlayback()
     resolveRating('none')
-    setFragmentPlaying(false)
     try {
       const rec = avdRecorder.isRecording() ? avdRecorder.stop(Date.now()) : null
       const bundle = stemsBundleRef.current
@@ -199,74 +199,37 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
       })
       appendEntry(record)
     } catch (e) {
-      console.warn('[admirer] session record persist failed', e)
+      console.warn('[attunement] session record persist failed', e)
     }
     setTimeout(() => {
-      // Slice 3 — carry the Admirer's one-line summary forward so App can
-      // relay it in the entry message at settle.
+      // Carry the Admirer's one-line summary forward so App can relay it in
+      // the entry message at settle.
       onNext({ stemsBundle: stemsBundleRef.current, summary: entry?.summary })
     }, 600)
   }, [onNext, clearFragmentPlayback, resolveRating])
 
   // Mirror each verbatim lexicon word the agent records (via the
   // recordLexicon client tool) into the live session, so the reflection
-  // surface can show the user's own words accumulating. addLexiconWord
-  // trims, de-duplicates, and ignores empty input.
+  // surface can show the user's own words accumulating.
   const onRecordLexicon = useCallback(({ term, userPhrasing } = {}) => {
     addLexiconWord(userPhrasing)
-    // Editorial moment: the agent just captured one of the user's
-    // verbatim words. Burst-release 5% of particles. eventId is the
-    // term so the same term being re-recorded doesn't double-fire.
     if (term) fireMoment(0.05, `lexicon:${term}`)
   }, [])
 
-  // nextQuestion: blocking tool — client selects the next authored seed and
-  // returns it to the agent for re-voicing. Tracks asked ids so seeds are
-  // not repeated. When a selection seed is returned, also sets activeSeed
-  // state so the options row renders.
-  const onNextQuestion = useCallback(() => {
-    const seed = selectNextSeed({
-      vector: getAvd(),
-      askedIds: askedSeedIdsRef.current,
-      sessionCount: getEntries().length,
-      yearTier: getYearTier(),
-    })
-    if (!seed) return null
-    askedSeedIdsRef.current = [...askedSeedIdsRef.current, seed.id]
-    if (seed.kind === 'selection') {
-      setActiveSeed(seed)
-    }
-    return seed
-  }, [])
-
-  // recordAnswer: agent's texture judgment of a spoken answer → AVD movement.
-  // Skips the closing seed (no AVD effect); uses seed.gain (or 0.8 as fallback).
+  // recordAnswer: the companion's texture judgment of the one spoken arrival
+  // answer → AVD movement. Selection/closing seeds carry no spoken AVD; ignore
+  // them structurally. (The score owns every other axis write now.)
   const onRecordAnswer = useCallback(({ seedId, texture, intensity }) => {
     const seed = getSeed(seedId)
-    // Closing seeds carry no AVD; selection seeds are written by the tap
-    // handler (onSelectOption), so ignore any recordAnswer the agent sends
-    // for them — this is the structural guard against a double commitTurn.
     if (seed && (seed.kind === 'closing' || seed.kind === 'selection')) return
     const observed = textureToTarget(texture, intensity ?? 1)
     const target = blendTarget(observed, seed?.intent)
     commitTurn(target, { gain: seed?.gain ?? 0.8 })
   }, [])
 
-  // onSelectOption: called when the user taps an option on a selection seed.
-  // The chosen option's avd is the observed value (no texture classification).
-  const onSelectOption = useCallback((seedId, label) => {
-    const seed = getSeed(seedId)
-    const opt = seed?.options?.find((o) => o.label === label)
-    if (!opt) return
-    const target = blendTarget(opt.avd, seed.intent)
-    commitTurn(target, { gain: seed.gain ?? 0.8 })
-    setActiveSeed(null)
-  }, [])
-
   // Build the agent's opening line from session state — first-time users
-  // get the threshold opening; returning users get a short recognition line
-  // keyed off recencySummary + timeOfDay. Computed once on mount so it
-  // is stable across re-renders.
+  // get the threshold opening; returning users get a short recognition line.
+  // Computed once on mount so it is stable across re-renders.
   const firstMessage = useMemo(() => {
     const dv = buildDynamicVariables()
     return buildFirstMessage({
@@ -276,23 +239,149 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     })
   }, [])
 
+  const {
+    connect,
+    status,
+    isSpeaking,
+    isMuted,
+    setMuted,
+    sendUserActivity,
+    sendContextualUpdate,
+  } = useAdmirerAgent({
+    sessionStage: 'opening',
+    firstMessage,
+    callbacks: { onCommitEntry, onRecordLexicon, onRecordAnswer },
+  })
+
+  // Build A — the spatial room. Routes the companion voice through an HRTF
+  // room and hosts the per-movement multi-source playback. The score drives
+  // the room open (setExpansion per movement, beginExpansion at bloom).
+  const { beginExpansion, setExpansion, getRoom } = useAdmirerRoom({ getAudioCtx, status })
+
+  // Score → room expansion: each committed movement nudges the room a notch.
+  const onScoreExpansion = useCallback((t) => { setExpansion(t) }, [setExpansion])
+
+  // Score → companion voice: feed a natural-language contextual update for the
+  // movement the listener just resolved (Task 5b + the context7 note —
+  // contextual updates take prose, not JSON). Empty string = nothing worth
+  // saying, so skip the send. Voice is optional, so failures are swallowed.
+  const onScoreReact = useCallback((movementId, payload) => {
+    const prose = phraseReaction(movementId, payload)
+    if (!prose) return
+    try { sendContextualUpdate?.(prose) } catch { /* voice is optional */ }
+  }, [sendContextualUpdate])
+
+  // Score → bloom (the act-1 → act-2 handoff). Ensure the faced archetype's
+  // stems are the loaded ones, snap the geometry fully formed, animate the
+  // room open, then build + persist the record and hand off to Orchestra
+  // (reusing onCommitEntry's body — the seam the Orchestra depends on).
+  const onBloom = useCallback(() => {
+    const bundle = mapAvdToStems(getAvd(), {})
+    if (bundle.archetypeId !== stemsBundleRef.current?.archetypeId) {
+      loadStemsSilently(bundle)
+    }
+    // Editorial moment: snap to fully formed; front figure fades in over the
+    // handoff. eventIds keep both safe against re-fire.
+    fireMoment(1.0, 'startGeneration')
+    advanceFormationStage(2)
+    beginExpansion()
+    onCommitEntry({ summary: '' })
+  }, [beginExpansion, loadStemsSilently, onCommitEntry])
+
+  const score = useAttunementScore({
+    onExpansion: onScoreExpansion,
+    onSpeculativePreload,
+    onBloom,
+    onReact: onScoreReact,
+  })
+
+  // While the user is in the arrival beat (the one spoken movement) and NOT
+  // holding the speak button, ping sendUserActivity every 10s so the server's
+  // turn-timeout never fires and the companion does not advance through
+  // silence. Only arrival needs this — the rest of the arc is gesture-paced.
+  useIdleKeepAlive({
+    enabled: status === 'connected' && isMuted && score.movement?.id === 'arrival',
+    intervalMs: 10000,
+    ping: sendUserActivity,
+  })
+
+  // Per-movement room playback: start/stop the right multi-source handle as
+  // the movement changes. Fragment masters stand in as textures for the Lean
+  // pair / Face ring / Rise bed (assets refined later — spec §11).
+  const roomHandleRef = useRef(null)
+  useEffect(() => {
+    const room = getRoom()
+    const ctx = getAudioCtx?.()
+    if (!room || !ctx) return undefined
+    let cancelled = false
+    const decode = (url) => fetch(url).then((r) => r.arrayBuffer()).then((b) => ctx.decodeAudioData(b))
+
+    const start = async () => {
+      try {
+        if (score.movement?.id === 'leanLift') {
+          const [l, r] = await Promise.all([
+            decode(FRAGMENTS[2].url), // shadow-piano-late (cold)
+            decode(FRAGMENTS[0].url), // warm-acoustic-now (warm)
+          ])
+          if (cancelled) return
+          roomHandleRef.current = room.playTexturePair(l, r)
+        } else if (score.movement?.id === 'rise') {
+          const bed = await decode(FRAGMENTS[4].url) // lifted-cinematic
+          if (cancelled) return
+          roomHandleRef.current = room.playRiseBed(bed)
+        } else if (score.movement?.id === 'face') {
+          const ring = archetypeRing()
+          const entries = await Promise.all(ring.map(async (rr, i) => ({
+            azimuthDeg: rr.azimuthDeg,
+            buffer: await decode(FRAGMENTS[i % FRAGMENTS.length].url),
+          })))
+          if (cancelled) return
+          roomHandleRef.current = room.playRingSources(entries)
+        }
+      } catch (e) {
+        console.warn('[attunement] room playback failed for', score.movement?.id, e)
+      }
+    }
+    start()
+    return () => {
+      cancelled = true
+      try { roomHandleRef.current?.stop() } catch { /* ignore */ }
+      roomHandleRef.current = null
+    }
+  }, [score.movement?.id, getRoom, getAudioCtx])
+
+  // Drive the active room handle from the live gesture each frame.
+  useEffect(() => {
+    let raf = 0
+    let mounted = true
+    const tick = () => {
+      if (!mounted) return
+      const h = roomHandleRef.current
+      if (h) {
+        if (score.movement?.id === 'leanLift' && h.setBalance) {
+          h.setBalance((score.live.current.pan - 0.5) * 2)
+        }
+        if (score.movement?.id === 'face' && h.spotlight) {
+          h.spotlight(score.live.current.relYaw)
+        }
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => { mounted = false; cancelAnimationFrame(raf) }
+  }, [score.movement?.id, score.live])
+
   // Transcript watcher: drives the per-turn release bursts (agent question,
-  // user turn). Lives here (not in BackgroundGlyph) so all momentBus
-  // dispatches happen in one place — single source of truth, no
-  // double-fire risk.
-  //
-  // Index-keyed bookkeeping correctly handles the Task-5 tentative→final
-  // dedupe in liveSession: when a line's text grows from "welcome." to
-  // "welcome. ... what's around you?", this effect re-runs and sees the
-  // line at index i has a '?' for the first time, so it fires once.
-  // After it fires for that index, the seen set blocks any re-fire even
-  // if the line's text changes again.
+  // user turn) AND advances the arrival beat when the user finishes their
+  // first spoken answer. Single source of truth for these momentBus dispatches.
   const { transcript } = useSyncExternalStore(subscribeLiveSession, getLiveSession)
   const firedQuestionAtIndexRef = useRef(null)
   const firedUserTurnAtIndexRef = useRef(null)
   if (firedQuestionAtIndexRef.current === null) firedQuestionAtIndexRef.current = new Set()
   if (firedUserTurnAtIndexRef.current === null) firedUserTurnAtIndexRef.current = new Set()
 
+  const scoreAdvance = score.advance
+  const scoreMovementId = score.state.movementId
   useEffect(() => {
     const firedQ = firedQuestionAtIndexRef.current
     const firedU = firedUserTurnAtIndexRef.current
@@ -307,66 +396,26 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
         if (!firedU.has(i)) {
           fireMoment(0.05, `user:${i}`)
           firedU.add(i)
+          // The arrival beat advances when the user finishes their first
+          // spoken answer. score.advance() COMMIT+ADVANCEs, so this is safe
+          // even if called more than once (idempotent guards in the reducer).
+          if (scoreMovementId === 'arrival') {
+            scoreAdvance()
+          }
         }
       }
     }
-  }, [transcript])
+  }, [transcript, scoreAdvance, scoreMovementId])
 
-  const {
-    connect,
-    status,
-    isSpeaking,
-    isMuted,
-    setMuted,
-    sendUserActivity,
-  } = useAdmirerAgent({
-    sessionStage: 'opening',
-    firstMessage,
-    callbacks: { onPlayFragment, onStartGeneration, onCommitEntry, onRecordLexicon, onNextQuestion, onRecordAnswer },
-  })
-
-  // Build A — the spatial room. Routes the agent's voice through an HRTF
-  // room and opens it at the phase-1 → phase-2 handoff.
-  const beginExpansion = useAdmirerRoom({ getAudioCtx, status })
-
-  // While the agent is connected and the user is NOT holding the speak
-  // button (and NOT mid-fragment), ping sendUserActivity every 10s so the
-  // server's turn-timeout timer does not fire and the agent does not
-  // advance through silence. Stops automatically when the user holds the
-  // button (isMuted goes false) — at that point real audio is reaching
-  // the server and it has its own activity signal.
-  useIdleKeepAlive({
-    enabled: status === 'connected' && isMuted && !fragmentPlaying && !awaitingRating,
-    intervalMs: 10000,
-    ping: sendUserActivity,
-  })
-
-  // When the agent commits a direction, open the room. The room's expansion
-  // is the phase-1 → phase-2 transition — the closed conversation room
-  // audibly widening into the orchestra under the agent's closing words.
-  useEffect(() => {
-    if (generationStarted) beginExpansion()
-  }, [generationStarted, beginExpansion])
-
-  // A Yes/No button tap — resolves the current fragment's rating, which
-  // unblocks the agent's playFragment tool call and moves the run on.
-  const handleRate = useCallback((answer) => {
-    resolveRating(answer)
-  }, [resolveRating])
-
-  // Editorial moment dispatcher: each rite starts with the release at 0
-  // (resetMoments) plus an immediate 8% pre-release so the geometry has
-  // a faint hint of its form before the Admirer's first word. The
-  // 'mount' eventId makes this idempotent: dev-mode double-mount or a
-  // hot-reload re-fire won't double the initial release.
-  // Also resets the AVD vector and the per-session asked-seed list so
-  // each new conversation starts fresh.
+  // Editorial moment dispatcher + session lifecycle. Each rite starts with
+  // the release at 0 (resetMoments) plus an immediate 8% pre-release. The
+  // 'mount' eventId makes this idempotent. Also resets the AVD vector and
+  // starts the ~1Hz AVD trajectory recorder; cleanup stops it + resets.
   useEffect(() => {
     resetMoments()
     resetFormationStage()
     fireMoment(0.08, 'mount')
     resetAvd()
-    askedSeedIdsRef.current = []
     avdRecorder.start(Date.now())
     return () => {
       if (avdRecorder.isRecording()) avdRecorder.stop(Date.now())
@@ -382,10 +431,10 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     })
   }, [connect])
 
-  // Stop fragment audio + timers + orphan StemPlayer on unmount, and
-  // resolve any rating still in flight so the tool promise can settle.
-  // Intentionally inlines clearFragmentPlayback + resolveRating rather than
-  // calling them (keeps this effect's dep array empty) — keep in sync.
+  // Stop fragment audio + timers + orphan StemPlayer on unmount, and resolve
+  // any rating still in flight so the Listen promise can settle.
+  // Intentionally inlines the teardown rather than calling the callbacks
+  // (keeps this effect's dep array empty) — keep in sync.
   useEffect(() => {
     return () => {
       if (fragmentTimerRef.current) {
@@ -412,7 +461,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     }
   }, [])
 
-  // Push-to-talk handlers — wired to the HoldToSpeak button.
+  // Push-to-talk handlers — wired to the HoldToSpeak button (arrival only).
   const handleHoldStart = useCallback(() => {
     if (!setMuted) return
     try { setMuted(false) } catch (e) { console.warn('[admirer] setMuted(false) threw:', e) }
@@ -423,9 +472,8 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     try { setMuted(true) } catch (e) { console.warn('[admirer] setMuted(true) threw:', e) }
   }, [setMuted])
 
-  // Derive the visible state label from SDK signals.
-  // Note: we infer "you speaking" from !isMuted because with push-to-talk
-  // the user is only sending audio while the button is held.
+  // Derive the visible state label from SDK signals + the active movement.
+  const movementId = score.movement?.id
   let stateLabel
   let stateKey
   if (hasError) {
@@ -437,24 +485,30 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   } else if (isSpeaking) {
     stateLabel = 'speaking'
     stateKey = 'agent-speaking'
-  } else if (fragmentPlaying) {
-    stateLabel = 'listening'
-    stateKey = 'fragment-playing'
-  } else if (awaitingRating) {
-    stateLabel = 'did you like it?'
-    stateKey = 'awaiting-rating'
-  } else if (!isMuted) {
-    stateLabel = 'I’m listening'
-    stateKey = 'user-speaking'
+  } else if (movementId === 'arrival') {
+    stateLabel = isMuted ? 'your turn' : 'I’m listening'
+    stateKey = isMuted ? 'arrival-idle' : 'arrival-speaking'
+  } else if (movementId === 'leanLift') {
+    stateLabel = 'lean toward what pulls'
+    stateKey = 'leanLift'
+  } else if (movementId === 'listen') {
+    stateLabel = 'listen'
+    stateKey = 'listen'
+  } else if (movementId === 'rise') {
+    stateLabel = 'let it rise'
+    stateKey = 'rise'
+  } else if (movementId === 'face') {
+    stateLabel = 'face the room'
+    stateKey = 'face'
   } else {
-    stateLabel = 'your turn'
-    stateKey = 'idle'
+    // bloom / handoff — fall silent
+    stateLabel = ''
+    stateKey = 'bloom'
   }
 
-  // Push-to-talk is hidden during a fragment and its rating — the user taps
-  // Yes/No there, and the agent cannot hear voice while the blocking
-  // playFragment tool runs anyway.
-  const showHoldToSpeak = !hasError && !fragmentPlaying && !awaitingRating
+  // Push-to-talk shows only during the arrival beat — the single spoken
+  // movement. Every later beat is paced by gesture or tap.
+  const showHoldToSpeak = !hasError && movementId === 'arrival'
 
   return (
     <Paper variant="cream">
@@ -475,7 +529,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
           alignItems: 'center',
           gap: 18,
         }}>
-          {/* Amber dot — pulses only when the agent is speaking */}
+          {/* Amber dot — pulses only when the companion is speaking */}
           <motion.span
             aria-hidden
             animate={{
@@ -517,71 +571,50 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
             </motion.div>
           </AnimatePresence>
 
-          {/* The active question the Admirer is asking. Reads from
+          {/* The active question the companion is asking. Reads from
               liveSession; shows only utterances containing '?', extracts
-              the question sentence, persists through user response. */}
+              the question sentence, persists through the user response. */}
           <QuestionDisplay />
         </div>
 
-        {/* Fragment controls: playing indicator + Yes/No rating buttons */}
-        {!hasError && (
-          <div style={{
-            flex: '0 0 auto',
-            marginTop: 40,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 24,
-            minHeight: 60,
-          }}>
-            <FragmentControls
-              fragmentPlaying={fragmentPlaying}
-              showButtons={awaitingRating}
-              onRate={handleRate}
-            />
-            {/* Selection-seed option buttons — shown when the active seed is a
-                tap-to-choose seed. Same button styling as FragmentControls. */}
-            <AnimatePresence>
-              {activeSeed && (
-                <motion.div
-                  key="selection-options"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 4 }}
-                  transition={{ duration: 0.4, ease: 'easeOut' }}
-                  style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}
-                >
-                  {activeSeed.options.map((opt) => (
-                    <button
-                      key={opt.label}
-                      onClick={() => onSelectOption(activeSeed.id, opt.label)}
-                      style={{
-                        fontFamily: FONTS.serif,
-                        fontStyle: 'italic',
-                        fontSize: 15,
-                        letterSpacing: 0.5,
-                        color: COLORS.inkCream,
-                        background: 'transparent',
-                        border: `1px solid ${COLORS.inkCreamSecondary}`,
-                        borderRadius: 2,
-                        padding: '8px 28px',
-                        cursor: 'pointer',
-                        opacity: 0.85,
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+        {/* The active movement overlay. Each renders representational
+            presences over the shader ground (AdmirerScene3D) and drives the
+            score's commit/advance. */}
+        {movementId === 'leanLift' && (
+          <LeanLift
+            live={score.live}
+            committed={score.state.status === 'committed'}
+            onCommit={score.commit}
+            onAdvance={score.advance}
+          />
+        )}
+        {movementId === 'listen' && (
+          <Listen
+            fragments={FRAGMENTS.slice(0, 2)}
+            playFragment={onPlayFragmentForListen}
+            onAdvance={score.advance}
+          />
+        )}
+        {movementId === 'rise' && (
+          <Rise
+            committed={score.state.status === 'committed'}
+            onCommit={score.commit}
+            onAdvance={score.advance}
+          />
+        )}
+        {movementId === 'face' && (
+          <Face
+            live={score.live}
+            committed={score.state.status === 'committed'}
+            onCommit={score.commit}
+            onAdvance={score.advance}
+          />
         )}
 
         {/* Spacer */}
         <div style={{ flex: 1 }} />
 
-        {/* Bottom region: hold-to-speak button */}
+        {/* Bottom region: hold-to-speak button — arrival beat only */}
         {showHoldToSpeak && (
           <div style={{
             flex: '0 0 auto',
