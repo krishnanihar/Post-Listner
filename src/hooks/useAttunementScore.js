@@ -27,7 +27,7 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
   const peakSwellRef = useRef(0)
   const rodeClimaxRef = useRef(false)
   const lastPreloadRef = useRef(null)
-  const liveRef = useRef({ pan: 0.5, filterNorm: 0.5, relYaw: 0, swell: 0, committedBalance: null, committedBrightness: null })
+  const liveRef = useRef({ pan: 0.5, filterNorm: 0.5, relYaw: 0, swell: 0, downbeatCount: 0, committedBalance: null, committedBrightness: null })
 
   // FIX 5 — tiny haptic helper; no-ops where vibration is unsupported.
   const vibrate = (ms) => { try { navigator.vibrate?.(ms) } catch { /* unsupported */ } }
@@ -37,7 +37,7 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
     baselineYawRef.current = null
     peakSwellRef.current = 0
     rodeClimaxRef.current = false
-    liveRef.current = { pan: 0.5, filterNorm: 0.5, relYaw: 0, swell: 0, committedBalance: null, committedBrightness: null }
+    liveRef.current = { pan: 0.5, filterNorm: 0.5, relYaw: 0, swell: 0, downbeatCount: 0, committedBalance: null, committedBrightness: null }
     // On movement entry, ask the companion to voice this movement's question.
     // Fires exactly once per movement: this effect is keyed on state.movementId,
     // and onAsk is a stable host useCallback so its identity never changes
@@ -66,6 +66,9 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
         liveRef.current.swell = m.gestureGain
         if (m.downbeat?.fired) {
           rodeClimaxRef.current = peakSwellRef.current > 0.5
+          // Publish a monotonic strike counter the Rise overlay polls to commit
+          // (the down-stroke seals the build — no timer).
+          liveRef.current.downbeatCount += 1
           onReact?.('rise', { downbeat: true, intensity: m.downbeat.intensity })
           // FIX 5 — tactile tick on the down-stroke.
           vibrate(12)

@@ -19,7 +19,7 @@ export const MOVEMENTS = [
   { id: 'arrival',  kind: 'talk',    expansionTo: 0.0,  ask: null },
   { id: 'leanLift', kind: 'move',    signals: ['pan'], probes: ['v'], gain: 0.8, expansionTo: 0.2,  ask: null },
   { id: 'listen',   kind: 'move',    signals: ['filterNorm'], probes: ['d'], gain: 0.8, expansionTo: 0.35, ask: null },
-  { id: 'rise',     kind: 'move',    signals: ['gestureGain', 'downbeat'], probes: ['a'], gain: 0.9, expansionTo: 0.6,  ask: 'let it rise. give it room, and meet the peak when it comes.' },
+  { id: 'rise',     kind: 'move',    signals: ['gestureGain', 'downbeat'], probes: ['a'], gain: 0.9, expansionTo: 0.6,  ask: null },
   { id: 'face',     kind: 'move',    signals: ['yaw'], probes: ['v', 'd'], gain: 1.0, expansionTo: 0.85, ask: 'now — turn to the one that feels like home.' },
   { id: 'bloom',    kind: 'handoff', expansionTo: 1.0,  ask: null },
 ]

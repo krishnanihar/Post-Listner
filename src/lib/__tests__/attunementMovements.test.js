@@ -32,15 +32,12 @@ describe('attunementMovements', () => {
   it('getMovement returns null for an unknown id', () => {
     expect(getMovement('nope')).toBe(null)
   })
-  it('rise and face carry a non-empty ask; arrival, leanLift, listen and bloom have ask: null', () => {
-    for (const id of ['rise', 'face']) {
-      const ask = getMovement(id).ask
-      expect(typeof ask).toBe('string')
-      expect(ask.length).toBeGreaterThan(0)
+  it('face carries a non-empty ask; arrival, leanLift, listen, rise and bloom have ask: null', () => {
+    const faceAsk = getMovement('face').ask
+    expect(typeof faceAsk).toBe('string')
+    expect(faceAsk.length).toBeGreaterThan(0)
+    for (const id of ['arrival', 'leanLift', 'listen', 'rise', 'bloom']) {
+      expect(getMovement(id).ask).toBe(null)
     }
-    expect(getMovement('arrival').ask).toBe(null)
-    expect(getMovement('leanLift').ask).toBe(null)
-    expect(getMovement('listen').ask).toBe(null)
-    expect(getMovement('bloom').ask).toBe(null)
   })
 })

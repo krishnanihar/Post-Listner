@@ -480,6 +480,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
         )}
         {movementId === 'rise' && (
           <Rise
+            live={score.live}
             committed={score.state.status === 'committed'}
             onCommit={score.commit}
             onAdvance={score.advance}
