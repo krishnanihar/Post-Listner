@@ -1,5 +1,5 @@
 // src/lib/attunementMovements.js
-// The Attunement Room's six-beat arc as data. Wording/visual copy lives in the
+// The Attunement Room's seven-beat arc as data. Wording/visual copy lives in the
 // movement components; this is the *structure* the choreographer sequences:
 // kind, the gesture signals each move-movement reads, the AVD axes it probes,
 // the commit gain, the room-expansion target reached when it commits, and the
@@ -21,6 +21,7 @@ export const MOVEMENTS = [
   { id: 'listen',   kind: 'move',    signals: ['filterNorm'], probes: ['d'], gain: 0.8, expansionTo: 0.35, ask: null },
   { id: 'rise',     kind: 'move',    signals: ['gestureGain', 'downbeat'], probes: ['a'], gain: 0.9, expansionTo: 0.6,  ask: null },
   { id: 'face',     kind: 'move',    signals: ['yaw'], probes: ['v', 'd'], gain: 1.0, expansionTo: 0.85, ask: null },
+  { id: 'reflect',  kind: 'narrate', expansionTo: 0.9,  ask: null },
   { id: 'bloom',    kind: 'handoff', expansionTo: 1.0,  ask: null },
 ]
 

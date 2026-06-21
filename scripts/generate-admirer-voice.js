@@ -18,6 +18,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
+import { allLines as reflectionLines } from '../src/lib/reflectionScript.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
@@ -54,6 +55,8 @@ const VOICE_SETTINGS = {
 const LINES = {
   welcome:
     "welcome to Post Listener. this is an instrument — but you don't play it with your hands. you play it by moving, by leaning toward what you want. it's yours to keep, and it learns a little more of you each time you come back. the first time runs slow, so — no rush. lean toward whatever's pulling at you.",
+  // The end-of-Act-1 reflection: 12 gesture-mirror clips + 6 world readings.
+  ...reflectionLines(),
 }
 
 const OUT_DIR = resolve(ROOT, 'public/admirer/voice')

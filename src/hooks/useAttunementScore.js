@@ -6,6 +6,7 @@ import { usePhoneMotion } from './usePhoneMotion.js'
 import { getAvd, commitTurn, setAvd } from '../lib/avdStore.js'
 import { leanLiftTarget, listenTarget, riseTarget, riseHedonic } from '../lib/attunementToAvd.js'
 import { archetypeRing, nearestArchetypeToYaw, archetypeAnchorVector, preloadDecision } from '../lib/archetypeRing.js'
+import { setWarmth, setDepth, setEnergy, setWorld, warmthBucket, depthBucket, energyBucket } from '../lib/reflectionState.js'
 
 // Score-led: the client owns pacing. The hook reads the phone each frame for
 // the active move-movement, writes taste on commit, advances the room
@@ -109,6 +110,7 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
       const target = leanLiftTarget(pan, 0.5, cur)
       commitTurn(target, { gain: movement.gain, confidence: 1 })
       liveRef.current.committedBalance = (pan - 0.5) * 2 // hold the audio to the chosen side
+      setWarmth(warmthBucket(target.v)) // capture for the end-of-act reflection
       vibrate(15) // FIX 5
       onReact?.('leanLift', { valence: target.v, depth: target.d })
     } else if (movement.id === 'listen') {
@@ -120,11 +122,13 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
       // Hold the bed at the chosen extreme: forward (fn<0.5) = fully dark/inward
       // (brightness 0), matching the Orchestra.
       liveRef.current.committedBrightness = (fn - 0.5) < 0 ? 0 : 1
+      setDepth(depthBucket(target.d)) // capture for the reflection
       vibrate(15) // FIX 5
       onReact?.('listen', { depth: target.d })
     } else if (movement.id === 'rise') {
       const target = riseTarget(peakSwellRef.current, rodeClimaxRef.current, cur)
       commitTurn(target, { gain: movement.gain })
+      setEnergy(energyBucket(peakSwellRef.current)) // capture for the reflection
       vibrate(25) // FIX 5
       onReact?.('rise', { arousal: target.a, hedonic: riseHedonic(rodeClimaxRef.current) })
     } else if (movement.id === 'face') {
@@ -136,6 +140,7 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
       // misroutes ~2/3 of the time; the lean's taste still shapes the Rise-time
       // speculative preload, so nothing is lost by hard-setting here.
       setAvd(archetypeAnchorVector(id))
+      setWorld(id) // capture the faced world for the reflection
       vibrate(20) // FIX 5
       onReact?.('face', { archetypeId: id })
     }
