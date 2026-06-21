@@ -80,6 +80,9 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
           onSpeculativePreload?.(dec.archetypeId)
         }
       } else if (movement.id === 'face') {
+        // A down-stroke is the "choose this world" confirm (reuses the strike
+        // taught in rise); publish it for the Face overlay to poll.
+        if (m.downbeat?.fired) liveRef.current.downbeatCount += 1
         if (baselineYawRef.current === null) baselineYawRef.current = m.yaw
         let rel = m.yaw - baselineYawRef.current
         rel = ((rel + 540) % 360) - 180 // wrap to [-180,180]

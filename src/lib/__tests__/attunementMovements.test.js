@@ -32,11 +32,8 @@ describe('attunementMovements', () => {
   it('getMovement returns null for an unknown id', () => {
     expect(getMovement('nope')).toBe(null)
   })
-  it('face carries a non-empty ask; arrival, leanLift, listen, rise and bloom have ask: null', () => {
-    const faceAsk = getMovement('face').ask
-    expect(typeof faceAsk).toBe('string')
-    expect(faceAsk.length).toBeGreaterThan(0)
-    for (const id of ['arrival', 'leanLift', 'listen', 'rise', 'bloom']) {
+  it('every movement has ask: null (the on-screen cues carry the prompts; no agent)', () => {
+    for (const id of MOVEMENT_ORDER) {
       expect(getMovement(id).ask).toBe(null)
     }
   })
