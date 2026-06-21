@@ -97,20 +97,26 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
 
   // Commit the active movement: write taste, advance expansion, react, advance.
   // `captured` is the axis value at the brink-crossing frame — pan for leanLift,
-  // filterNorm for listen (each overlay passes its own axis).
-  const commit = useCallback((captured) => {
+  // filterNorm for listen. `subIndex` is the sub-round (0-based) for beats with
+  // a `subfaces` array; each sub-round writes the axis (gain from that subface),
+  // but only the LAST sub-round dispatches COMMIT — so the reducer still sees
+  // exactly one commit→advance per beat. Beats without subfaces pass subIndex 0.
+  const commit = useCallback((captured, subIndex = 0) => {
     if (!movement || state.status !== 'active') return
     const cur = getAvd()
+    const subfaces = movement.subfaces
+    const isLast = !subfaces || subIndex >= subfaces.length - 1
     if (movement.id === 'leanLift') {
-      // Roll-only. The pan captured at the brink-crossing frame carries the
-      // intensity (a harder lean = more extreme pan = stronger Valence); the
-      // crossing IS the "they decided" signal, so confidence is full.
-      // filterNorm 0.5 holds Depth.
+      // Roll → Valence. The pan captured at the crossing carries the intensity.
+      // Sub-round gain: SR1 full, SR2 ~half (refines, doesn't overwrite); the
+      // EWMA converges across the two reads. The reflection bucket reads the
+      // CONVERGED valence after the commit, so the last sub-round sets it.
       const pan = captured ?? liveRef.current.pan
       const target = leanLiftTarget(pan, 0.5, cur)
-      commitTurn(target, { gain: movement.gain, confidence: 1 })
+      const gain = subfaces?.[subIndex]?.gain ?? movement.gain
+      commitTurn(target, { gain, confidence: 1 })
       liveRef.current.committedBalance = (pan - 0.5) * 2 // hold the audio to the chosen side
-      setWarmth(warmthBucket(target.v)) // capture for the end-of-act reflection
+      setWarmth(warmthBucket(getAvd().v)) // converged — capture for the reflection
       vibrate(15) // FIX 5
       onReact?.('leanLift', { valence: target.v, depth: target.d })
     } else if (movement.id === 'listen') {
@@ -144,7 +150,10 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
       vibrate(20) // FIX 5
       onReact?.('face', { archetypeId: id })
     }
-    dispatch({ type: 'COMMIT' })
+    // Intermediate sub-rounds write taste but DON'T advance — only the last one
+    // commits the beat (the overlay loops its own sub-rounds; the reducer sees
+    // one commit per beat).
+    if (isLast) dispatch({ type: 'COMMIT' })
   }, [movement, state.status, ring, onReact])
 
   const advance = useCallback(() => {

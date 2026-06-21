@@ -508,6 +508,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
             committed={score.state.status === 'committed'}
             onCommit={score.commit}
             onAdvance={score.advance}
+            subfaces={score.movement?.subfaces}
           />
         )}
         {movementId === 'listen' && (

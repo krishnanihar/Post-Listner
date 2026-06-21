@@ -17,7 +17,15 @@
 
 export const MOVEMENTS = [
   { id: 'arrival',  kind: 'talk',    expansionTo: 0.0,  ask: null },
-  { id: 'leanLift', kind: 'move',    signals: ['pan'], probes: ['v'], gain: 0.8, expansionTo: 0.2,  ask: null },
+  { id: 'leanLift', kind: 'move',    signals: ['pan'], probes: ['v'], gain: 0.8, expansionTo: 0.2,  ask: null,
+    // Two roll sub-rounds, both probing Valence (a 2nd read makes the axis
+    // reliable). Each re-poles in place; SR2 commits at half gain (refines, does
+    // not overwrite). Discipline: every sub-round moves ONLY this beat's axis.
+    subfaces: [
+      { id: 'warm-cold',     prompt: 'is it warmth, or a colder light?',          leftLabel: 'a colder light', rightLabel: 'warmth',  gain: 0.8 },
+      { id: 'shadow-sunlit', prompt: 'and this one — shadowed, or sunlit?',        leftLabel: 'shadowed',       rightLabel: 'sunlit',  gain: 0.4 },
+    ],
+  },
   { id: 'listen',   kind: 'move',    signals: ['filterNorm'], probes: ['d'], gain: 0.8, expansionTo: 0.35, ask: null },
   { id: 'rise',     kind: 'move',    signals: ['gestureGain', 'downbeat'], probes: ['a'], gain: 0.9, expansionTo: 0.6,  ask: null },
   { id: 'face',     kind: 'move',    signals: ['yaw'], probes: ['v', 'd'], gain: 1.0, expansionTo: 0.85, ask: null },
