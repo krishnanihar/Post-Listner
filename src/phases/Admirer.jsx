@@ -8,7 +8,6 @@ import { fireMoment, resetMoments } from '../lib/momentBus.js'
 import { advanceFormationStage, resetFormationStage } from '../lib/formationStage.js'
 import QuestionDisplay from './QuestionDisplay'
 import { useAdmirerRoom } from '../hooks/useAdmirerRoom.js'
-import AdmirerScene3D from './admirer-scene/AdmirerScene3D'
 import { getAvd, resetAvd } from '../lib/avdStore.js'
 import { mapAvdToStems } from '../lib/avdToStems.js'
 import { avdRecorder } from '../lib/avdRecorder.js'
@@ -505,7 +504,6 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
 
   return (
     <Paper variant="cream">
-      <AdmirerScene3D />
       <div style={{
         position: 'absolute', inset: 0,
         display: 'flex', flexDirection: 'column',
@@ -570,8 +568,8 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
           <QuestionDisplay />
         </div>
 
-        {/* The active movement overlay. Each renders representational
-            presences over the shader ground (AdmirerScene3D) and drives the
+        {/* The active movement overlay. Each renders its gesture UI over the
+            clean cream stage (the sacred-geometry scene was removed) and drives the
             score's commit/advance. */}
         {movementId === 'leanLift' && (
           <LeanLift

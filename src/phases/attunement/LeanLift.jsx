@@ -1,26 +1,26 @@
 // src/phases/attunement/LeanLift.jsx
-// The first-lean beat — "the tipping world". The room sits on a fulcrum: phone
-// roll tilts a beam (and crossfades the warm/cold audio) continuously, every
-// frame, fully reversible. This IS the roll lesson, learned by play. When the
-// lean carries the balance past the brink WHILE still moving outward, the world
-// "tips over" — it settles the rest of the way on its own, the chosen side
-// blooms, one haptic. No timer, no hold: the commit is something you DID, at the
-// instant you did it. Roll-only (Valence); Depth is held (see leanLiftTarget).
+// The first-lean beat — a tilt-driven slider in the Spectrum visual language.
+// A cursor rides a horizontal track between two poles (a colder light ↔ warmth);
+// phone ROLL moves it, continuously and reversibly — that IS the roll lesson.
+// Lean past the brink WHILE moving outward and it "locks": the cursor slides
+// home to that pole, one haptic. No timer, no hold — the commit is the act of
+// tipping it past. A phone-tilt indicator + text teach the gesture.
+// Roll-only (Valence); Depth is held (see leanLiftTarget). Commit logic is the
+// reviewed brink-crossing path; only the visuals are the slider.
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { COLORS, FONTS } from '../../score/tokens'
 import { isBrinkCrossing, LEAN_BRINK } from '../../lib/leanCommit.js'
 
-// Cool/austere on the left, warm/hearth on the right. Restrained ink-on-cream,
-// not neon — the warm side borrows the score amber, the cool side a muted slate.
-const COOL = '#7C8A94'
-const WARM = COLORS.scoreAmber
+// Track geometry: the cursor travels ±TRACK_HALF% of the width from center.
+const TRACK_HALF = 38
+const BRINK_PCT = 50 + LEAN_BRINK * TRACK_HALF // where the "lock" ticks sit
 
 // `live` is the score hook's liveRef (live.current.pan ∈ [0,1] from roll).
-// onCommit(capturedPan) writes taste (intensity carried by the lean angle) +
-// advances expansion; onAdvance moves on once `committed` flips true.
+// onCommit(capturedPan) writes taste (intensity carried by the lean angle);
+// onAdvance moves on once `committed` flips true.
 export default function LeanLift({ live, onCommit, onAdvance, committed }) {
-  const [rb, setRb] = useState(0)     // rendered balance (drives the seesaw)
+  const [rb, setRb] = useState(0)     // rendered balance ∈ [-1,1] → cursor pos
   const [fired, setFired] = useState(false)
   const [side, setSide] = useState(0) // committed side: -1 cold / +1 warm
   const initRef = useRef(false)
@@ -50,7 +50,7 @@ export default function LeanLift({ live, onCommit, onAdvance, committed }) {
         rbRef.current = b
         setRb(b)
       } else {
-        // Go-over: settle the rest of the way to the chosen side on its own.
+        // Lock: the cursor slides home to the chosen pole on its own.
         const target = sideRef.current || 0
         rbRef.current += (target - rbRef.current) * 0.14
         setRb(rbRef.current)
@@ -61,96 +61,148 @@ export default function LeanLift({ live, onCommit, onAdvance, committed }) {
     return () => cancelAnimationFrame(raf)
   }, [live, onCommit])
 
-  // After the world tips, give it a beat to read, then advance.
+  // After it locks, give it a beat to read, then advance.
   useEffect(() => {
     if (!committed) return undefined
     const t = setTimeout(onAdvance, 1100)
     return () => clearTimeout(t)
   }, [committed, onAdvance])
 
-  const b = rb
-  // Heat saturates at the brink (not the ±1 rail) so the visual "fullness" and
-  // the commit land together — no "am I there yet?" gap past the brink.
+  const b = Math.max(-1, Math.min(1, rb))
   const leftHeat = b < 0 ? Math.min(1, -b / LEAN_BRINK) : 0
   const rightHeat = b > 0 ? Math.min(1, b / LEAN_BRINK) : 0
-  const heat = Math.max(leftHeat, rightHeat)
-  const downHue = b < 0 ? COOL : WARM
-  const rotation = b * 8
+  const cursorPct = 50 + b * TRACK_HALF
 
   return (
     <div style={overlay}>
-      {/* Wash pools toward the leaned-to side. */}
-      <div
-        aria-hidden
-        style={{
-          position: 'absolute', inset: 0,
-          background: `radial-gradient(circle at ${50 + b * 22}% 52%, ${downHue}22, transparent 62%)`,
-          opacity: 0.4 + heat * 0.5,
-          transition: 'opacity 0.3s ease-out',
-        }}
-      />
+      {/* Prompt */}
+      <div style={prompt}>is it warmth, or a colder light?</div>
 
-      {/* The serif cue — carries the (already-spoken) invitation; fades on tip. */}
-      <div style={{ ...cue, opacity: fired ? 0 : 0.7 }}>
-        lean into the one that pulls.
+      {/* The slider */}
+      <div style={sliderWrap}>
+        <PoleLabel text="a colder light" align="left" heat={leftHeat} />
+        <PoleLabel text="warmth" align="right" heat={rightHeat} />
+
+        {/* Track */}
+        <div style={trackWrap}>
+          <div style={track} />
+          {/* the two "lock" ticks */}
+          <div style={{ ...tick, left: `${100 - BRINK_PCT}%` }} />
+          <div style={{ ...tick, left: `${BRINK_PCT}%` }} />
+          {/* cursor */}
+          <div
+            style={{
+              ...cursor,
+              left: `${cursorPct}%`,
+              transition: fired ? 'left 0.5s cubic-bezier(0.22,1,0.36,1)' : 'none',
+              boxShadow: `0 0 ${8 + Math.max(leftHeat, rightHeat) * 16}px ${COLORS.scoreAmber}`,
+            }}
+          />
+          {/* lock flash at the chosen pole */}
+          {fired && (
+            <motion.div
+              aria-hidden
+              initial={{ opacity: 0.6, scale: 0.5 }}
+              animate={{ opacity: 0, scale: 2.2 }}
+              transition={{ duration: 0.9, ease: 'easeOut' }}
+              style={{
+                position: 'absolute', top: '50%',
+                left: `${50 + side * TRACK_HALF}%`,
+                width: 24, height: 24, marginLeft: -12, marginTop: -12,
+                borderRadius: '50%', border: `1px solid ${COLORS.scoreAmber}`,
+              }}
+            />
+          )}
+        </div>
       </div>
 
-      {/* The seesaw: beam + two presences, rotating about center with the lean.
-          A plain div (not an SVG <g>) so rotate is safe; a slow transition only
-          after the tip gives the "go-over" its settle. */}
-      <div style={{
-        position: 'absolute', top: '50%', left: '50%',
-        width: '78%', maxWidth: 360, height: 96,
-        transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
-        transition: fired ? 'transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <Presence hue={COOL} heat={leftHeat} />
-        <div style={{
-          flex: 1, height: 1, margin: '0 10px',
-          background: 'var(--ink, currentColor)', opacity: 0.18,
-        }} />
-        <Presence hue={WARM} heat={rightHeat} />
+      {/* Gesture indicator + text affordance */}
+      <div style={hintWrap}>
+        <PhoneTiltHint dimmed={fired} />
+        <div style={{ ...affordance, opacity: fired ? 0 : 0.75 }}>
+          tilt your phone toward the one that pulls
+        </div>
       </div>
-
-      {/* One quiet expanding ring at the moment of the catch. */}
-      {fired && (
-        <motion.div
-          aria-hidden
-          initial={{ opacity: 0.5, scale: 0.4 }}
-          animate={{ opacity: 0, scale: 1.6 }}
-          transition={{ duration: 0.9, ease: 'easeOut' }}
-          style={{
-            position: 'absolute', top: '50%',
-            left: `${50 + side * 30}%`,
-            width: 120, height: 120, marginLeft: -60, marginTop: -60,
-            borderRadius: '50%',
-            border: `1px solid ${side < 0 ? COOL : WARM}`,
-          }}
-        />
-      )}
     </div>
   )
 }
 
-function Presence({ hue, heat }) {
-  const scale = 0.9 + heat * 0.24
-  const opacity = 0.45 + heat * 0.5
+function PoleLabel({ text, align, heat }) {
   return (
     <div style={{
-      width: 78, height: 78, flex: '0 0 auto', borderRadius: '50%',
-      background: `radial-gradient(circle, ${hue}AA, ${hue}11 70%)`,
-      boxShadow: `0 0 ${20 + heat * 32}px ${hue}55`,
-      transform: `scale(${scale})`,
-      opacity,
-      transition: 'transform 0.25s ease-out, opacity 0.25s ease-out',
-    }} />
+      position: 'absolute', top: 0, [align]: 0,
+      fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 16,
+      color: heat > 0.15 ? COLORS.inkCream : COLORS.inkCreamSecondary,
+      opacity: 0.5 + heat * 0.5,
+      transition: 'opacity 0.25s, color 0.25s',
+      maxWidth: 120,
+      textAlign: align,
+    }}>
+      {text}
+    </div>
   )
 }
 
-const overlay = { position: 'absolute', inset: 0, zIndex: 6, pointerEvents: 'none' }
-const cue = {
-  position: 'absolute', top: '14%', left: 0, right: 0, textAlign: 'center',
+// A small phone that rocks left↔right to demonstrate the tilt.
+function PhoneTiltHint({ dimmed }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 14,
+      opacity: dimmed ? 0 : 0.55, transition: 'opacity 0.5s',
+    }}>
+      <span style={arrow}>‹</span>
+      <motion.div
+        aria-hidden
+        animate={{ rotate: [-13, 13, -13] }}
+        transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+        style={{
+          width: 30, height: 50, borderRadius: 7,
+          border: `1.5px solid var(--ink, ${COLORS.inkCream})`,
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+          paddingTop: 5,
+        }}
+      >
+        <div style={{ width: 9, height: 1.5, borderRadius: 1, background: 'var(--ink, currentColor)', opacity: 0.6 }} />
+      </motion.div>
+      <span style={arrow}>›</span>
+    </div>
+  )
+}
+
+const overlay = {
+  position: 'absolute', inset: 0, zIndex: 6, pointerEvents: 'none',
+  display: 'flex', flexDirection: 'column', alignItems: 'center',
+  justifyContent: 'center', gap: 44, padding: '0 28px',
+}
+const prompt = {
+  fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 19,
+  color: 'var(--ink, currentColor)', textAlign: 'center', opacity: 0.9,
+}
+const sliderWrap = {
+  position: 'relative', width: '100%', maxWidth: 360, height: 64,
+}
+const trackWrap = {
+  position: 'absolute', left: 0, right: 0, top: 38, height: 12,
+}
+const track = {
+  position: 'absolute', left: '10%', right: '10%', top: '50%', height: 1,
+  background: 'var(--ink, currentColor)', opacity: 0.2,
+}
+const tick = {
+  position: 'absolute', top: '50%', width: 1, height: 9, marginTop: -4.5,
+  background: 'var(--ink, currentColor)', opacity: 0.22,
+}
+const cursor = {
+  position: 'absolute', top: '50%', width: 9, height: 9, marginTop: -4.5, marginLeft: -4.5,
+  borderRadius: '50%', background: COLORS.scoreAmber,
+}
+const hintWrap = {
+  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14,
+}
+const arrow = {
+  fontFamily: FONTS.serif, fontSize: 22, color: 'var(--ink, currentColor)', opacity: 0.5,
+}
+const affordance = {
   fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 14,
-  color: COLORS.inkCreamSecondary, transition: 'opacity 0.6s',
+  color: COLORS.inkCreamSecondary, textAlign: 'center', transition: 'opacity 0.5s',
 }
