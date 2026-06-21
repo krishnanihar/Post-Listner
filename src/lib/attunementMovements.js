@@ -37,6 +37,7 @@ export const MOVEMENTS = [
   },
   { id: 'rise',     kind: 'move',    signals: ['gestureGain', 'downbeat'], probes: ['a'], gain: 0.9, expansionTo: 0.6,  ask: null },
   { id: 'face',     kind: 'move',    signals: ['yaw'], probes: ['v', 'd'], gain: 1.0, expansionTo: 0.85, ask: null },
+  { id: 'era',      kind: 'search',  expansionTo: 0.87, ask: null },
   { id: 'reflect',  kind: 'narrate', expansionTo: 0.9,  ask: null },
   { id: 'bloom',    kind: 'handoff', expansionTo: 1.0,  ask: null },
 ]

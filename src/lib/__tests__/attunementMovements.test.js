@@ -4,8 +4,8 @@ import {
 } from '../attunementMovements.js'
 
 describe('attunementMovements', () => {
-  it('is the seven-beat arc in order', () => {
-    expect(MOVEMENT_ORDER).toEqual(['arrival', 'leanLift', 'listen', 'rise', 'face', 'reflect', 'bloom'])
+  it('is the eight-beat arc in order', () => {
+    expect(MOVEMENT_ORDER).toEqual(['arrival', 'leanLift', 'listen', 'rise', 'face', 'era', 'reflect', 'bloom'])
   })
   it('each movement carries a kind and a monotonic expansion target', () => {
     let prev = -1
@@ -26,7 +26,8 @@ describe('attunementMovements', () => {
   it('firstMovementId is arrival; nextMovementId walks then returns null', () => {
     expect(firstMovementId()).toBe('arrival')
     expect(nextMovementId('arrival')).toBe('leanLift')
-    expect(nextMovementId('face')).toBe('reflect')
+    expect(nextMovementId('face')).toBe('era')
+    expect(nextMovementId('era')).toBe('reflect')
     expect(nextMovementId('reflect')).toBe('bloom')
     expect(nextMovementId('bloom')).toBe(null)
   })

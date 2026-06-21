@@ -61,4 +61,20 @@ describe('avdToStems — mapAvdToStems', () => {
     }
     expect(b1990.variationId).toBe(best.id)
   })
+  it('era is archetype-invariant (it only moves the variation) and unlocks a non-default version', () => {
+    const v = { a: 0.9, v: 0.9, d: 0.9 } // → sky-seeker
+    const noEra = mapAvdToStems(v, {})        // the old behaviour → vs[0]
+    const oldest = mapAvdToStems(v, { era: 1960 })
+    const newest = mapAvdToStems(v, { era: 2025 })
+    // same world regardless of era
+    expect(oldest.archetypeId).toBe(noEra.archetypeId)
+    expect(newest.archetypeId).toBe(noEra.archetypeId)
+    // but a real era reaches a different variation than the default (the fix:
+    // the 1960s–1990s versions were previously unreachable)
+    expect(oldest.variationId).not.toBe(newest.variationId)
+    expect([oldest.variationId, newest.variationId]).toContain(
+      // at least one differs from the no-era default vs[0]
+      [oldest, newest].find((b) => b.variationId !== noEra.variationId).variationId
+    )
+  })
 })
