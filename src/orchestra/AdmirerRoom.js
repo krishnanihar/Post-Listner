@@ -6,9 +6,8 @@
 // between the INTIMATE (t=0) and EXPANDED (t=1) presets in roomPresets.js, so
 // the closed conversation room can audibly open into the orchestra.
 //
-// Voice capture: the ElevenLabs SDK exposes no output node (see
-// docs/admirer-spatial-spike.md). It appends a hidden <audio> element whose
-// srcObject is a MediaStream to document.body; captureAdmirerVoice() taps it.
+// The Admirer's voice is a bank of pre-baked TTS clips played through this room
+// via playVoiceClip() — there is no live agent and no MediaStream capture.
 
 import { EARLY_REFLECTIONS } from './constants.js'
 import { sphericalToCartesian } from '../chamber/utils/math.js'
@@ -46,20 +45,6 @@ export function rollToAzimuthOffset(relRoll) {
   return sign * past * MAX_AZIMUTH_OFFSET_DEG
 }
 
-// Find the hidden <audio> element the ElevenLabs SDK appends to document.body
-// and tap its MediaStream. Throws if it is not present yet — the caller
-// retries briefly after the session connects. Muting the element kills its
-// direct-to-speaker path; it does not affect the MediaStream the source node
-// reads, so the room becomes the only thing rendering the voice.
-export function captureAdmirerVoice(ctx) {
-  const el = [...document.querySelectorAll('audio')]
-    .find(a => a.srcObject instanceof MediaStream && a.src === '')
-  if (!el || !el.srcObject) {
-    throw new Error('[admirer-room] SDK audio element not found')
-  }
-  el.muted = true
-  return ctx.createMediaStreamSource(el.srcObject)
-}
 
 export default class AdmirerRoom {
   constructor(ctx) {
@@ -179,21 +164,6 @@ export default class AdmirerRoom {
     this.hallWetGain.connect(this.directBus)
   }
 
-  // Connect a captured voice source node into the room's mono entry.
-  // Idempotent: a prior source (if any) is detached first.
-  connectVoice(sourceNode) {
-    if (this._disposed || !sourceNode || !this.monoGain) return
-    if (this.voiceSource) {
-      try { this.voiceSource.disconnect(this.monoGain) } catch { /* ignore */ }
-    }
-    this.voiceSource = sourceNode
-    try {
-      sourceNode.connect(this.monoGain)
-    } catch (e) {
-      console.warn('[admirer-room] connectVoice failed', e)
-    }
-  }
-
   // Phone roll → a gentle azimuth swing of the voice within the room.
   setAzimuthOffset(offsetDeg) {
     if (this._disposed || !this.panner) return
@@ -210,8 +180,8 @@ export default class AdmirerRoom {
   // duration, so the listener hears the Admirer walking up before the
   // first word arrives. Schedules a transient BufferSource and disposes
   // it on 'ended'. Cheap, fire-and-forget.
-  playFootsteps(buffer) {
-    if (this._disposed || !buffer || !this.ctx || !this.monoGain) return
+  playFootsteps(buffer, { onEnded } = {}) {
+    if (this._disposed || !buffer || !this.ctx || !this.monoGain) { onEnded?.(); return }
     const ctx = this.ctx
     const src = ctx.createBufferSource()
     src.buffer = buffer
@@ -262,7 +232,41 @@ export default class AdmirerRoom {
       try { src.disconnect() } catch { /* ignore */ }
       try { stepGain.disconnect() } catch { /* ignore */ }
       try { stepPanner.disconnect() } catch { /* ignore */ }
+      onEnded?.()
     }, { once: true })
+  }
+
+  // Play a pre-recorded voice clip (the Admirer's spoken line) through the
+  // room's voice path — monoGain → directGain → HRTF panner (whose azimuth
+  // tracks phone roll via setAzimuthOffset) + reverb send — so the line is
+  // spatialised at the voice's resting seat and pans as the listener tilts.
+  // Replaces the old live-agent voice capture (captureAdmirerVoice/connectVoice):
+  // Act 1 is now gesture-only with finite authored lines, so the voice is a
+  // bank of pre-baked clips, not a live conversation. Returns a handle with
+  // stop(); fires onEnded when the clip finishes (or immediately if it can't).
+  playVoiceClip(buffer, { onEnded } = {}) {
+    if (this._disposed || !buffer || !this.ctx || !this.monoGain) { onEnded?.(); return null }
+    const ctx = this.ctx
+    const src = ctx.createBufferSource()
+    src.buffer = buffer
+    try { src.connect(this.monoGain) } catch (e) {
+      console.warn('[admirer-room] playVoiceClip connect failed', e)
+      onEnded?.()
+      return null
+    }
+    this.voiceClipSource = src
+    src.start(ctx.currentTime)
+    src.addEventListener('ended', () => {
+      try { src.disconnect() } catch { /* ignore */ }
+      if (this.voiceClipSource === src) this.voiceClipSource = null
+      onEnded?.()
+    }, { once: true })
+    return {
+      stop: () => {
+        try { src.stop() } catch { /* ignore */ }
+        try { src.disconnect() } catch { /* ignore */ }
+      },
+    }
   }
 
   // Lean movement: two looping textures at fixed L/R azimuths. Returns a
@@ -482,8 +486,9 @@ export default class AdmirerRoom {
       cancelAnimationFrame(this._rafId)
       this._rafId = null
     }
+    try { this.voiceClipSource?.stop() } catch { /* ignore */ }
     const nodes = [
-      this.voiceSource, this.monoGain, this.directGain, this.panner,
+      this.monoGain, this.directGain, this.panner,
       this.reverbBus, this.convolver, this.hallWetGain,
       this.directBus, this.masterLowpass,
     ]
