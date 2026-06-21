@@ -6,12 +6,18 @@
 
 function clampSigned(x) { return Math.max(-1, Math.min(1, x)) }
 
-// Lean (roll → Valence) + Lift (pitch → Depth). pan/filterNorm are 0..1.
+// Lean (roll → Valence) + optional Lift (pitch → Depth). pan/filterNorm are
+// 0..1. The first lean is now ROLL-ONLY: callers pass filterNorm === 0.5 as the
+// sentinel meaning "hold Depth" — so a forward tilt the user makes only to brace
+// the phone never reads as a Depth opinion they didn't form. Any other
+// filterNorm still maps to Depth (kept for replay/back-compat).
 export function leanLiftTarget(pan, filterNorm, current) {
   return {
     a: current.a,                              // unprobed — hold
     v: clampSigned((pan - 0.5) * 2),           // left→-1 cold, right→+1 warm
-    d: clampSigned((filterNorm - 0.5) * 2),    // forward→-1 open, back→+1 inward
+    d: filterNorm === 0.5
+      ? current.d                              // roll-only sentinel — hold Depth
+      : clampSigned((filterNorm - 0.5) * 2),   // forward→-1 open, back→+1 inward
   }
 }
 

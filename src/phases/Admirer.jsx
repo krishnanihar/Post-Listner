@@ -399,7 +399,11 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
       const h = roomHandleRef.current
       if (h) {
         if (score.movement?.id === 'leanLift' && h.setBalance) {
-          h.setBalance((score.live.current.pan - 0.5) * 2)
+          // Post-commit, hold the crossfade at the chosen side so a relaxing
+          // wrist doesn't slide the warm/cold balance back toward center.
+          const cb = score.live.current.committedBalance
+          if (typeof cb === 'number') h.setBalance(Math.sign(cb) || 0)
+          else h.setBalance((score.live.current.pan - 0.5) * 2)
         }
         // FIX 3 — drive Rise audio reactivity each frame.
         if (score.movement?.id === 'rise' && h.setSwell) {

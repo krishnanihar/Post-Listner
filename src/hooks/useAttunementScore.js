@@ -3,7 +3,7 @@ import { useCallback, useEffect, useReducer, useRef } from 'react'
 import { initialState, reduce } from '../lib/attunementReducer.js'
 import { getMovement } from '../lib/attunementMovements.js'
 import { usePhoneMotion } from './usePhoneMotion.js'
-import { getAvd, commitTurn, setAvd } from '../lib/avdStore.js'
+import { getAvd, commitTurn } from '../lib/avdStore.js'
 import { leanLiftTarget, riseTarget, riseHedonic, dwellConfidence } from '../lib/attunementToAvd.js'
 import { archetypeRing, nearestArchetypeToYaw, archetypeAnchorVector, preloadDecision } from '../lib/archetypeRing.js'
 
@@ -27,7 +27,7 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
   const peakSwellRef = useRef(0)
   const rodeClimaxRef = useRef(false)
   const lastPreloadRef = useRef(null)
-  const liveRef = useRef({ pan: 0.5, filterNorm: 0.5, relYaw: 0, swell: 0 })
+  const liveRef = useRef({ pan: 0.5, filterNorm: 0.5, relYaw: 0, swell: 0, committedBalance: null })
 
   // FIX 5 — tiny haptic helper; no-ops where vibration is unsupported.
   const vibrate = (ms) => { try { navigator.vibrate?.(ms) } catch { /* unsupported */ } }
@@ -37,7 +37,7 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
     baselineYawRef.current = null
     peakSwellRef.current = 0
     rodeClimaxRef.current = false
-    liveRef.current = { pan: 0.5, filterNorm: 0.5, relYaw: 0, swell: 0 }
+    liveRef.current = { pan: 0.5, filterNorm: 0.5, relYaw: 0, swell: 0, committedBalance: null }
     // On movement entry, ask the companion to voice this movement's question.
     // Fires exactly once per movement: this effect is keyed on state.movementId,
     // and onAsk is a stable host useCallback so its identity never changes
@@ -87,13 +87,18 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
   }, [movement, state.status, readMotion, onReact, onSpeculativePreload])
 
   // Commit the active movement: write taste, advance expansion, react, advance.
-  const commit = useCallback(() => {
+  const commit = useCallback((committedPan, approachMs) => {
     if (!movement || state.status !== 'active') return
     const cur = getAvd()
     const dwellMs = performance.now() - enteredAtRef.current
     if (movement.id === 'leanLift') {
-      const target = leanLiftTarget(liveRef.current.pan, liveRef.current.filterNorm, cur)
-      commitTurn(target, { gain: movement.gain, confidence: dwellConfidence(dwellMs) })
+      // Roll-only. Use the pan captured at the brink-crossing frame (a hard
+      // slam writes more extreme Valence than a gentle tip — earned intensity);
+      // filterNorm 0.5 holds Depth. Confidence rides the approach time.
+      const pan = committedPan ?? liveRef.current.pan
+      const target = leanLiftTarget(pan, 0.5, cur)
+      commitTurn(target, { gain: movement.gain, confidence: dwellConfidence(approachMs ?? dwellMs) })
+      liveRef.current.committedBalance = (pan - 0.5) * 2 // hold the audio to the chosen side
       vibrate(15) // FIX 5
       onReact?.('leanLift', { valence: target.v, depth: target.d })
     } else if (movement.id === 'rise') {
@@ -103,7 +108,10 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
       onReact?.('rise', { arousal: target.a, hedonic: riseHedonic(rodeClimaxRef.current) })
     } else if (movement.id === 'face') {
       const id = nearestArchetypeToYaw(liveRef.current.relYaw, ring)
-      setAvd(archetypeAnchorVector(id)) // snap the vector onto the faced world
+      // Blend (not hard-snap) so earlier turns — e.g. leanLift's Valence —
+      // EWMA-survive into the routed vector. gain 1.0 lets the faced world's
+      // centroid dominate while still honouring the accumulated taste.
+      commitTurn(archetypeAnchorVector(id), { gain: 1.0 })
       vibrate(20) // FIX 5
       onReact?.('face', { archetypeId: id })
     }

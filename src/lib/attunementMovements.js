@@ -7,15 +7,17 @@
 // Pure data + selectors — unit-tested. (See spec §5.)
 //
 // `ask` — the invitation/question the companion voices on movement entry. It is
-// DATA (wording is Knih's to edit). `null` means the companion says nothing on
-// entry for that movement: arrival is opened by the first_message greeting, and
-// bloom is the silent act-1 → act-2 handoff. The listener never speaks — they
-// answer every movement with their body (gestures); the `ask` is the companion
-// posing the room's question aloud, not an instruction to speak.
+// DATA (wording is Knih's to edit). `null` means nothing is voiced on entry for
+// that movement: arrival is opened by the pre-baked welcome clip, leanLift is
+// already cued by the welcome's tail ("lean toward whatever's pulling at you")
+// so its on-screen serif cue carries it, and bloom is the silent act-1 → act-2
+// handoff. The listener never speaks — they answer every movement with their
+// body (gestures); the `ask` is the room's question posed aloud (now a pre-baked
+// TTS clip, id `ask-<movementId>`), not an instruction to speak.
 
 export const MOVEMENTS = [
   { id: 'arrival',  kind: 'talk',    expansionTo: 0.0,  ask: null },
-  { id: 'leanLift', kind: 'move',    signals: ['pan', 'filterNorm'], probes: ['v', 'd'], gain: 0.8, expansionTo: 0.2,  ask: 'turn toward the one that pulls you — and tip it toward light or shadow.' },
+  { id: 'leanLift', kind: 'move',    signals: ['pan'], probes: ['v'], gain: 0.8, expansionTo: 0.2,  ask: null },
   { id: 'listen',   kind: 'tap',     expansionTo: 0.35, ask: 'this next one — could it be yours?' },
   { id: 'rise',     kind: 'move',    signals: ['gestureGain', 'downbeat'], probes: ['a'], gain: 0.9, expansionTo: 0.6,  ask: 'let it rise. give it room, and meet the peak when it comes.' },
   { id: 'face',     kind: 'move',    signals: ['yaw'], probes: ['v', 'd'], gain: 1.0, expansionTo: 0.85, ask: 'now — turn to the one that feels like home.' },

@@ -15,6 +15,10 @@ describe('leanLiftTarget', () => {
     expect(leanLiftTarget(0.5, 1, CUR).d).toBeCloseTo(1, 6)
     expect(leanLiftTarget(0.5, 0, CUR).d).toBeCloseTo(-1, 6)
   })
+  it('roll-only sentinel (filterNorm===0.5) holds Depth at the current value', () => {
+    expect(leanLiftTarget(1, 0.5, CUR).d).toBe(CUR.d)
+    expect(leanLiftTarget(0, 0.5, CUR).d).toBe(CUR.d)
+  })
   it('leaves arousal at the current value (unprobed axis must not drift)', () => {
     expect(leanLiftTarget(1, 1, CUR).a).toBe(CUR.a)
   })
