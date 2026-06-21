@@ -120,15 +120,16 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
       vibrate(15) // FIX 5
       onReact?.('leanLift', { valence: target.v, depth: target.d })
     } else if (movement.id === 'listen') {
-      // Pitch-only → Depth. filterNorm captured at the crossing carries the
-      // intensity (open ↔ inward); the crossing is the decision, confidence full.
+      // Pitch → Depth. Two sub-rounds (gain split SR1/SR2) converge the axis;
+      // the reflection depth bucket reads the CONVERGED value after the commit.
       const fn = captured ?? liveRef.current.filterNorm
       const target = listenTarget(fn, cur)
-      commitTurn(target, { gain: movement.gain, confidence: 1 })
+      const gain = subfaces?.[subIndex]?.gain ?? movement.gain
+      commitTurn(target, { gain, confidence: 1 })
       // Hold the bed at the chosen extreme: forward (fn<0.5) = fully dark/inward
       // (brightness 0), matching the Orchestra.
       liveRef.current.committedBrightness = (fn - 0.5) < 0 ? 0 : 1
-      setDepth(depthBucket(target.d)) // capture for the reflection
+      setDepth(depthBucket(getAvd().d)) // converged — capture for the reflection
       vibrate(15) // FIX 5
       onReact?.('listen', { depth: target.d })
     } else if (movement.id === 'rise') {

@@ -1,62 +1,87 @@
 // src/phases/attunement/Listen.jsx
 // The listen beat — a tilt-driven slider on the PITCH axis (the vertical mirror
-// of the lean). A fragment of a world plays; tilting the phone forward/back
-// moves a cursor on a vertical track between "open · bright" (tilt BACK) and
-// "inward · dark" (tilt FORWARD) and audibly opens/closes the sound — matching
-// the Orchestra (beta → filter cutoff, forward tilt darkens), so the gesture
-// transfers. It writes the Depth axis of taste. Lean past the brink to lock.
-// Commit logic is the same reviewed brink-crossing path as LeanLift; only the
-// axis (filterNorm) + visuals differ.
+// of the lean), now with a FEW sub-rounds: the listener tilts across 2 pairs in
+// a row (open/inward, then dense/spare), each a pitch-slide that commits on the
+// brink-crossing and re-poles in place. A fragment plays and audibly opens/
+// closes with the tilt — matching the Orchestra (forward = dark/inward). Both
+// rounds move ONLY Depth; only the last advances the beat. Commit logic mirrors
+// LeanLift's re-pole state machine.
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { COLORS, FONTS } from '../../score/tokens'
 import { isBrinkCrossing, LEAN_BRINK } from '../../lib/leanCommit.js'
 
-const TRACK_HALF = 38                          // cursor travels ±this % of track height
-const BRINK_PCT = 50 + LEAN_BRINK * TRACK_HALF // where the "lock" ticks sit
+const TRACK_HALF = 38
+const BRINK_PCT = 50 + LEAN_BRINK * TRACK_HALF
+const LOCK_MS = 520
 
-// `live` is the score hook's liveRef (live.current.filterNorm ∈ [0,1] from pitch).
-// onCommit(capturedFilterNorm) writes Depth; onAdvance moves on once committed.
-export default function Listen({ live, onCommit, onAdvance, committed }) {
-  const [rb, setRb] = useState(0)     // rendered balance ∈ [-1,1] → cursor pos
+const DEFAULT_ROUNDS = [
+  { prompt: 'open it up, or draw it close?', topLabel: 'open · bright', bottomLabel: 'inward · dark' },
+]
+
+// `live` = liveRef (live.current.filterNorm from pitch). onCommit(fn, subIndex)
+// writes Depth; onAdvance fires once `committed` flips (last round only).
+export default function Listen({ live, onCommit, onAdvance, committed, subfaces }) {
+  const rounds = subfaces && subfaces.length ? subfaces : DEFAULT_ROUNDS
+
+  const [subIndex, setSubIndex] = useState(0)
+  const [rb, setRb] = useState(0)
   const [fired, setFired] = useState(false)
-  const [side, setSide] = useState(0) // committed side: -1 open / +1 inward
+  const [side, setSide] = useState(0)
+
+  const subIndexRef = useRef(0)
+  const phaseRef = useRef('leaning')          // 'leaning' | 'locking' | 'done'
   const initRef = useRef(false)
   const prevBRef = useRef(0)
-  const firedRef = useRef(false)
-  const rbRef = useRef(0)
   const sideRef = useRef(0)
+  const rbRef = useRef(0)
+  const lockStartRef = useRef(0)
 
   useEffect(() => {
     let raf = 0
     const tick = () => {
       const fn = live.current.filterNorm
       const b = (fn - 0.5) * 2
-      if (!firedRef.current) {
+      if (phaseRef.current === 'leaning') {
         if (!initRef.current) {
-          // First frame: seed prevB with the resting pitch WITHOUT testing, so
-          // an already-tilted phone never auto-commits on entry.
           initRef.current = true
         } else if (isBrinkCrossing({ b, prevB: prevBRef.current })) {
-          firedRef.current = true
           sideRef.current = Math.sign(b)
-          setFired(true)
           setSide(Math.sign(b))
-          onCommit(fn)
+          setFired(true)
+          onCommit(fn, subIndexRef.current)
+          phaseRef.current = 'locking'
+          lockStartRef.current = performance.now()
         }
         prevBRef.current = b
         rbRef.current = b
         setRb(b)
-      } else {
+      } else if (phaseRef.current === 'locking') {
         const target = sideRef.current || 0
-        rbRef.current += (target - rbRef.current) * 0.14
+        rbRef.current += (target - rbRef.current) * 0.18
         setRb(rbRef.current)
+        if (performance.now() - lockStartRef.current > LOCK_MS) {
+          if (subIndexRef.current >= rounds.length - 1) {
+            phaseRef.current = 'done'
+          } else {
+            subIndexRef.current += 1
+            setSubIndex(subIndexRef.current)
+            initRef.current = false
+            prevBRef.current = 0
+            rbRef.current = 0
+            sideRef.current = 0
+            setRb(0)
+            setSide(0)
+            setFired(false)
+            phaseRef.current = 'leaning'
+          }
+        }
       }
-      raf = requestAnimationFrame(tick)
+      if (phaseRef.current !== 'done') raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [live, onCommit])
+  }, [live, onCommit, rounds.length])
 
   useEffect(() => {
     if (!committed) return undefined
@@ -64,17 +89,18 @@ export default function Listen({ live, onCommit, onAdvance, committed }) {
     return () => clearTimeout(t)
   }, [committed, onAdvance])
 
+  const round = rounds[subIndex] || DEFAULT_ROUNDS[0]
   const b = Math.max(-1, Math.min(1, rb))
-  const openHeat = b > 0 ? Math.min(1, b / LEAN_BRINK) : 0     // tilt back → open/bright (top)
-  const inwardHeat = b < 0 ? Math.min(1, -b / LEAN_BRINK) : 0  // tilt forward → inward/dark (bottom)
+  const openHeat = b > 0 ? Math.min(1, b / LEAN_BRINK) : 0     // tilt back → open (top)
+  const inwardHeat = b < 0 ? Math.min(1, -b / LEAN_BRINK) : 0  // tilt forward → inward (bottom)
   const cursorTopPct = 50 - b * TRACK_HALF                     // forward (b<0) → down/inward
 
   return (
     <div style={overlay}>
-      <div style={prompt}>open it up, or draw it close?</div>
+      <div style={prompt}>{round.prompt}</div>
 
       <div style={sliderWrap}>
-        <PoleLabel text="open · bright" place="top" heat={openHeat} />
+        <PoleLabel text={round.topLabel} place="top" heat={openHeat} />
 
         <div style={trackWrap}>
           <div style={track} />
@@ -90,6 +116,7 @@ export default function Listen({ live, onCommit, onAdvance, committed }) {
           />
           {fired && (
             <motion.div
+              key={subIndex}
               aria-hidden
               initial={{ opacity: 0.6, scale: 0.5 }}
               animate={{ opacity: 0, scale: 2.2 }}
@@ -104,7 +131,15 @@ export default function Listen({ live, onCommit, onAdvance, committed }) {
           )}
         </div>
 
-        <PoleLabel text="inward · dark" place="bottom" heat={inwardHeat} />
+        <PoleLabel text={round.bottomLabel} place="bottom" heat={inwardHeat} />
+
+        {rounds.length > 1 && (
+          <div style={dotsWrap}>
+            {rounds.map((_, i) => (
+              <span key={i} style={{ ...dot, opacity: i <= subIndex ? 0.7 : 0.22 }} />
+            ))}
+          </div>
+        )}
       </div>
 
       <div style={hintWrap}>
@@ -133,7 +168,6 @@ function PoleLabel({ text, place, heat }) {
   )
 }
 
-// A phone that nods forward↔back to demonstrate the pitch tilt.
 function PhoneNodHint({ dimmed }) {
   return (
     <div style={{
@@ -169,7 +203,7 @@ const prompt = {
   color: 'var(--ink, currentColor)', textAlign: 'center', opacity: 0.9,
 }
 const sliderWrap = {
-  display: 'flex', flexDirection: 'column', alignItems: 'center',
+  display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative',
 }
 const trackWrap = {
   position: 'relative', width: 12, height: 200,
@@ -185,6 +219,13 @@ const tick = {
 const cursor = {
   position: 'absolute', left: '50%', width: 9, height: 9, marginLeft: -4.5, marginTop: -4.5,
   borderRadius: '50%', background: COLORS.scoreAmber,
+}
+const dotsWrap = {
+  display: 'flex', justifyContent: 'center', gap: 7, marginTop: 14,
+}
+const dot = {
+  width: 4, height: 4, borderRadius: '50%', background: COLORS.scoreAmber,
+  transition: 'opacity 0.3s',
 }
 const hintWrap = {
   display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,

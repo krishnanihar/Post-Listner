@@ -26,7 +26,15 @@ export const MOVEMENTS = [
       { id: 'shadow-sunlit', prompt: 'and this one — shadowed, or sunlit?',        leftLabel: 'shadowed',       rightLabel: 'sunlit',  gain: 0.4 },
     ],
   },
-  { id: 'listen',   kind: 'move',    signals: ['filterNorm'], probes: ['d'], gain: 0.8, expansionTo: 0.35, ask: null },
+  { id: 'listen',   kind: 'move',    signals: ['filterNorm'], probes: ['d'], gain: 0.8, expansionTo: 0.35, ask: null,
+    // Two pitch sub-rounds, both probing Depth. top = open/spare, bottom =
+    // inward/dense (forward-tilt = dark/inward, matching the Orchestra). SR2
+    // refines at half gain.
+    subfaces: [
+      { id: 'open-inward', prompt: 'open it up, or draw it close?',       topLabel: 'open · bright',        bottomLabel: 'inward · dark', gain: 0.8 },
+      { id: 'dense-spare', prompt: 'all of it, or just the essentials?',  topLabel: 'just the essentials',  bottomLabel: 'all of it',     gain: 0.4 },
+    ],
+  },
   { id: 'rise',     kind: 'move',    signals: ['gestureGain', 'downbeat'], probes: ['a'], gain: 0.9, expansionTo: 0.6,  ask: null },
   { id: 'face',     kind: 'move',    signals: ['yaw'], probes: ['v', 'd'], gain: 1.0, expansionTo: 0.85, ask: null },
   { id: 'reflect',  kind: 'narrate', expansionTo: 0.9,  ask: null },

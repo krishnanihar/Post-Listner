@@ -44,6 +44,17 @@ describe('attunementMovements', () => {
     }
     expect(subs[1].gain).toBeLessThan(subs[0].gain) // SR2 refines, doesn't yank
   })
+  it('listen carries 2 sub-rounds with top/bottom labels; SR2 refines', () => {
+    const subs = getMovement('listen').subfaces
+    expect(subs).toHaveLength(2)
+    for (const s of subs) {
+      expect(typeof s.prompt).toBe('string')
+      expect(typeof s.topLabel).toBe('string')
+      expect(typeof s.bottomLabel).toBe('string')
+      expect(typeof s.gain).toBe('number')
+    }
+    expect(subs[1].gain).toBeLessThan(subs[0].gain)
+  })
   it('every movement has ask: null (the on-screen cues carry the prompts; no agent)', () => {
     for (const id of MOVEMENT_ORDER) {
       expect(getMovement(id).ask).toBe(null)
