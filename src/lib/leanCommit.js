@@ -22,10 +22,13 @@ export const LEAN_DEADZONE = 0.12
 export function isBrinkCrossing({ b, prevB, brink = LEAN_BRINK, fired = false }) {
   if (fired) return false
   if (Math.abs(b) < brink) return false
+  // Only the FIRST crossing fires: the previous frame must have been inside the
+  // brink. This stops an already-past-brink resting tilt (or jitter sitting
+  // outside) from firing — the lean must travel from inside to outside.
+  if (Math.abs(prevB) >= brink) return false
   const dir = Math.sign(b)
   if (dir === 0) return false
   // Outward = the balance moved further in the direction it already points.
-  // A retreat (moving back toward center) or jitter sitting on the threshold
-  // (no movement) does not fire.
+  // A retreat (moving back toward center) or jitter (no movement) does not fire.
   return Math.sign(b - prevB) === dir
 }

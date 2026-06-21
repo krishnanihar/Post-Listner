@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { COLORS, FONTS } from '../../score/tokens'
-import { isBrinkCrossing, LEAN_BRINK, LEAN_DEADZONE } from '../../lib/leanCommit.js'
+import { isBrinkCrossing, LEAN_BRINK } from '../../lib/leanCommit.js'
 
 // Cool/austere on the left, warm/hearth on the right. Restrained ink-on-cream,
 // not neon — the warm side borrows the score amber, the cool side a muted slate.
@@ -17,15 +17,15 @@ const COOL = '#7C8A94'
 const WARM = COLORS.scoreAmber
 
 // `live` is the score hook's liveRef (live.current.pan ∈ [0,1] from roll).
-// onCommit(capturedPan, approachMs) writes taste + advances expansion; onAdvance
-// moves on once `committed` flips true.
+// onCommit(capturedPan) writes taste (intensity carried by the lean angle) +
+// advances expansion; onAdvance moves on once `committed` flips true.
 export default function LeanLift({ live, onCommit, onAdvance, committed }) {
   const [rb, setRb] = useState(0)     // rendered balance (drives the seesaw)
   const [fired, setFired] = useState(false)
   const [side, setSide] = useState(0) // committed side: -1 cold / +1 warm
+  const initRef = useRef(false)
   const prevBRef = useRef(0)
   const firedRef = useRef(false)
-  const approachStartRef = useRef(null)
   const rbRef = useRef(0)
   const sideRef = useRef(0)
 
@@ -35,22 +35,16 @@ export default function LeanLift({ live, onCommit, onAdvance, committed }) {
       const pan = live.current.pan
       const b = (pan - 0.5) * 2
       if (!firedRef.current) {
-        // Time the approach (for commit confidence) from when the lean first
-        // leaves the deadzone; reset if it falls back to neutral.
-        if (Math.abs(b) >= LEAN_DEADZONE) {
-          if (approachStartRef.current === null) approachStartRef.current = performance.now()
-        } else {
-          approachStartRef.current = null
-        }
-        if (isBrinkCrossing({ b, prevB: prevBRef.current })) {
+        if (!initRef.current) {
+          // First frame: seed prevB with the real resting roll WITHOUT testing,
+          // so an already-tilted phone never auto-commits on entry.
+          initRef.current = true
+        } else if (isBrinkCrossing({ b, prevB: prevBRef.current })) {
           firedRef.current = true
           sideRef.current = Math.sign(b)
           setFired(true)
           setSide(Math.sign(b))
-          const approachMs = approachStartRef.current !== null
-            ? performance.now() - approachStartRef.current
-            : null
-          onCommit(pan, approachMs)
+          onCommit(pan)
         }
         prevBRef.current = b
         rbRef.current = b

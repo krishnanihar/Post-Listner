@@ -3,8 +3,8 @@ import { useCallback, useEffect, useReducer, useRef } from 'react'
 import { initialState, reduce } from '../lib/attunementReducer.js'
 import { getMovement } from '../lib/attunementMovements.js'
 import { usePhoneMotion } from './usePhoneMotion.js'
-import { getAvd, commitTurn } from '../lib/avdStore.js'
-import { leanLiftTarget, riseTarget, riseHedonic, dwellConfidence } from '../lib/attunementToAvd.js'
+import { getAvd, commitTurn, setAvd } from '../lib/avdStore.js'
+import { leanLiftTarget, riseTarget, riseHedonic } from '../lib/attunementToAvd.js'
 import { archetypeRing, nearestArchetypeToYaw, archetypeAnchorVector, preloadDecision } from '../lib/archetypeRing.js'
 
 // Score-led: the client owns pacing. The hook reads the phone each frame for
@@ -87,17 +87,17 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
   }, [movement, state.status, readMotion, onReact, onSpeculativePreload])
 
   // Commit the active movement: write taste, advance expansion, react, advance.
-  const commit = useCallback((committedPan, approachMs) => {
+  const commit = useCallback((committedPan) => {
     if (!movement || state.status !== 'active') return
     const cur = getAvd()
-    const dwellMs = performance.now() - enteredAtRef.current
     if (movement.id === 'leanLift') {
-      // Roll-only. Use the pan captured at the brink-crossing frame (a hard
-      // slam writes more extreme Valence than a gentle tip — earned intensity);
-      // filterNorm 0.5 holds Depth. Confidence rides the approach time.
+      // Roll-only. The pan captured at the brink-crossing frame carries the
+      // intensity (a harder lean = more extreme pan = stronger Valence); the
+      // crossing IS the "they decided" signal, so confidence is full.
+      // filterNorm 0.5 holds Depth.
       const pan = committedPan ?? liveRef.current.pan
       const target = leanLiftTarget(pan, 0.5, cur)
-      commitTurn(target, { gain: movement.gain, confidence: dwellConfidence(approachMs ?? dwellMs) })
+      commitTurn(target, { gain: movement.gain, confidence: 1 })
       liveRef.current.committedBalance = (pan - 0.5) * 2 // hold the audio to the chosen side
       vibrate(15) // FIX 5
       onReact?.('leanLift', { valence: target.v, depth: target.d })
@@ -108,10 +108,13 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
       onReact?.('rise', { arousal: target.a, hedonic: riseHedonic(rodeClimaxRef.current) })
     } else if (movement.id === 'face') {
       const id = nearestArchetypeToYaw(liveRef.current.relYaw, ring)
-      // Blend (not hard-snap) so earlier turns — e.g. leanLift's Valence —
-      // EWMA-survive into the routed vector. gain 1.0 lets the faced world's
-      // centroid dominate while still honouring the accumulated taste.
-      commitTurn(archetypeAnchorVector(id), { gain: 1.0 })
+      // Hard-snap onto the faced world's centroid so routing — nearest-centroid
+      // over the committed vector at bloom — deterministically returns the world
+      // the listener faced ("the six face-worlds ARE the archetype centroids").
+      // A commitTurn blend lands an EWMA step short of the centroid and
+      // misroutes ~2/3 of the time; the lean's taste still shapes the Rise-time
+      // speculative preload, so nothing is lost by hard-setting here.
+      setAvd(archetypeAnchorVector(id))
       vibrate(20) // FIX 5
       onReact?.('face', { archetypeId: id })
     }

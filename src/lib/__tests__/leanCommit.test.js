@@ -20,6 +20,10 @@ describe('isBrinkCrossing', () => {
   it('does not fire once already committed (fired guard)', () => {
     expect(isBrinkCrossing({ b: 0.9, prevB: 0.5, fired: true })).toBe(false)
   })
+  it('does not fire when the previous frame was already past the brink (only the first crossing)', () => {
+    expect(isBrinkCrossing({ b: 0.7, prevB: 0.6 })).toBe(false)
+    expect(isBrinkCrossing({ b: -0.7, prevB: -0.6 })).toBe(false)
+  })
   it('respects a custom brink', () => {
     expect(isBrinkCrossing({ b: 0.5, prevB: 0.3, brink: 0.45 })).toBe(true)
     expect(isBrinkCrossing({ b: 0.5, prevB: 0.3, brink: 0.62 })).toBe(false)

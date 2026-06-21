@@ -3,6 +3,20 @@ import {
   archetypeRing, nearestArchetypeToYaw, archetypeAnchorVector, preloadDecision,
 } from '../archetypeRing.js'
 import { ARCHETYPES } from '../archetypes.js'
+import { selectArchetypeByAvd } from '../avdToStems.js'
+
+// The load-bearing Act-1 contract: facing world X must route to world X. The
+// face beat hard-snaps the AVD vector onto archetypeAnchorVector(id), and bloom
+// routes by selectArchetypeByAvd(getAvd()) (nearest centroid). This guards that
+// the snap target round-trips to the same archetype for every world — a blend
+// (EWMA step short of the centroid) breaks this, so it must stay a hard-snap.
+describe('face→routing identity (hard-snap contract)', () => {
+  it('snapping onto a world centroid routes back to that same world', () => {
+    for (const a of ARCHETYPES) {
+      expect(selectArchetypeByAvd(archetypeAnchorVector(a.id))).toBe(a.id)
+    }
+  })
+})
 
 describe('archetypeRing', () => {
   const ring = archetypeRing()
