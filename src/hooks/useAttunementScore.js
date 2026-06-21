@@ -4,7 +4,7 @@ import { initialState, reduce } from '../lib/attunementReducer.js'
 import { getMovement } from '../lib/attunementMovements.js'
 import { usePhoneMotion } from './usePhoneMotion.js'
 import { getAvd, commitTurn, setAvd } from '../lib/avdStore.js'
-import { leanLiftTarget, riseTarget, riseHedonic } from '../lib/attunementToAvd.js'
+import { leanLiftTarget, listenTarget, riseTarget, riseHedonic } from '../lib/attunementToAvd.js'
 import { archetypeRing, nearestArchetypeToYaw, archetypeAnchorVector, preloadDecision } from '../lib/archetypeRing.js'
 
 // Score-led: the client owns pacing. The hook reads the phone each frame for
@@ -27,7 +27,7 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
   const peakSwellRef = useRef(0)
   const rodeClimaxRef = useRef(false)
   const lastPreloadRef = useRef(null)
-  const liveRef = useRef({ pan: 0.5, filterNorm: 0.5, relYaw: 0, swell: 0, committedBalance: null })
+  const liveRef = useRef({ pan: 0.5, filterNorm: 0.5, relYaw: 0, swell: 0, committedBalance: null, committedBrightness: null })
 
   // FIX 5 — tiny haptic helper; no-ops where vibration is unsupported.
   const vibrate = (ms) => { try { navigator.vibrate?.(ms) } catch { /* unsupported */ } }
@@ -37,7 +37,7 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
     baselineYawRef.current = null
     peakSwellRef.current = 0
     rodeClimaxRef.current = false
-    liveRef.current = { pan: 0.5, filterNorm: 0.5, relYaw: 0, swell: 0, committedBalance: null }
+    liveRef.current = { pan: 0.5, filterNorm: 0.5, relYaw: 0, swell: 0, committedBalance: null, committedBrightness: null }
     // On movement entry, ask the companion to voice this movement's question.
     // Fires exactly once per movement: this effect is keyed on state.movementId,
     // and onAsk is a stable host useCallback so its identity never changes
@@ -57,6 +57,8 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
       const m = readMotion()
       if (movement.id === 'leanLift') {
         liveRef.current.pan = m.pan
+        liveRef.current.filterNorm = m.filterNorm
+      } else if (movement.id === 'listen') {
         liveRef.current.filterNorm = m.filterNorm
       } else if (movement.id === 'rise') {
         if (m.gestureGain > peakSwellRef.current) peakSwellRef.current = m.gestureGain
@@ -87,7 +89,9 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
   }, [movement, state.status, readMotion, onReact, onSpeculativePreload])
 
   // Commit the active movement: write taste, advance expansion, react, advance.
-  const commit = useCallback((committedPan) => {
+  // `captured` is the axis value at the brink-crossing frame — pan for leanLift,
+  // filterNorm for listen (each overlay passes its own axis).
+  const commit = useCallback((captured) => {
     if (!movement || state.status !== 'active') return
     const cur = getAvd()
     if (movement.id === 'leanLift') {
@@ -95,12 +99,23 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
       // intensity (a harder lean = more extreme pan = stronger Valence); the
       // crossing IS the "they decided" signal, so confidence is full.
       // filterNorm 0.5 holds Depth.
-      const pan = committedPan ?? liveRef.current.pan
+      const pan = captured ?? liveRef.current.pan
       const target = leanLiftTarget(pan, 0.5, cur)
       commitTurn(target, { gain: movement.gain, confidence: 1 })
       liveRef.current.committedBalance = (pan - 0.5) * 2 // hold the audio to the chosen side
       vibrate(15) // FIX 5
       onReact?.('leanLift', { valence: target.v, depth: target.d })
+    } else if (movement.id === 'listen') {
+      // Pitch-only → Depth. filterNorm captured at the crossing carries the
+      // intensity (open ↔ inward); the crossing is the decision, confidence full.
+      const fn = captured ?? liveRef.current.filterNorm
+      const target = listenTarget(fn, cur)
+      commitTurn(target, { gain: movement.gain, confidence: 1 })
+      // Hold the bed at the chosen extreme: forward (fn<0.5) = fully dark/inward
+      // (brightness 0), matching the Orchestra.
+      liveRef.current.committedBrightness = (fn - 0.5) < 0 ? 0 : 1
+      vibrate(15) // FIX 5
+      onReact?.('listen', { depth: target.d })
     } else if (movement.id === 'rise') {
       const target = riseTarget(peakSwellRef.current, rodeClimaxRef.current, cur)
       commitTurn(target, { gain: movement.gain })
@@ -122,9 +137,10 @@ export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom,
   }, [movement, state.status, ring, onReact])
 
   const advance = useCallback(() => {
-    // COMMIT first so talk/tap movements (arrival, listen) — which never go
-    // through commit() — become 'committed' and the status-guarded reducer
-    // will ADVANCE. COMMIT no-ops if already committed; React batches both
+    // COMMIT first so arrival (talk) — which never goes through commit() —
+    // becomes 'committed' and the status-guarded reducer will ADVANCE. The
+    // move beats already COMMIT on their gesture, so this is a no-op for them;
+    // React batches both
     // dispatches into one render, so there's no intermediate flash. Calling
     // advance() twice stays safe (both dispatches are idempotent guards).
     dispatch({ type: 'COMMIT' })

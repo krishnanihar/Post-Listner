@@ -479,6 +479,62 @@ export default class AdmirerRoom {
     this._rafId = requestAnimationFrame(step)
   }
 
+  // Listen movement: one looping fragment seated in front, fed through a
+  // lowpass whose cutoff tracks the listener's forward/back tilt — tilting
+  // forward opens it up (bright), tilting back draws it inward (dark). This is
+  // the pitch lesson: roll panned the lean, pitch brightens here, the way the
+  // Orchestra reads beta → conducting-filter cutoff. setBrightness(t∈[0,1]):
+  // 0 = dark/closed, 1 = open/bright.
+  playFilteredBed(buffer) {
+    if (this._disposed || !this.ctx || !buffer) return null
+    const ctx = this.ctx
+    const src = ctx.createBufferSource()
+    src.buffer = buffer
+    src.loop = true
+    const gain = ctx.createGain()
+    gain.channelCount = 1
+    gain.channelCountMode = 'explicit'
+    gain.channelInterpretation = 'speakers'
+    gain.gain.value = 0.32
+    const lp = ctx.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.value = 1200
+    lp.Q.value = 0.7
+    const panner = ctx.createPanner()
+    panner.panningModel = 'HRTF'
+    panner.distanceModel = 'inverse'
+    panner.refDistance = 1
+    panner.maxDistance = 20
+    panner.rolloffFactor = 1
+    const p = sphericalToCartesian(0, 5, 1.7)
+    panner.positionX.value = p.x
+    panner.positionY.value = p.y
+    panner.positionZ.value = p.z
+    src.connect(gain)
+    gain.connect(lp)
+    lp.connect(panner)
+    panner.connect(this.directBus)
+    panner.connect(this.reverbBus)
+    src.start(ctx.currentTime)
+    let stopped = false
+    const MIN_HZ = 350
+    const MAX_HZ = 6000
+    return {
+      // t∈[0,1]: 0 = dark/inward, 1 = open/bright. Exponential cutoff sweep.
+      setBrightness: (t) => {
+        if (this._disposed || stopped) return
+        const tc = Math.max(0, Math.min(1, t))
+        const hz = MIN_HZ * Math.pow(MAX_HZ / MIN_HZ, tc)
+        lp.frequency.setTargetAtTime(hz, ctx.currentTime, 0.1)
+      },
+      stop: () => {
+        stopped = true
+        try { src.stop() } catch { /* ignore */ }
+        try { src.disconnect(); gain.disconnect(); lp.disconnect(); panner.disconnect() } catch { /* ignore */ }
+      },
+    }
+  }
+
   // Tear down: stop the ramp, disconnect every node.
   dispose() {
     this._disposed = true

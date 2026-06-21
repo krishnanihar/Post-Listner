@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  leanLiftTarget, riseTarget, riseHedonic, dwellConfidence,
+  leanLiftTarget, listenTarget, riseTarget, riseHedonic, dwellConfidence,
 } from '../attunementToAvd.js'
 
 const CUR = { a: 0.3, v: -0.1, d: 0.2 }
@@ -21,6 +21,18 @@ describe('leanLiftTarget', () => {
   })
   it('leaves arousal at the current value (unprobed axis must not drift)', () => {
     expect(leanLiftTarget(1, 1, CUR).a).toBe(CUR.a)
+  })
+})
+
+describe('listenTarget', () => {
+  it('tilting forward (filterNorm→0) targets inward/dark depth; back→open (matches Orchestra)', () => {
+    expect(listenTarget(0, CUR).d).toBeCloseTo(1, 6)
+    expect(listenTarget(0.5, CUR).d).toBeCloseTo(0, 6)
+    expect(listenTarget(1, CUR).d).toBeCloseTo(-1, 6)
+  })
+  it('holds arousal and valence (lean owns valence)', () => {
+    expect(listenTarget(1, CUR).a).toBe(CUR.a)
+    expect(listenTarget(1, CUR).v).toBe(CUR.v)
   })
 })
 

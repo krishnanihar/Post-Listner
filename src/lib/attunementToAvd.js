@@ -21,6 +21,18 @@ export function leanLiftTarget(pan, filterNorm, current) {
   }
 }
 
+// Listen (pitch → Depth only). filterNorm is 0..1: forward/away → +1 inward/dark,
+// back/toward → -1 open/bright — matching the Orchestra (beta → filter cutoff,
+// forward tilt darkens), so the gesture transfers. Holds Arousal and Valence
+// (the lean owns Valence). Pure — unit-tested.
+export function listenTarget(filterNorm, current) {
+  return {
+    a: current.a,                              // unprobed — hold
+    v: current.v,                              // unprobed — hold (lean owns Valence)
+    d: clampSigned((0.5 - filterNorm) * 2),    // forward→+1 inward/dark, back→-1 open
+  }
+}
+
 // Rise (swell size + ride/pull-back → Arousal, + hedonic). peakSwell 0..1.
 export function riseTarget(peakSwell, rodeClimax, current) {
   let a = peakSwell * 2 - 1

@@ -27,16 +27,6 @@ import { FRAGMENTS } from '../lib/fragmentBank.js'
 // clips are generated. The live ElevenLabs agent has been fully removed.
 const AVAILABLE_VOICE_LINES = new Set(['welcome'])
 
-// How long a Listen-beat fragment plays before we stop it and raise the
-// rating prompt. Fragment URLs resolve to full master tracks (see
-// fragmentBank.js — they are NOT short clips), so this fixed cap, not the
-// audio element's 'ended' event, is what actually ends a fragment.
-const FRAGMENT_DURATION_MS = 14000
-
-// After a fragment ends, how long the Yes/No buttons wait for a tap before
-// the rating resolves on its own as "none" and the run moves on.
-const RATING_GRACE_MS = 10000
-
 // The Admirer phase. Voice is pre-baked TTS clips played through the HRTF room
 // (no live agent). Kept as an inner component for a stable single mount point.
 function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
@@ -49,96 +39,6 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   // intended trigger; this also makes a stray agent commitEntry call a no-op
   // so the record is persisted and onNext fires exactly once.
   const committedRef = useRef(false)
-  // Fragment-audio plumbing (reused by the Listen-beat adapter below).
-  const fragmentAudioRef = useRef(null)
-  const fragmentTimerRef = useRef(null)
-  const ratingTimeoutRef = useRef(null)
-  // Holds the resolve() of the in-flight Listen fragment promise — the Listen
-  // component awaits it for each fragment and advances when the run is done.
-  const pendingRatingRef = useRef(null)
-
-  // Tear down the current fragment's audio element + cap timer. Pure
-  // cleanup — does not touch the rating promise.
-  const clearFragmentPlayback = useCallback(() => {
-    if (fragmentTimerRef.current) {
-      clearTimeout(fragmentTimerRef.current)
-      fragmentTimerRef.current = null
-    }
-    if (fragmentAudioRef.current) {
-      try { fragmentAudioRef.current.pause() } catch { /* ignore */ }
-      fragmentAudioRef.current = null
-    }
-  }, [])
-
-  // Resolve the in-flight fragment promise with the user's rating
-  // ("yes" | "no" | "none"). This is what advances the Listen run.
-  const resolveRating = useCallback((answer) => {
-    if (ratingTimeoutRef.current) {
-      clearTimeout(ratingTimeoutRef.current)
-      ratingTimeoutRef.current = null
-    }
-    const pending = pendingRatingRef.current
-    pendingRatingRef.current = null
-    if (pending) {
-      // Editorial moment: the user just rated a fragment (yes/no/none).
-      // Burst-release 8% of particles, keyed on the fragment id so a
-      // re-resolve doesn't double-fire.
-      if (pending.fragmentId) {
-        fireMoment(0.08, `fragment:${pending.fragmentId}`)
-        // First fragment rated → advance formation stage 1 (back plane
-        // fades in). Subsequent ratings are no-ops by the formationStage
-        // contract.
-        advanceFormationStage(1)
-      }
-      pending.resolve(answer)
-    }
-  }, [])
-
-  // Listen-beat adapter. Listen.jsx calls
-  //   playFragment(fragment, { onAwaitRating, getRater }) -> Promise<rating>
-  // and awaits it per fragment. We play the fragment audio; when it ends or
-  // caps we call onAwaitRating() (so Listen shows the Yes/No buttons) and
-  // expose the resolver via getRater() (so a tap resolves it). The promise
-  // always resolves — a tap, or the grace timeout firing 'none'.
-  const onPlayFragmentForListen = useCallback((fragment, { onAwaitRating, getRater } = {}) => {
-    return new Promise((resolve) => {
-      clearFragmentPlayback()
-      // The run is strictly sequential, so a prior rating should never still
-      // be pending — resolve it "none" defensively if one somehow is.
-      if (pendingRatingRef.current) pendingRatingRef.current.resolve('none')
-      pendingRatingRef.current = { resolve, fragmentId: fragment.id }
-      // Expose the rating setter so a Yes/No tap inside Listen resolves it.
-      getRater?.((answer) => resolveRating(answer))
-
-      // Fragment audio has run its course (cap timer or 'ended'): stop
-      // playback, raise the rating prompt, and arm the grace timeout.
-      const raiseRating = () => {
-        if (!pendingRatingRef.current) return
-        clearFragmentPlayback()
-        onAwaitRating?.()
-        if (ratingTimeoutRef.current) clearTimeout(ratingTimeoutRef.current)
-        ratingTimeoutRef.current = setTimeout(() => resolveRating('none'), RATING_GRACE_MS)
-      }
-
-      try {
-        const audio = new Audio(fragment.url)
-        audio.volume = 0.55
-        // 'ended' is a fallback for a future pre-sliced short clip; for a
-        // full master the cap timer below always fires first.
-        audio.addEventListener('ended', raiseRating, { once: true })
-        audio.play().catch(() => {
-          // Autoplay blocked — skip straight to the rating prompt so the
-          // promise still resolves and the run is not left hanging.
-          raiseRating()
-        })
-        fragmentAudioRef.current = audio
-        fragmentTimerRef.current = setTimeout(raiseRating, FRAGMENT_DURATION_MS)
-      } catch (e) {
-        console.warn('[attunement] listen playFragment failed:', e)
-        raiseRating()
-      }
-    })
-  }, [clearFragmentPlayback, resolveRating])
 
   // Monotonic token so the last-requested load wins; superseded in-flight
   // loads self-abandon (no orphan started players).
@@ -191,8 +91,6 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   const onCommitEntry = useCallback((entry) => {
     if (committedRef.current) return
     committedRef.current = true
-    clearFragmentPlayback()
-    resolveRating('none')
     try {
       const rec = avdRecorder.isRecording() ? avdRecorder.stop(Date.now()) : null
       const bundle = stemsBundleRef.current
@@ -214,7 +112,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
       // the entry message at settle.
       onNext({ stemsBundle: stemsBundleRef.current, summary: entry?.summary })
     }, 600)
-  }, [onNext, clearFragmentPlayback, resolveRating])
+  }, [onNext])
 
   // Whether a pre-baked voice clip is currently playing. Drives the amber dot
   // pulse + the "speaking" state label (replaces the old SDK isSpeaking).
@@ -364,6 +262,10 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
           ])
           if (cancelled) return
           roomHandleRef.current = room.playTexturePair(l, r)
+        } else if (score.movement?.id === 'listen') {
+          const bed = await decode(FRAGMENTS[1].url) // a world fragment to shape
+          if (cancelled) return
+          roomHandleRef.current = room.playFilteredBed(bed)
         } else if (score.movement?.id === 'rise') {
           const bed = await decode(FRAGMENTS[4].url) // lifted-cinematic
           if (cancelled) return
@@ -404,6 +306,14 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
           if (typeof cb === 'number') h.setBalance(Math.sign(cb) || 0)
           else h.setBalance((score.live.current.pan - 0.5) * 2)
         }
+        if (score.movement?.id === 'listen' && h.setBrightness) {
+          // Tilt forward (low filterNorm) DARKENS the bed — matching the
+          // Orchestra (beta → filter cutoff). Post-commit hold it at the chosen
+          // extreme so a relaxing wrist doesn't drift the brightness.
+          const cbr = score.live.current.committedBrightness
+          if (typeof cbr === 'number') h.setBrightness(cbr)
+          else h.setBrightness(score.live.current.filterNorm ?? 0.5)
+        }
         // FIX 3 — drive Rise audio reactivity each frame.
         if (score.movement?.id === 'rise' && h.setSwell) {
           h.setSwell(score.live.current.swell ?? 0)
@@ -434,28 +344,9 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     }
   }, [])
 
-  // Stop fragment audio + timers + orphan StemPlayer on unmount, and resolve
-  // any rating still in flight so the Listen promise can settle.
-  // Intentionally inlines the teardown rather than calling the callbacks
-  // (keeps this effect's dep array empty) — keep in sync.
+  // Stop the orphan StemPlayer on unmount if the rite was abandoned.
   useEffect(() => {
     return () => {
-      if (fragmentTimerRef.current) {
-        clearTimeout(fragmentTimerRef.current)
-        fragmentTimerRef.current = null
-      }
-      if (ratingTimeoutRef.current) {
-        clearTimeout(ratingTimeoutRef.current)
-        ratingTimeoutRef.current = null
-      }
-      if (pendingRatingRef.current) {
-        pendingRatingRef.current.resolve('none')
-        pendingRatingRef.current = null
-      }
-      if (fragmentAudioRef.current) {
-        try { fragmentAudioRef.current.pause() } catch { /* ignore */ }
-        fragmentAudioRef.current = null
-      }
       // Only stop the player if the rite was ABANDONED (not committed). On a
       // committed bloom this player is the live handoff — Orchestra mounts next
       // (AnimatePresence mode="wait" unmounts us first) and calls
@@ -581,8 +472,9 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
         )}
         {movementId === 'listen' && (
           <Listen
-            fragments={FRAGMENTS.slice(0, 2)}
-            playFragment={onPlayFragmentForListen}
+            live={score.live}
+            committed={score.state.status === 'committed'}
+            onCommit={score.commit}
             onAdvance={score.advance}
           />
         )}

@@ -19,6 +19,7 @@ describe('attunementMovements', () => {
   })
   it('the move movements declare the signals they read', () => {
     expect(getMovement('leanLift').signals).toEqual(['pan'])
+    expect(getMovement('listen').signals).toEqual(['filterNorm'])
     expect(getMovement('rise').signals).toEqual(['gestureGain', 'downbeat'])
     expect(getMovement('face').signals).toEqual(['yaw'])
   })
@@ -31,7 +32,7 @@ describe('attunementMovements', () => {
   it('getMovement returns null for an unknown id', () => {
     expect(getMovement('nope')).toBe(null)
   })
-  it('rise and face carry a non-empty ask; arrival, leanLift and bloom have ask: null', () => {
+  it('rise and face carry a non-empty ask; arrival, leanLift, listen and bloom have ask: null', () => {
     for (const id of ['rise', 'face']) {
       const ask = getMovement(id).ask
       expect(typeof ask).toBe('string')
@@ -39,6 +40,7 @@ describe('attunementMovements', () => {
     }
     expect(getMovement('arrival').ask).toBe(null)
     expect(getMovement('leanLift').ask).toBe(null)
+    expect(getMovement('listen').ask).toBe(null)
     expect(getMovement('bloom').ask).toBe(null)
   })
 })
