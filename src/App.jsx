@@ -28,6 +28,9 @@ function App() {
   const phaseRef = useRef(phase)
   phaseRef.current = phase
   const sawOrchestraRef = useRef(false)
+  // The finished journal entry, kept pending from settle until the next rite so
+  // a socket drop spanning settle can be recovered by an onOpen reconnect resend.
+  const pendingEntryRef = useRef(null)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -46,6 +49,12 @@ function App() {
           onOpen: () => {
             console.log(`[relay] paired to session ${s}`)
             client.send({ type: 'phase', phase: phaseRef.current })
+            // Resend the finished journal entry if one is still pending from a
+            // settle that raced a socket drop — the reconnect backoff (up to 8s)
+            // can outlast the settle-scoped 5s retry, so without this the entry
+            // (and its journal row) is silently lost. The viewer dedupes by rite,
+            // so a redundant resend is harmless.
+            if (pendingEntryRef.current) client.send(pendingEntryRef.current)
           },
         })
         client.start()
@@ -61,6 +70,9 @@ function App() {
   useEffect(() => {
     if (!relayRef.current) return
     if (phase === 'orchestra') sawOrchestraRef.current = true
+    // A new rite has begun — drop any entry still pending from the previous one
+    // so a late reconnect can't resend a stale entry into the new session.
+    if (phase === 'admirer') pendingEntryRef.current = null
     relayRef.current.send({ type: 'phase', phase })
     if (phase === 'entry' && sawOrchestraRef.current) {
       relayRef.current.send({ type: 'session:end' })
@@ -135,6 +147,9 @@ function App() {
       summary: sessionData.summary || '',
       glyph,
     }
+    // Hold it pending so a reconnect (onOpen) can resend if the socket is down
+    // longer than the settle-scoped retry below; cleared when the next rite starts.
+    pendingEntryRef.current = msg
     if (relay.send(msg)) return
     let tries = 0
     const iv = setInterval(() => {

@@ -18,7 +18,11 @@ export const MILESTONE_MEANING = {
 export function daysOfPractice(records) {
   const days = new Set()
   for (const r of records || []) {
-    const d = new Date(r.startedAt || 0)
+    // Skip records with no real timestamp (legacy entries migrated with
+    // startedAt:0): they'd otherwise all collapse into one epoch-day bucket and
+    // fabricate/undercount a "day of practice" for data with no known date.
+    if (!(r.startedAt > 0)) continue
+    const d = new Date(r.startedAt)
     days.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`)
   }
   return days.size

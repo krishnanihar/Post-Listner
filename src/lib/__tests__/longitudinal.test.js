@@ -27,6 +27,13 @@ describe('daysOfPractice — additive distinct days', () => {
     const t = 1_000_000_000_000
     expect(daysOfPractice([rec(t), rec(t + DAY), rec(t + 2 * DAY)])).toBe(3)
   })
+  it('skips records with a missing/non-positive timestamp (B4 — legacy migration)', () => {
+    const t = 1_000_000_000_000
+    // startedAt 0 / undefined / negative must not fabricate or collapse a day.
+    expect(daysOfPractice([rec(0), rec(undefined), rec(-5)])).toBe(0)
+    // valid days still count; the timestamp-less ones are ignored, not merged in.
+    expect(daysOfPractice([rec(t), rec(0), rec(t + DAY), rec(undefined)])).toBe(2)
+  })
 })
 
 describe('milestones', () => {

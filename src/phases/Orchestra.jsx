@@ -27,6 +27,7 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
   const archetypeIdRef = useRef(null)
   const rafRef = useRef(null)
   const startRef = useRef(null)
+  const startCtxRef = useRef(null)
   const lastRef = useRef(null)
   const fadeStartedRef = useRef(false)
   const wakeLockRef = useRef(null)
@@ -195,17 +196,27 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
     const songDuration = songDurationRef.current
 
     const tick = (timestamp) => {
+      const ctx = audioCtxRef.current
       if (!startRef.current) {
         startRef.current = timestamp
         lastRef.current = timestamp
+        // Anchor the master timeline to the AUDIO clock, not wall-clock:
+        // useVisibilityAudioPause suspends ctx (freezing ctx.currentTime AND
+        // playback) while the tab is hidden, but performance.now() keeps
+        // advancing — so a wall-clock `t` overshoots songDuration on return and
+        // prematurely fades/stops a song that has barely played. ctx.currentTime
+        // freezes with the audio, keeping `t` aligned with actual playback.
+        startCtxRef.current = ctx ? ctx.currentTime : null
       }
 
-      const elapsed = (timestamp - startRef.current) / 1000
       lastRef.current = timestamp
 
-      // Engine sees absolute briefing-relative time (we add BRIEFING_DURATION
-      // because briefing already happened in the prior phase — but here the
-      // briefing screen already ran, so elapsed=0 corresponds to BLOOM_START).
+      // Seconds of ACTUAL playback since the experience loop began (audio clock),
+      // falling back to wall-clock only if no ctx is available. elapsed=0 maps to
+      // BLOOM_START (the briefing already ran in the prior screen).
+      const elapsed = (ctx && startCtxRef.current != null)
+        ? (ctx.currentTime - startCtxRef.current)
+        : (timestamp - startRef.current) / 1000
       const t = elapsed + PHASES.BLOOM_START
 
       engine.tick(t, songDuration)
@@ -229,7 +240,7 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
         glyphBufRef.current.push([
           gesture.pan,
           gesture.filterNorm,
-          timestamp - startRef.current,
+          elapsed * 1000, // audio-clock ms so the journal glyph tracks playback
         ])
         if (gesture.downbeat.fired && navigator.vibrate) {
           navigator.vibrate(15)

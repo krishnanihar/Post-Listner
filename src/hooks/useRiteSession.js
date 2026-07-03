@@ -54,6 +54,8 @@ export function useRiteSession({ userId, onEntryWritten }) {
   // exactly one entry is written per rite — re-armed when the next rite
   // begins (phase:admirer). Guards against a duplicated 'entry' message.
   const entryHandledRef = useRef(false)
+  // bounded-backoff retry timer for a transient entry-write failure; cleared on unmount
+  const retryTimerRef = useRef(null)
 
   useEffect(() => {
     const baseUrl = import.meta.env.VITE_RELAY_URL || 'wss://localhost:8443'
@@ -98,27 +100,38 @@ export function useRiteSession({ userId, onEntryWritten }) {
             setRiteStage('idle')
             return
           }
-          resolveRegion()
-            .then((region) =>
-              createEntry(uid, { song: msg.song, summary: msg.summary, glyph: msg.glyph, region }),
-            )
-            .then((row) => {
-              if (row) {
-                setNewEntryId(String(row.id))
-                setRiteStage('settled')
-                onWrittenRef.current?.()
-              } else {
-                // write failed — recover instead of stranding the desktop on
-                // the settled loading card
-                entryHandledRef.current = false
-                setRiteStage('idle')
+          // Write the row, retrying a transient Supabase failure with bounded
+          // backoff. The conductor only resends on a socket drop, not a DB
+          // error, so without this a transient write failure permanently loses
+          // the journal row even though the rite completed fine.
+          const MAX_WRITE_ATTEMPTS = 4
+          resolveRegion().then((region) => {
+            const payload = { song: msg.song, summary: msg.summary, glyph: msg.glyph, region }
+            const attempt = (n) => {
+              const onFail = () => {
+                if (n < MAX_WRITE_ATTEMPTS) {
+                  retryTimerRef.current = setTimeout(() => attempt(n + 1), 600 * 2 ** (n - 1))
+                } else {
+                  // exhausted retries — recover instead of stranding the desktop
+                  // on the settled loading card
+                  entryHandledRef.current = false
+                  setRiteStage('idle')
+                }
               }
-            })
-            .catch(() => {
-              // an unexpected throw — recover the same way as a failed write
-              entryHandledRef.current = false
-              setRiteStage('idle')
-            })
+              createEntry(uid, payload)
+                .then((row) => {
+                  if (row) {
+                    setNewEntryId(String(row.id))
+                    setRiteStage('settled')
+                    onWrittenRef.current?.()
+                  } else {
+                    onFail()
+                  }
+                })
+                .catch(onFail)
+            }
+            attempt(1)
+          })
           return
         }
 
@@ -145,7 +158,10 @@ export function useRiteSession({ userId, onEntryWritten }) {
       },
     })
     client.start()
-    return () => client.stop()
+    return () => {
+      client.stop()
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+    }
   }, [sessionId])
 
   return { sessionId, riteStage, latestFreq, newEntryId }

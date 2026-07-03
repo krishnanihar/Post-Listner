@@ -14,6 +14,10 @@ import { isBrinkCrossing, LEAN_BRINK } from '../../lib/leanCommit.js'
 const TRACK_HALF = 38
 const BRINK_PCT = 50 + LEAN_BRINK * TRACK_HALF
 const LOCK_MS = 520
+// Generous backstop: if the brink is never crossed (orientation permission
+// denied on iOS, a no-sensor device, or a listener who never tilts), the beat
+// force-commits its last sub-round so listen can never dead-end the arc.
+const SAFETY_MS = 20000
 
 const DEFAULT_ROUNDS = [
   { prompt: 'open it up, or draw it close?', topLabel: 'open · bright', bottomLabel: 'inward · dark' },
@@ -88,6 +92,20 @@ export default function Listen({ live, onCommit, onAdvance, committed, subfaces 
     const t = setTimeout(onAdvance, 1100)
     return () => clearTimeout(t)
   }, [committed, onAdvance])
+
+  // Safety net — mirrors Rise/Face. If no brink-crossing ever commits this beat
+  // (orientation permission denied, or a device with no sensors), force-commit
+  // the last sub-round with the current read after a generous delay, so the
+  // gesture-gated beat can never permanently stall the whole experience.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (phaseRef.current === 'done') return
+      phaseRef.current = 'done'
+      setFired(true)
+      onCommit(live.current.filterNorm, rounds.length - 1)
+    }, SAFETY_MS)
+    return () => clearTimeout(t)
+  }, [live, onCommit, rounds.length])
 
   const round = rounds[subIndex] || DEFAULT_ROUNDS[0]
   const b = Math.max(-1, Math.min(1, rb))

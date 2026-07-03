@@ -23,13 +23,20 @@ export default function Entry({ onNext }) {
     audioEngine.init()
     audioEngine.resume()
 
-    // iOS gates device-motion behind a permission prompt that must be
-    // requested inside a user gesture — this tap is that gesture. Phase 1
-    // uses orientation to place the Admirer's voice in the room and to draw
-    // the glyph. Fire-and-forget: if denied, both simply stay centred.
+    // iOS gates device-motion AND device-orientation behind SEPARATE permission
+    // prompts, each of which must be requested inside a user gesture — this tap
+    // is that gesture. Motion drives the rise/face beats (gesture-size + strike);
+    // ORIENTATION drives the lean/listen beats (roll→Valence, pitch→Depth) and
+    // places the Admirer's voice in the room. Both must be requested, or the
+    // orientation-gated beats get no input on iOS even when motion is granted.
+    // Fire-and-forget: if denied, the beats' safety-net timeouts advance the arc.
     if (typeof DeviceMotionEvent !== 'undefined' &&
         typeof DeviceMotionEvent.requestPermission === 'function') {
       DeviceMotionEvent.requestPermission().catch(() => { /* denied — fine */ })
+    }
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission().catch(() => { /* denied — fine */ })
     }
 
     if (!droneStopRef.current) {
