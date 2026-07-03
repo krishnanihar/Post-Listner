@@ -16,7 +16,6 @@
     "relay": "npm run build:relay-phone && node conduct-relay/server.cjs"
   },
   "dependencies": {
-    "@elevenlabs/react": "^1.6.1",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "@react-three/postprocessing": "^3.0.4",
