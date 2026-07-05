@@ -49,12 +49,32 @@ const VOICE_SETTINGS = {
 }
 
 // ── the line bank ────────────────────────────────────────────────────────────
-// id → text. For now only the first-session welcome (option A). The other
-// authored lines (per-movement asks, returning-user recognition) get added here
-// as the redesign proceeds.
+// id → text. The other authored lines (per-movement asks) get added here as
+// the redesign proceeds.
 const LINES = {
+  // The full first-session welcome. Kept whole for backward-compat/rollback;
+  // Admirer.jsx's arrival choreography plays the welcome-1/2/3 split below
+  // instead, so this id is no longer on the critical path.
   welcome:
     "welcome to Post Listener. this is an instrument — but you don't play it with your hands. you play it by moving, by leaning toward what you want. it's yours to keep, and it learns a little more of you each time you come back. the first time runs slow, so — no rush. lean toward whatever's pulling at you.",
+  // The welcome above, split at sentence boundaries into three paced
+  // segments — same exact wording, just partitioned so Admirer.jsx can play
+  // them in sequence with a breath + a slight room-widen between each,
+  // rather than one ~25s monologue before any interaction. Concatenating
+  // welcome-1 + ' ' + welcome-2 + ' ' + welcome-3 reproduces `welcome` above
+  // verbatim.
+  'welcome-1':
+    "welcome to Post Listener. this is an instrument — but you don't play it with your hands. you play it by moving, by leaning toward what you want.",
+  'welcome-2':
+    "it's yours to keep, and it learns a little more of you each time you come back.",
+  'welcome-3':
+    "the first time runs slow, so — no rush. lean toward whatever's pulling at you.",
+  // Returning-user opening (Admirer.jsx branches on getIsFirstSession()):
+  // short, skips re-explaining the instrument, and lands on the same tail
+  // phrase as welcome-3 so the on-screen leanLift cue still follows naturally.
+  // PROPOSED COPY — flag for owner approval before generating.
+  'welcome-return':
+    "you're back. good — lean toward whatever's pulling at you.",
   // The end-of-Act-1 reflection: 12 gesture-mirror clips + 6 world readings.
   ...reflectionLines(),
 }

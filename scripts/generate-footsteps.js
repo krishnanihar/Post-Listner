@@ -2,8 +2,12 @@
 // scripts/generate-footsteps.js
 //
 // Generates the Admirer's arrival footsteps via the ElevenLabs Sound
-// Effects API. Writes ~3s of unhurried wood-floor footsteps to
-// public/admirer/footsteps.mp3. Re-run to regenerate.
+// Effects API. Writes ~6s of approaching wood-floor footsteps — a clear
+// crescendo from distant/faint to close/clear — to public/admirer/footsteps.mp3.
+// (Previously a flat ~3s loop with no dynamic arc.) Re-run to regenerate.
+// The clip's duration drives its own spatial animation in AdmirerRoom.playFootsteps
+// (the panner glide from far to the voice's seat is timed off buffer.duration),
+// so no other code needs to change when this duration changes.
 //
 // Requires: ELEVENLABS_API_KEY in .env.local (server-side, no VITE_ prefix).
 
@@ -34,8 +38,8 @@ if (!API_KEY) {
   process.exit(1)
 }
 
-const PROMPT = 'soft unhurried footsteps on a quiet wooden floor in a still room, walking calmly forward, low reverb, no music, no voice, no other sound, ambient room tone'
-const DURATION_SEC = 3.0
+const PROMPT = 'a person approaching from a distance across a quiet wooden floor, footsteps starting faint and far away and growing steadily louder and closer, unhurried but purposeful walking pace, clear dynamic crescendo from distant to near, subtle room reverb, no music, no voice, no other sound, ambient room tone'
+const DURATION_SEC = 6.0
 const OUT_PATH = resolve(ROOT, 'public/admirer/footsteps.mp3')
 
 console.log(`Generating ${DURATION_SEC}s of footsteps...`)
