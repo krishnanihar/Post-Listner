@@ -11,7 +11,7 @@ import { usePhoneMotion } from './usePhoneMotion.js'
 // builds and getRoom() returns null.
 export function useAdmirerRoom({ getAudioCtx }) {
   const roomRef = useRef(null)
-  const readMotion = usePhoneMotion()
+  const { read: readMotion } = usePhoneMotion()
 
   // Build the room once, on mount. The graph is live synchronously; the hall
   // IR loads in the background.

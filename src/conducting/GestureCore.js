@@ -158,6 +158,13 @@ export function processOrientation(state, e, now) {
 
   if (state.calibrationSamples) {
     state.calibrationSamples.push({ beta: rawBeta, gamma: rawGamma })
+    // Cap the buffer so a long-lived state that never calibrates (Act 1's
+    // per-hook GestureCore instances, unlike Act 2's fresh-per-session one)
+    // can't grow this array unbounded. 200 samples comfortably covers any
+    // calibration window this codebase uses (~1s+ of orientation events)
+    // while keeping calibrate()'s average a recent-window mean, not a
+    // whole-session one.
+    if (state.calibrationSamples.length > 200) state.calibrationSamples.shift()
   }
 }
 

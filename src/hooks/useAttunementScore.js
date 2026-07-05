@@ -17,8 +17,20 @@ import { setWarmth, setDepth, setEnergy, setWorld, warmthBucket, depthBucket, en
 // movement entry so the companion can voice that movement's question aloud.
 export function useAttunementScore({ onExpansion, onSpeculativePreload, onBloom, onReact, onAsk } = {}) {
   const [state, dispatch] = useReducer(reduce, undefined, initialState)
-  const readMotion = usePhoneMotion()
+  const { read: readMotion, calibrate } = usePhoneMotion()
   const ring = useRef(archetypeRing()).current
+
+  // One-time calibration to the user's resting hold, ~1.5s after mount — the
+  // user is holding the phone still through arrival/welcome, which makes a
+  // good neutral. Mirrors Act 2's ConductingEngine.startCalibration (which
+  // calibrates once, 2s into Throne); Act 1 never calibrated at all before
+  // this, so leanLift/listen read gesture offsets against a hardcoded
+  // baseline instead of this user's actual hold. calibrate is stable
+  // (usePhoneMotion memoizes it), so this effect only ever schedules once.
+  useEffect(() => {
+    const timer = setTimeout(() => { calibrate() }, 1500)
+    return () => clearTimeout(timer)
+  }, [calibrate])
 
   const movement = getMovement(state.movementId)
 

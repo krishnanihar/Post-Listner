@@ -129,6 +129,38 @@ describe('GestureCore — calibration', () => {
     expect(snap.baselineBeta).toBeCloseTo(75, 0)
     expect(snap.baselineGamma).toBeCloseTo(0, 0)
   })
+
+  it('does not move the baseline when calibrate() runs with zero samples (safe no-op)', () => {
+    const s = createState({ params: PARAMS })
+    calibrate(s) // never called processOrientation — calibrationSamples is empty
+    const snap = read(s, 0)
+    expect(snap.baselineBeta).toBe(75)
+    expect(snap.baselineGamma).toBe(0)
+  })
+
+  it('caps calibrationSamples at 200 entries so a long-lived state (Act 1) cannot leak unbounded memory', () => {
+    const s = createState({ params: PARAMS })
+    for (let i = 0; i < 500; i++) {
+      processOrientation(s, { alpha: 0, beta: 10, gamma: 0 }, i * 16)
+    }
+    expect(s.calibrationSamples.length).toBe(200)
+  })
+
+  it('keeps only the most recent window after the cap, so calibrate() reflects recent hold, not the whole session', () => {
+    const s = createState({ params: PARAMS })
+    // Old, very different orientation — should be evicted once the cap kicks in.
+    for (let i = 0; i < 200; i++) {
+      processOrientation(s, { alpha: 0, beta: 0, gamma: 0 }, i * 16)
+    }
+    // Fresh, sustained window at a different resting hold.
+    for (let i = 0; i < 200; i++) {
+      processOrientation(s, { alpha: 0, beta: 40, gamma: 10 }, (200 + i) * 16)
+    }
+    calibrate(s)
+    const snap = read(s, 400 * 16)
+    expect(snap.baselineBeta).toBeCloseTo(40, 0)
+    expect(snap.baselineGamma).toBeCloseTo(10, 0)
+  })
 })
 
 describe('GestureCore — RESEARCH params (validate higher thresholds)', () => {

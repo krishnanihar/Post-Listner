@@ -56,7 +56,7 @@ export default function BackgroundGlyph() {
   const svgNodeRef = useRef(null)               // NEW
   const animatedSvgOpacityRef = useRef(0)       // NEW
   const releaseRatioRef = useRef(0)             // NEW
-  const readMotion = usePhoneMotion()
+  const { read: readMotion } = usePhoneMotion()
   const [data, setData] = useState(null)
   const [releaseRatio, setReleaseRatio] = useState(0)
   const particlesRef = useRef(null)

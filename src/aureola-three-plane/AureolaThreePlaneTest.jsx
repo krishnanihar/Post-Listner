@@ -84,7 +84,7 @@ export default function AureolaThreePlaneTest() {
   // Tilt — { x, y } in -1..1 (for camera translation), gamma/beta in raw
   // clamped degrees (for the middle-plane shader's tilt magnitude).
   const tiltRef = useRef({ x: 0, y: 0, gamma: 0, beta: 0 })
-  const readMotion = usePhoneMotion()
+  const { read: readMotion } = usePhoneMotion()
 
   const [needsIosTap, setNeedsIosTap] = useState(isIosPermissionGated())
   const [inputMode] = useState(isCoarsePointer() ? 'phone' : 'mouse')
