@@ -167,7 +167,7 @@ export default function LeanLift({ live, onCommit, onAdvance, committed, subface
       <div style={hintWrap}>
         <PhoneTiltHint dimmed={fired} />
         <div style={{ ...affordance, opacity: fired ? 0 : 0.75 }}>
-          tilt your phone toward the one that pulls
+          tilt your phone toward the one that pulls — a lean like this will place the sound around you, later.
         </div>
       </div>
     </div>

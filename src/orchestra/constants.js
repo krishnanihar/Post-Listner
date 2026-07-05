@@ -71,6 +71,19 @@ export const YAW_SPOTLIGHT = {
 // Static gain levels — without Ascent/Dissolution there's no fade arc on
 // the song itself; the song carries its own dynamics. Hall + audience are
 // the only envelope we ramp during Bloom.
+// Per-stem gain compensation on top of GAINS.TRACK_A — the vocals stem reads
+// chronically weak (the masters are instrumental, so htdemucs has nothing
+// vocal-like to pull and leaks lead instruments inconsistently). A modest
+// +3.5 dB (~1.5×) boost narrows the gap; drums/bass/other are untouched. Kept
+// conservative — the master compressor downstream is the safety net against
+// clipping. Keyed like STEMS/STEM_NAMES.
+export const STEM_GAIN_COMP = {
+  VOCALS: 1.5,
+  DRUMS:  1.0,
+  BASS:   1.0,
+  OTHER:  1.0,
+}
+
 export const GAINS = {
   TRACK_A: 0.7,                    // constant Track A level once Bloom completes
   AUDIENCE: 0.10,                  // constant audience-murmur bed during Bloom + Throne

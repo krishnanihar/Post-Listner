@@ -11,7 +11,7 @@
 // Pure data + builders — unit-tested.
 
 export const FRAME = 'i was watching how you moved.'
-export const HANDOFF = 'this is the one that found you. stay with it.'
+export const HANDOFF = "this is the one that found you. you leaned toward it, opened it, lifted it, turned to face it — that's how you'll hold the room. stay with it."
 
 export const WARMTH_CLAUSE = {
   warm: 'you leaned toward warmth',

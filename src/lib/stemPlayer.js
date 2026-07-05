@@ -35,25 +35,51 @@ export default class StemPlayer {
 
   /**
    * Load all 4 stems from URLs, decode them, and return a ready-to-start
-   * StemPlayer. Falls back to a duplicated single buffer when any stem fails.
+   * StemPlayer. A single failed stem degrades ONLY that stem — it's
+   * substituted with the master (or silence if no master) — while the other 3
+   * stay correctly separated and spatial. Only if ALL 4 fail does it fall back
+   * to the old last-resort: a single duplicated buffer fanned to all 4
+   * positions.
    *
    * @param {AudioContext} ctx
    * @param {{vocals: string, drums: string, bass: string, other: string}} urls
-   * @param {string} [fallbackUrl] — single master to fan out if any stem fails
+   * @param {string} [fallbackUrl] — single master, used to patch missing stems
    */
   static async load(ctx, urls, fallbackUrl = null) {
-    try {
-      const buffers = await loadAndDecode(ctx, urls)
-      return new StemPlayer(ctx, buffers)
-    } catch (err) {
-      console.warn('StemPlayer.load: stem fetch failed, attempting fallback', err)
-      if (!fallbackUrl) throw err
+    const loaded = await loadAndDecodeSettled(ctx, urls)
+    const missing = STEM_KEYS.filter((key) => !loaded[key])
+
+    if (missing.length === 0) {
+      return new StemPlayer(ctx, loaded)
+    }
+
+    if (missing.length === STEM_KEYS.length) {
+      // Total failure — last resort: fan a single master to all 4 positions.
+      console.warn('StemPlayer.load: all stems failed, falling back to master fan-out')
+      if (!fallbackUrl) throw new Error('StemPlayer.load: all stems failed and no fallback URL provided')
       const single = await loadAndDecode(ctx, { only: fallbackUrl })
       const buf = single.only
       return new StemPlayer(ctx, {
         vocals: buf, drums: buf, bass: buf, other: buf,
       })
     }
+
+    // Partial failure — patch only the missing stems with the master (or
+    // silence, if there's no master either) so the rest of the mix stays
+    // spatial instead of collapsing to a single fanned-out position.
+    console.warn(`StemPlayer.load: stem(s) [${missing.join(', ')}] failed, substituting fallback for those only`)
+    let substitute = null
+    if (fallbackUrl) {
+      try {
+        substitute = (await loadAndDecode(ctx, { only: fallbackUrl })).only
+      } catch (err) {
+        console.warn('StemPlayer.load: fallback master also failed, using silence for missing stems', err)
+      }
+    }
+    for (const key of missing) {
+      loaded[key] = substitute || silentBuffer(ctx)
+    }
+    return new StemPlayer(ctx, loaded)
   }
 
   /** Start all 4 sources with a shared anchor time so they're sample-aligned. */
@@ -138,14 +164,42 @@ export default class StemPlayer {
   }
 }
 
+async function fetchAndDecodeOne(ctx, url) {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`fetch ${url} failed: ${res.status}`)
+  const arrayBuf = await res.arrayBuffer()
+  return ctx.decodeAudioData(arrayBuf)
+}
+
 async function loadAndDecode(ctx, urlMap) {
   const entries = Object.entries(urlMap)
-  const buffers = await Promise.all(entries.map(async ([key, url]) => {
-    const res = await fetch(url)
-    if (!res.ok) throw new Error(`fetch ${url} failed: ${res.status}`)
-    const arrayBuf = await res.arrayBuffer()
-    const audioBuf = await ctx.decodeAudioData(arrayBuf)
-    return [key, audioBuf]
-  }))
+  const buffers = await Promise.all(entries.map(async ([key, url]) => [key, await fetchAndDecodeOne(ctx, url)]))
   return Object.fromEntries(buffers)
+}
+
+// Same as loadAndDecode, but a single failed fetch/decode doesn't reject the
+// whole batch — the failed key is simply absent from the returned map, so the
+// caller can patch just that stem instead of losing the whole mix.
+async function loadAndDecodeSettled(ctx, urlMap) {
+  const entries = Object.entries(urlMap)
+  const settled = await Promise.allSettled(
+    entries.map(([key, url]) => fetchAndDecodeOne(ctx, url).then((buf) => [key, buf])),
+  )
+  const out = {}
+  settled.forEach((result, i) => {
+    const [key] = entries[i]
+    if (result.status === 'fulfilled') {
+      out[key] = result.value[1]
+    } else {
+      console.warn(`StemPlayer: stem "${key}" failed to load`, result.reason)
+    }
+  })
+  return out
+}
+
+// A short silent buffer to stand in for a stem when neither the stem nor the
+// master fallback could be loaded — the position stays in the graph (so the
+// other stems' spatial layout is unaffected) but contributes no sound.
+function silentBuffer(ctx) {
+  return ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate)
 }

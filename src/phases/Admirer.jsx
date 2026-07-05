@@ -585,6 +585,36 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
           </div>
         )}
 
+        {/* Bloom — a visual correlate for the room physically opening
+            (AdmirerRoom.beginExpansion, ~3500ms) so the app's richest audio
+            moment doesn't play under a blank stage. Reuses the amber
+            expanding-ring pattern from Rise/Face's strike flash, scaled up to
+            the full stage. Purely decorative — no state machine, no gating. */}
+        {movementId === 'bloom' && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 4, pointerEvents: 'none',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            overflow: 'hidden',
+          }}>
+            {[0, 0.45].map((delay) => (
+              <motion.div
+                key={delay}
+                aria-hidden
+                initial={{ opacity: 0.45, scale: 0.12 }}
+                animate={{ opacity: 0, scale: 1 }}
+                transition={{ duration: 3.4, delay, ease: 'easeOut' }}
+                style={{
+                  position: 'absolute',
+                  width: '86vmin', height: '86vmin',
+                  maxWidth: 640, maxHeight: 640,
+                  borderRadius: '50%',
+                  border: `1px solid ${COLORS.scoreAmber}`,
+                }}
+              />
+            ))}
+          </div>
+        )}
+
         {/* Spacer */}
         <div style={{ flex: 1 }} />
 

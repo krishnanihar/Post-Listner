@@ -122,7 +122,7 @@ export default function Face({ live, onCommit, onAdvance, committed }) {
           ▾
         </motion.div>
         <div style={{ ...affordance, opacity: fired ? 0 : 0.75 }}>
-          turn to face it, then strike down to choose
+          turn to face it, then strike down to choose. later, turning steers which instrument leads.
         </div>
       </div>
     </div>

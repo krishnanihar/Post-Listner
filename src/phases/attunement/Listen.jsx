@@ -163,7 +163,7 @@ export default function Listen({ live, onCommit, onAdvance, committed, subfaces 
       <div style={hintWrap}>
         <PhoneNodHint dimmed={fired} />
         <div style={{ ...affordance, opacity: fired ? 0 : 0.75 }}>
-          tilt back to open it, forward to draw it close
+          tilt back to open it, forward to draw it close. the same tilt brightens or dims the sound later.
         </div>
       </div>
     </div>

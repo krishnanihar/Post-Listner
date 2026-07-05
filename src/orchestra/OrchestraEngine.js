@@ -7,6 +7,7 @@ import {
   EARLY_REFLECTIONS,
   YAW_SPOTLIGHT,
   GAINS,
+  STEM_GAIN_COMP,
   CONDUCTING,
   distanceCutoff,
 } from './constants.js'
@@ -308,10 +309,11 @@ export default class OrchestraEngine {
       }
     }
 
-    // Track A gain — held constant once Bloom completes.
+    // Track A gain — held constant once Bloom completes. Per-stem compensation
+    // (STEM_GAIN_COMP) corrects for the chronically-weak vocals stem.
     const trackAGain = this._getTrackAGain(t, songDuration)
     for (const name of STEM_NAMES) {
-      this.stems[name].gain.gain.setTargetAtTime(trackAGain, now, 0.3)
+      this.stems[name].gain.gain.setTargetAtTime(trackAGain * STEM_GAIN_COMP[name], now, 0.3)
     }
 
     // Binaural gain — fade in once Briefing ends, hold through Throne, fade
@@ -370,7 +372,7 @@ export default class OrchestraEngine {
       )
 
       const trackAGain = this._getTrackAGain(t, this._songDuration || 9999)
-      const finalGain = clamp(trackAGain * dynamicsGain * spotlightLin, 0, 1.5)
+      const finalGain = clamp(trackAGain * dynamicsGain * spotlightLin * STEM_GAIN_COMP[name], 0, 1.5)
       stem.gain.gain.setTargetAtTime(finalGain, now, CONDUCTING.INTENSITY_TC)
 
       // Per-stem conducting filter cutoff. Base cutoff comes from pitch (filterNorm).

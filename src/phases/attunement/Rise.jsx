@@ -122,7 +122,7 @@ export default function Rise({ live, onCommit, onAdvance, committed }) {
       <div style={hintWrap}>
         <PhoneRiseHint dimmed={fired} />
         <div style={{ ...affordance, opacity: fired ? 0 : 0.75 }}>
-          lift the energy with bigger moves — then strike down to mark the peak
+          lift the energy with bigger moves — then strike down to mark the peak. later, this is how you'll swell the music.
         </div>
       </div>
     </div>
