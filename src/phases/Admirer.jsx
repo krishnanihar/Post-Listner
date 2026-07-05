@@ -40,11 +40,11 @@ const AVAILABLE_VOICE_LINES = new Set([
 // wording as the single `welcome` clip (kept on disk for backward-compat),
 // just partitioned at sentence boundaries.
 const WELCOME_SEGMENTS = ['welcome-1', 'welcome-2', 'welcome-3']
-// Brief breath between segments, and a slight room widen on each — a paced
-// reveal, not a lecture. Both intentionally small: arrival's own expansion
-// target is 0 (still intimate), reached properly when the score's own
-// advance() fires on the last segment ending.
-const WELCOME_PAUSE_MS = 550
+// A short beat between segments (not a long pause — there's no ambient bed
+// under arrival, so a longer gap reads as dead air), and a slight room widen on
+// each. Both intentionally small: arrival's own expansion target is 0 (still
+// intimate), reached properly when the score's advance() fires on the last end.
+const WELCOME_PAUSE_MS = 300
 const WELCOME_WIDEN_STEP = 0.05
 
 // The Admirer phase. Voice is pre-baked TTS clips played through the HRTF room
