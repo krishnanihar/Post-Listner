@@ -227,6 +227,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   // "begin" tap — so there's no reason to make the network round-trip wait
   // its turn). Runs once.
   const arrivalStartedRef = useRef(false)
+  const arrivalAdvancedRef = useRef(false)
   const advanceRef = useRef(null)
   useEffect(() => { advanceRef.current = score.advance })
   useEffect(() => {
@@ -235,13 +236,13 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     let timer = null
     let pauseTimer = null
 
-    const ctx0 = getAudioCtx?.()
-    const footstepsReady = ctx0
-      ? fetch('/admirer/footsteps.mp3')
-        .then((r) => r.arrayBuffer())
-        .then((b) => ctx0.decodeAudioData(b))
-        .catch(() => null) // no footsteps clip — still proceed to voice
-      : Promise.resolve(null)
+    // Start the network fetch early (no ctx needed) so it overlaps the room
+    // poll; DECODE with the confirmed ctx inside begin(). Capturing the ctx here
+    // would pin footsteps to null whenever the ctx isn't ready at mount (e.g. the
+    // ?phase=admirer dev route, where audio inits a beat after this effect runs).
+    const footstepsBytes = fetch('/admirer/footsteps.mp3')
+      .then((r) => r.arrayBuffer())
+      .catch(() => null) // no footsteps clip — still proceed to voice
 
     const begin = () => {
       if (cancelled || arrivalStartedRef.current) return
@@ -256,7 +257,15 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
         return
       }
       arrivalStartedRef.current = true
-      const finishArrival = () => { if (!cancelled) advanceRef.current?.() }
+      // One-shot: arrival advances exactly once, whether via the last welcome
+      // segment or the escape hatch. Without this, an orphaned segment finishing
+      // AFTER an escape tap would re-fire advance() against the CURRENT beat
+      // (leanLift), force-skipping it without writing its gesture taste.
+      const finishArrival = () => {
+        if (cancelled || arrivalAdvancedRef.current) return
+        arrivalAdvancedRef.current = true
+        advanceRef.current?.()
+      }
 
       // Play the paced welcome segments in sequence, with a brief pause + a
       // slight room widen between each — so the 25s monologue reads as a
@@ -286,11 +295,14 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
         else playVoiceLine('welcome-return', { onEnded: finishArrival })
       }
 
-      footstepsReady.then((buf) => {
-        if (cancelled) return
-        if (buf) room.playFootsteps(buf, { onEnded: toWelcome })
-        else toWelcome()
-      })
+      footstepsBytes
+        .then((b) => (b && !cancelled ? ctx.decodeAudioData(b) : null))
+        .catch(() => null)
+        .then((buf) => {
+          if (cancelled) return
+          if (buf) room.playFootsteps(buf, { onEnded: toWelcome })
+          else toWelcome()
+        })
     }
     begin()
     return () => {
@@ -695,7 +707,11 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
             marginBottom: 'calc(env(safe-area-inset-bottom, 0px) + 32px)',
           }}>
             <button
-              onClick={() => score.advance()}
+              onClick={() => {
+                if (arrivalAdvancedRef.current) return
+                arrivalAdvancedRef.current = true
+                score.advance()
+              }}
               style={{
                 fontFamily: FONTS.serif,
                 fontStyle: 'italic',
