@@ -1,9 +1,12 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import Paper from '../score/Paper'
 import { COLORS, FONTS } from '../score/tokens'
 import { getEntries } from '../lib/sessionStore.js'
 import { daysOfPractice, nextMilestone } from '../lib/longitudinal.js'
+import { NOCTURNE_ENABLED } from '../world/flags.js'
+import { playSfx } from '../world/worldSound.js'
+import Constellation from './Constellation.jsx'
 
 // The brief closing card after the song ends. The live ElevenLabs agent has
 // been removed (the Admirer is pre-baked TTS now); Settle now plays a warm
@@ -15,6 +18,13 @@ const ONGOING_DURATION_MS = 6000
 
 export default function Settle({ onComplete }) {
   const closeAudioRef = useRef(null)
+  // Nocturne — the constellation door (canon §6). Opt-in, view-only; opening it
+  // pauses the auto-return so the field holds until the listener touches away.
+  const [showField, setShowField] = useState(false)
+  // The record settling onto paper — a diegetic page-settle as the Coda arrives.
+  useEffect(() => {
+    if (NOCTURNE_ENABLED) playSfx('coda-settle', { volume: 0.45 })
+  }, [])
   useEffect(() => {
     let audio
     try {
@@ -41,10 +51,11 @@ export default function Settle({ onComplete }) {
   const milestone = nextMilestone(entries.length)
 
   useEffect(() => {
+    if (showField) return undefined // the field pauses the auto-return
     const ms = isFirst ? FIRST_SESSION_DURATION_MS : ONGOING_DURATION_MS
     const t = setTimeout(onComplete, ms)
     return () => clearTimeout(t)
-  }, [isFirst, onComplete])
+  }, [isFirst, onComplete, showField])
 
   return (
     <Paper variant="cream">
@@ -93,7 +104,27 @@ export default function Settle({ onComplete }) {
             Next time, if you choose, the room opens.
           </div>
         )}
+        {/* Nocturne — the quiet door to the constellation (opt-in, view-only). */}
+        {NOCTURNE_ENABLED && !showField && (
+          <motion.button
+            type="button"
+            onClick={() => setShowField(true)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.5 }}
+            transition={{ duration: 1.2, delay: 1.4 }}
+            style={{
+              marginTop: 8,
+              background: 'none', border: 'none', cursor: 'pointer',
+              fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 12,
+              letterSpacing: 0.3, color: COLORS.inkCreamSecondary,
+              textDecoration: 'underline', textUnderlineOffset: 4,
+            }}
+          >
+            the others
+          </motion.button>
+        )}
       </div>
+      {showField && <Constellation onExit={() => setShowField(false)} />}
     </Paper>
   )
 }
