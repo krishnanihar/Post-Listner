@@ -200,10 +200,8 @@ export default function Statement() {
               The machine generates every sound. One thing is authored by hand, and only by
               hand: the mapping from a person's response, to its meaning, to a coordinate in
               a space of arousal, valence, and depth. If a machine authored that mapping, the
-              maker dissolves. It is the instrument's soul — and the thesis's hinge: taste is{' '}
-              <em>the living residue of craft</em>. When the executing hands fall silent,
-              craft does not die; it migrates — from making to choosing, from execution to
-              curation.
+              maker dissolves. The thesis's hinge: taste is <em>the living residue of craft</em> —
+              the craft migrates, from making to choosing.
             </p>
             <p>
               It does not claim to measure you. It offers <em>the experience of being seen</em> —
@@ -219,7 +217,7 @@ export default function Statement() {
           </figure>
 
           <footer className="stmt-footer">
-            <p>The collective dimension is presently mocked, and labelled as such wherever it appears.</p>
+            <p>The collective dimension is presently mocked — disclosed here and in the reel; in the room it appears as an unnamed haze.</p>
             <p>a practice-based NID master's thesis artefact, re-formed for the Opera of the Future.</p>
           </footer>
         </main>

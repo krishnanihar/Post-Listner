@@ -101,4 +101,18 @@ describe('traceModel — drawTrace (Act-I replay)', () => {
     expect(drawTrace(ctx, [], 300, 600)).toBe(0)
     expect(drawTrace(ctx, null, 300, 600)).toBe(0)
   })
+
+  it('scales stroke radii by dpr (WorldStage passes device-pixel dims)', () => {
+    const trace = [{ x: 0.5, y: 0.5, size: 0.5 }]
+
+    const ctx1 = fakeCanvas()._ctx
+    drawTrace(ctx1, trace, 300, 600, { dpr: 1 })
+    const outerRadius1 = ctx1.calls.find((c) => Array.isArray(c) && c[0] === 'arc')[3]
+
+    const ctx2 = fakeCanvas()._ctx
+    drawTrace(ctx2, trace, 300, 600, { dpr: 2 })
+    const outerRadius2 = ctx2.calls.find((c) => Array.isArray(c) && c[0] === 'arc')[3]
+
+    expect(outerRadius2).toBeCloseTo(outerRadius1 * 2)
+  })
 })

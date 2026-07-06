@@ -5,7 +5,7 @@ import { COLORS, FONTS } from '../score/tokens'
 import { audioEngine } from '../engine/audio'
 import { getUserName, setUserName } from '../lib/sessionStore.js'
 import { NOCTURNE_ENABLED } from '../world/flags.js'
-import { playSfx } from '../world/worldSound.js'
+import { playSfx, preloadSfx } from '../world/worldSound.js'
 
 // Nocturne (canon §2, §6) — the Overture. The name stage becomes "signing the
 // program" on the dark stage (the WorldStage lamp pool shows through); its cream
@@ -36,6 +36,14 @@ export default function Entry({ onNext }) {
 
     // Nocturne (canon §5) — the lamp comes up as the rite begins. Fail-silent.
     if (NOCTURNE_ENABLED) playSfx('lamp-up', { volume: 0.5 })
+
+    // Warm the rest of the diegetic SFX cache inside this same user gesture, so
+    // later cues (page-write, beat-commit, bloom, coda…) don't race their own
+    // first-play network fetch. Fire-and-forget, never allowed to throw into
+    // this tap handler.
+    if (NOCTURNE_ENABLED) {
+      try { preloadSfx() } catch { /* never block the begin tap */ }
+    }
 
     // iOS gates device-motion AND device-orientation behind SEPARATE permission
     // prompts, each of which must be requested inside a user gesture — this tap

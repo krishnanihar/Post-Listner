@@ -11,10 +11,15 @@ import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { COLORS, FONTS } from '../../score/tokens'
 import { NOCTURNE_ENABLED } from '../../world/flags.js'
+import { setLiveBreadth } from '../../world/worldStore.js'
 // Nocturne (canon §2) — hardcoded cream inks flip to light on the dark stage
 // (matching phaseTheme's --ink); byte-identical when the flag is off.
 const INK = NOCTURNE_ENABLED ? '#E8E4DD' : '#1C1814'
 const INK2 = NOCTURNE_ENABLED ? '#8A7556' : '#6B5840'
+
+// Nocturne (canon §6) — how much of the rise meter (0..1) reaches the live
+// breadth override. Kept modest: a widening cue, not the bloom itself.
+const LIVE_BREADTH_SCALE = 0.35
 
 // Must build at least this much before a down-stroke counts (a stray early
 // strike with no build is ignored).
@@ -65,6 +70,24 @@ export default function Rise({ live, onCommit, onAdvance, committed }) {
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
   }, [live, onCommit])
+
+  // Nocturne (canon §6) — additively couple the energy meter into WorldStage's
+  // live breadth override. Purely a read of `meter` (already-committed render
+  // state from the tick above); never touches the swell/downbeat gesture math
+  // or the commit machinery. Fail-safe: a throw here must never interrupt the
+  // choreography.
+  useEffect(() => {
+    if (!NOCTURNE_ENABLED) return
+    try { setLiveBreadth(meter * LIVE_BREADTH_SCALE) } catch { /* never break the beat */ }
+  }, [meter])
+
+  // Release the breadth override when this beat ends (unmount = beat exit).
+  useEffect(() => {
+    if (!NOCTURNE_ENABLED) return undefined
+    return () => {
+      try { setLiveBreadth(null) } catch { /* never break the beat */ }
+    }
+  }, [])
 
   // Safety net — commit anyway after a generous beat if no qualifying strike.
   useEffect(() => {

@@ -47,8 +47,8 @@ export function lerpScene(a, b, k) {
     const sa = a.sources[i]
     const sb = b.sources[i]
     if (sa && sb) sources.push(lerpSource(sa, sb, kk))
-    else if (sb) sources.push({ ...sb, intensity: lerp(0, sb.intensity, kk) })
-    else if (sa) sources.push({ ...sa, intensity: lerp(sa.intensity, 0, kk) })
+    else if (sb) sources.push({ ...sb, intensity: lerp(0, sb.intensity == null ? 1 : sb.intensity, kk) })
+    else if (sa) sources.push({ ...sa, intensity: lerp(sa.intensity == null ? 1 : sa.intensity, 0, kk) })
   }
   return {
     pool: {

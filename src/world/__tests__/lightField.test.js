@@ -107,6 +107,19 @@ describe('lightField — lerpScene', () => {
     const mid = lerpScene(a, b, 0.5)
     expect(mid.sources[0].intensity).toBeCloseTo(0.5, 6)
   })
+  it('fades in/out a source with no explicit intensity without producing NaN', () => {
+    const a = makeScene()
+    const b = { ...makeScene(), sources: [{ x: 0.2, y: 0.2, radius: 0.1, warmth: 0.5 }] }
+    const midIn = lerpScene(a, b, 0.5)
+    expect(midIn.sources[0].intensity).toBeCloseTo(0.5, 6)
+    expect(Number.isNaN(midIn.sources[0].intensity)).toBe(false)
+
+    const c = { ...makeScene(), sources: [{ x: 0.2, y: 0.2, radius: 0.1, warmth: 0.5 }] }
+    const d = makeScene()
+    const midOut = lerpScene(c, d, 0.5)
+    expect(midOut.sources[0].intensity).toBeCloseTo(0.5, 6)
+    expect(Number.isNaN(midOut.sources[0].intensity)).toBe(false)
+  })
 })
 
 // A minimal fake 2D context to smoke compositeScene without a real canvas.

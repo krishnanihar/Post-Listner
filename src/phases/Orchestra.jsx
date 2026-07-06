@@ -10,6 +10,7 @@ import {
   BRIEFING_DURATION,
   END_FADE_DURATION,
   CLOSING_CARD_DURATION,
+  BLOOM_DURATION,
 } from '../orchestra/constants.js'
 import { scoreArchetype } from '../lib/scoreArchetype.js'
 import { distillGlyph } from '../lib/glyph.js'
@@ -25,7 +26,6 @@ import {
   deactivateConducting,
 } from '../world/conductingBridge.js'
 import { createFalterState, stepFalter, reverbSendFactor } from '../lib/falter.js'
-import { BLOOM_DURATION } from '../orchestra/constants.js'
 
 // Nocturne Act-II legibility (canon §7). The "instrument introduces itself":
 // the first INTRO_RAMP_SEC of Throne runs conducting-response gains hotter so
@@ -33,6 +33,14 @@ import { BLOOM_DURATION } from '../orchestra/constants.js'
 // off sustained high ARTICULATION (0..1 normalized), device-tunable.
 const INTRO_RAMP_SEC = 20
 const FALTER_OPTS = { jerkThreshold: 0.5, sustainMs: 4000 }
+
+// Nocturne — WorldStage paints continuous hall light behind these screens now
+// (canon §7: roll→pool, pitch→warmth, downbeat→strike rings, yaw→beam, bloom→
+// widening). The previously opaque black/cream fills must let it show through.
+// Off = byte-identical to the shipped fills.
+const STAGE_FILL = NOCTURNE_ENABLED ? 'transparent' : '#000000'
+const AWAITING_FILL = NOCTURNE_ENABLED ? 'transparent' : '#F2EBD8'
+const AWAITING_INK = NOCTURNE_ENABLED ? '#E8E4DD' : '#1C1814' // matches phaseTheme's INK_LIGHT
 
 export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx, relayRef, glyphRef }) {
   const [phase, setPhase] = useState(() => isPreloadComplete() ? 'awaiting-tap' : 'loading') // loading | awaiting-tap | briefing | experience | closing
@@ -246,6 +254,14 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
     // fires once the fade-out completes.
     const songDuration = songDurationRef.current
 
+    // Nocturne intro-ramp scratch — reused across frames so the ramp branch
+    // below doesn't `{...gesture, gestureGain}` a fresh object every frame.
+    // Only the 7 fields OrchestraEngine.applyConducting actually destructures.
+    const rampGesture = {
+      pan: 0, filterNorm: 0, gestureGain: 0, articulation: 0,
+      downbeat: null, yaw: 0, rotationRate: null,
+    }
+
     const tick = (timestamp) => {
       const ctx = audioCtxRef.current
       if (!startRef.current) {
@@ -293,7 +309,14 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
           const throneElapsed = elapsed - BLOOM_DURATION
           if (throneElapsed >= 0 && throneElapsed < INTRO_RAMP_SEC) {
             const boost = 1 + 0.3 * (1 - throneElapsed / INTRO_RAMP_SEC)
-            engine.applyConducting({ ...gesture, gestureGain: (gesture.gestureGain || 0) * boost })
+            rampGesture.pan = gesture.pan
+            rampGesture.filterNorm = gesture.filterNorm
+            rampGesture.gestureGain = (gesture.gestureGain || 0) * boost
+            rampGesture.articulation = gesture.articulation
+            rampGesture.downbeat = gesture.downbeat
+            rampGesture.yaw = gesture.yaw
+            rampGesture.rotationRate = gesture.rotationRate
+            engine.applyConducting(rampGesture)
           } else {
             engine.applyConducting(gesture)
           }
@@ -360,8 +383,8 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
             const dtMs = falterPrevTsRef.current ? (timestamp - falterPrevTsRef.current) : 16
             stepFalter(falterStateRef.current, gesture.articulation, dtMs, FALTER_OPTS)
             engine.setFalterReverbScale(reverbSendFactor(falterStateRef.current))
+            falterPrevTsRef.current = timestamp
           }
-          falterPrevTsRef.current = timestamp
           if (NOCTURNE_ENABLED) {
             pushConducting(gesture)
             setBloom((t - PHASES.BLOOM_START) / BLOOM_DURATION)
@@ -425,7 +448,7 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="h-full w-full" style={{ background: '#000000' }}>
+    <div className="h-full w-full" style={{ background: STAGE_FILL }}>
       <AnimatePresence mode="wait">
         {phase === 'loading' && (
           <motion.div
@@ -451,7 +474,7 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
           <motion.div
             key="awaiting-tap"
             className="h-full w-full flex flex-col items-center justify-center cursor-pointer"
-            style={{ background: '#F2EBD8', touchAction: 'none' }}
+            style={{ background: AWAITING_FILL, touchAction: 'none' }}
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             transition={{ duration: 0.5 }}
             onClick={handleTapToBegin}
@@ -461,7 +484,7 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
               className="font-serif italic"
               style={{
                 fontSize: '20px',
-                color: '#1C1814',
+                color: AWAITING_INK,
                 opacity: 0.8,
                 letterSpacing: '0.02em',
               }}
@@ -485,7 +508,7 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
 
         {phase === 'experience' && (
           <motion.div key="experience" className="h-full w-full"
-            style={{ background: '#000000', touchAction: 'none', position: 'relative' }}
+            style={{ background: STAGE_FILL, touchAction: 'none', position: 'relative' }}
             initial={{ opacity: 1 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             transition={{ duration: 1 }}
             onTouchStart={handleTouchStart}

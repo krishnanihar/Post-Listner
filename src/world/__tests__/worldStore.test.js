@@ -13,6 +13,8 @@ import {
   subscribeWorld,
   getWorldState,
   resetWorld,
+  tipPool,
+  setLiveBreadth,
 } from '../worldStore.js'
 
 describe('worldStore', () => {
@@ -57,9 +59,25 @@ describe('worldStore', () => {
     expect(getStrikes()[1]).toMatchObject({ x: 1, y: 0, intensity: 1 })
   })
 
+  it('strike ignores calls with a missing or non-finite start (no dead epoch-0 strike)', () => {
+    strike(0.5, 0.5, 0.5) // start omitted
+    strike(0.5, 0.5, 0.5, undefined)
+    strike(0.5, 0.5, 0.5, NaN)
+    strike(0.5, 0.5, 0.5, Infinity)
+    expect(getStrikes().length).toBe(0)
+  })
+
   it('strike list is bounded to the ring size', () => {
     for (let i = 0; i < 40; i++) strike(0.5, 0.5, 0.5, i)
     expect(getStrikes().length).toBeLessThanOrEqual(16)
+  })
+
+  it('strike compacts the overflow in place (same array reference)', () => {
+    strike(0.5, 0.5, 0.5, 0)
+    const ref = getStrikes()
+    for (let i = 1; i < 40; i++) strike(0.5, 0.5, 0.5, i)
+    expect(getStrikes()).toBe(ref) // same array object, not a reassigned slice
+    expect(ref.length).toBeLessThanOrEqual(16)
   })
 
   it('pruneStrikes drops strikes older than the window', () => {
@@ -99,14 +117,56 @@ describe('worldStore', () => {
     expect(trace).toEqual([])
   })
 
-  it('notifies subscribers on subscribe and on change', () => {
-    const seen = []
-    const unsub = subscribeWorld((s) => seen.push(s.scene.breadth))
-    expect(seen).toEqual([0]) // initial
+  it('notifies subscribers on subscribe and on change, with no payload (pull via getWorldState)', () => {
+    const calls = []
+    const unsub = subscribeWorld((...args) => {
+      calls.push(args.length)
+      return getWorldState().scene.breadth
+    })
+    expect(calls).toEqual([0]) // initial call, no payload
     openHall(0.5)
-    expect(seen[seen.length - 1]).toBe(0.5)
+    expect(getWorldState().scene.breadth).toBe(0.5)
+    expect(calls).toEqual([0, 0]) // still no payload
     unsub()
     openHall(0.9)
-    expect(seen[seen.length - 1]).toBe(0.5) // no longer receiving
+    expect(calls).toEqual([0, 0]) // no longer receiving
+  })
+
+  it('tipPool sets a clamped -1..1 live pool nudge without notifying subscribers', () => {
+    const seen = []
+    const unsub = subscribeWorld(() => seen.push(1))
+    const before = seen.length
+    tipPool(0.12)
+    expect(getWorldState().poolTip).toBeCloseTo(0.12, 6)
+    tipPool(5) // clamped
+    expect(getWorldState().poolTip).toBe(1)
+    tipPool(-5) // clamped
+    expect(getWorldState().poolTip).toBe(-1)
+    tipPool(NaN) // non-finite → 0
+    expect(getWorldState().poolTip).toBe(0)
+    expect(seen.length).toBe(before) // no notify
+    unsub()
+  })
+
+  it('setLiveBreadth overrides breadth 0..1 or releases with null, without notifying', () => {
+    const seen = []
+    const unsub = subscribeWorld(() => seen.push(1))
+    const before = seen.length
+    setLiveBreadth(0.3)
+    expect(getWorldState().liveBreadth).toBeCloseTo(0.3, 6)
+    setLiveBreadth(5) // clamped
+    expect(getWorldState().liveBreadth).toBe(1)
+    setLiveBreadth(null)
+    expect(getWorldState().liveBreadth).toBe(null)
+    expect(seen.length).toBe(before) // no notify
+    unsub()
+  })
+
+  it('resetWorld releases the live channels', () => {
+    tipPool(0.5)
+    setLiveBreadth(0.7)
+    resetWorld()
+    expect(getWorldState().poolTip).toBe(0)
+    expect(getWorldState().liveBreadth).toBe(null)
   })
 })

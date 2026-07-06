@@ -12,6 +12,9 @@
 //
 // Canon: docs/superpowers/specs/2026-07-06-nocturne-design-canon.md §6.
 
+// Every resting scene below carries an explicit `intensity`; the live per-frame
+// pool nudge/breadth override (worldStore's tipPool/liveBreadth) is layered on
+// top of these by WorldStage, never baked in here.
 const SCENES = {
   entry: { pool: { x: 0.5, y: 0.52, radius: 0.24 }, warmth: 0.5, breadth: 0, intensity: 0.95 },
   admirer: { pool: { x: 0.5, y: 0.5, radius: 0.3 }, warmth: 0.5, breadth: 0.05, intensity: 1 },

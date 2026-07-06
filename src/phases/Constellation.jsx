@@ -14,10 +14,10 @@ import { playSfx } from '../world/worldSound.js'
 // names, no numbers (Invariant 3); no streaks or return mechanics (Invariant 4).
 //
 // Own stars carry a gentle breath (reduced-motion → still). The collective is
-// painted once (static). One honest line names it as a mock is NOT needed in the
-// room — the copy is a witness line; the "what's real" honesty lives in the
-// portfolio + docs. Perf: DPR cap 2, own-star gradients are few; the haze is
-// flat dots.
+// painted once (static). The room's copy is a witness line, not a disclosure —
+// it names the haze as imagined without claiming reality; the fuller "what's
+// real" honesty lives in the portfolio + docs (src/statement/Statement.jsx).
+// Perf: DPR cap 2, own-star gradients are cached; the haze is flat dots.
 
 const MAX_DPR = 2
 
@@ -50,11 +50,13 @@ export default function Constellation({ onExit }) {
     const reduced = prefersReducedMotion()
     let w = 0
     let h = 0
+    let starGrads = null // per-star cached gradients; rebuilt on resize or when the star list changes
     const resize = () => {
       w = canvas.clientWidth
       h = canvas.clientHeight
       canvas.width = Math.round(w * dpr)
       canvas.height = Math.round(h * dpr)
+      starGrads = null
     }
     resize()
     const ro = new ResizeObserver(resize)
@@ -80,21 +82,31 @@ export default function Constellation({ onExit }) {
         ctx.fill()
       }
 
-      // Own stars — warmer, breathing glows.
+      // Own stars — warmer, breathing glows. Gradient objects are cached per star
+      // (rebuilt only on resize / when the star list changes); the frame-to-frame
+      // breath modulates via globalAlpha instead of rebuilding the gradient.
       const stars = own
+      if (!starGrads || starGrads.length !== stars.length) {
+        starGrads = stars.map((s) => {
+          const col = lampColor(s.warmth)
+          const x = s.x * canvas.width
+          const y = s.y * canvas.height
+          const r = (5 + s.brightness * 8) * dpr
+          const grad = ctx.createRadialGradient(x, y, 0, x, y, r * 2.6)
+          grad.addColorStop(0, `rgba(${col.r},${col.g},${col.b},1)`)
+          grad.addColorStop(1, `rgba(${col.r},${col.g},${col.b},0)`)
+          return { grad, x, y, r, col }
+        })
+      }
       for (let i = 0; i < stars.length; i++) {
         const s = stars[i]
+        const { grad, x, y, r, col } = starGrads[i]
         const b = reduced ? 1 : 1 + 0.25 * breath(now, { hz: 0.08, amp: 1, phase: i, reduced })
         const bright = Math.min(1, s.brightness * b)
-        const col = lampColor(s.warmth)
-        const x = s.x * canvas.width
-        const y = s.y * canvas.height
-        const r = (5 + s.brightness * 8) * dpr
-        const grad = ctx.createRadialGradient(x, y, 0, x, y, r * 2.6)
-        grad.addColorStop(0, `rgba(${col.r},${col.g},${col.b},${bright})`)
-        grad.addColorStop(1, `rgba(${col.r},${col.g},${col.b},0)`)
+        ctx.globalAlpha = bright
         ctx.fillStyle = grad
         ctx.beginPath(); ctx.arc(x, y, r * 2.6, 0, Math.PI * 2); ctx.fill()
+        ctx.globalAlpha = 1
         ctx.fillStyle = `rgba(${col.r},${col.g},${col.b},${Math.min(1, bright + 0.2)})`
         ctx.beginPath(); ctx.arc(x, y, Math.max(1.5, r * 0.35), 0, Math.PI * 2); ctx.fill()
       }
@@ -122,13 +134,13 @@ export default function Constellation({ onExit }) {
       }}>
         <div style={{
           fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 13, letterSpacing: 0.4,
-          color: NOCTURNE.moonSilver, opacity: 0.7,
+          color: 'rgba(232, 228, 221, 0.7)',
         }}>
-          others are practicing too. none of them are named.
+          a rehearsal of the others — for now, imagined.
         </div>
         <div style={{
           fontFamily: FONTS.mono, fontSize: 9, letterSpacing: 1, textTransform: 'uppercase',
-          color: NOCTURNE.moonSilver, opacity: 0.3, marginTop: 14,
+          color: 'rgba(232, 228, 221, 0.3)', marginTop: 14,
         }}>
           touch to return
         </div>

@@ -3,6 +3,9 @@ import { motion } from 'framer-motion'
 import Paper from '../score/Paper'
 import { COLORS, NOCTURNE } from '../score/tokens'
 import { NOCTURNE_ENABLED } from '../world/flags.js'
+import { getTrace } from '../world/worldStore.js'
+import { clamp01 } from '../world/lightField.js'
+import { prefersReducedMotion } from '../lib/reducedMotion.js'
 
 // Nocturne (canon §6) — on the dark stage the baton becomes the Trace damping to
 // a still cursor over the same silent 12s (a settling sweep, not a scale — the
@@ -14,6 +17,8 @@ const ARC_OPACITY = N ? 0.22 : 0.35
 // Damping keyframes settle the sweep to a held point; shipped path is the
 // original infinite ±22° arc.
 const BATON_ROTATE = N ? [-22, 22, -18, 18, -13, 13, -7, 7, -3, 3, 0] : [-22, 22, -22]
+// Cap how many Trace dots render — a modest decoration, not a full replay.
+const MAX_TRACE_DOTS = 24
 
 /**
  * Orchestra v3 BriefingScreen — silent threshold rite.
@@ -28,6 +33,13 @@ const BATON_ROTATE = N ? [-22, 22, -18, 18, -13, 13, -7, 7, -3, 3, 0] : [-22, 22
 export default function BriefingScreen({ onComplete, durationMs = 12000 }) {
   const [blackOverlay, setBlackOverlay] = useState(0)
   const completedRef = useRef(false)
+  // Nocturne §7 — "the Trace contracting to a cursor": a read-only snapshot of
+  // the Act-I strokes taken once (the Trace never grows during Briefing), each
+  // drifting from its recorded position to the center over this same silent
+  // 12s, fading as it arrives — the gesture history folding into the baton the
+  // listener now holds. Reduced motion: render them already converged, still.
+  const [traceStrokes] = useState(() => (N ? getTrace().slice(-MAX_TRACE_DOTS) : []))
+  const traceReduced = N && prefersReducedMotion()
 
   useEffect(() => {
     const timers = []
@@ -105,12 +117,40 @@ export default function BriefingScreen({ onComplete, durationMs = 12000 }) {
 
   return (
     <div style={{ position: 'absolute', inset: 0 }}>
-      {/* Nocturne — the baton sits on the dark stage (the WorldStage colour), so
-          Briefing is continuous with the world; shipped path keeps cream paper. */}
+      {/* Nocturne — the baton sits over the WorldStage light (transparent — the
+          stage paints its own stageBlack), so Briefing is continuous with the
+          world; shipped path keeps cream paper. */}
       {N ? (
-        <div style={{ position: 'absolute', inset: 0, background: NOCTURNE.stageBlack }}>{inner}</div>
+        <div style={{ position: 'absolute', inset: 0, background: 'transparent' }}>{inner}</div>
       ) : (
         <Paper variant="cream">{inner}</Paper>
+      )}
+
+      {N && traceStrokes.length > 0 && (
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="xMidYMid slice"
+          aria-hidden
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+        >
+          {traceStrokes.map((s, i) => {
+            const x = clamp01(s.x) * 100
+            const y = clamp01(s.y) * 100
+            const r = 3 + (Number.isFinite(s.size) ? s.size : 0.5) * 4
+            return traceReduced ? (
+              <circle key={i} cx={50} cy={50} r={r} fill={NOCTURNE.candle} opacity={0.18} />
+            ) : (
+              <motion.circle
+                key={i}
+                r={r}
+                fill={NOCTURNE.candle}
+                initial={{ cx: x, cy: y, opacity: 0.4 }}
+                animate={{ cx: 50, cy: 50, opacity: 0 }}
+                transition={{ duration: durationMs / 1000, ease: 'easeInOut' }}
+              />
+            )
+          })}
+        </svg>
       )}
 
       {/* Dim-to-black overlay — final threshold into the spatial bed */}

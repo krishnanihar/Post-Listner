@@ -71,23 +71,26 @@ export function drawTraceGlyph(canvas, gesture, fx, now) {
 // NEW — replay the accumulated Act-I trace as faint sealed marks. `trace` is
 // worldStore.getTrace() (strokes with normalized x,y + size). Pure of any clock;
 // `reveal ∈ [0,1]` gates how many strokes are shown (for the reflect replay).
-// Draws in CSS pixels — the caller sets the transform. Never on the Act-II hot
-// path. Returns the count drawn (handy for tests).
+// `w`/`h` and the stroke radii are expected in the SAME unit — WorldStage calls
+// this with device-pixel dims under an identity transform, so it passes its own
+// `dpr` to scale the radii up to match (else strokes render half-size on a
+// DPR-2 phone); callers working in CSS pixels can omit it (dpr defaults to 1).
+// Never on the Act-II hot path. Returns the count drawn (handy for tests).
 export function drawTrace(ctx, trace, w, h, opts = {}) {
   if (!ctx || !trace || trace.length === 0) return 0
-  const { reveal = 1, alpha = 0.5 } = opts
+  const { reveal = 1, alpha = 0.5, dpr = 1 } = opts
   const shown = Math.max(0, Math.min(trace.length, Math.round(trace.length * clamp01(reveal))))
   for (let i = 0; i < shown; i++) {
     const s = trace[i]
     const x = clamp01(s.x) * w
     const y = clamp01(s.y) * h
-    const size = 4 + (Number.isFinite(s.size) ? s.size : 0.5) * 14
+    const size = (4 + (Number.isFinite(s.size) ? s.size : 0.5) * 14) * dpr
     const grad = ctx.createRadialGradient(x, y, 0, x, y, size * 2)
     grad.addColorStop(0, `rgba(${GLYPH_AMBER},${alpha})`)
     grad.addColorStop(1, `rgba(${GLYPH_AMBER},0)`)
     ctx.fillStyle = grad
     ctx.beginPath(); ctx.arc(x, y, size * 2, 0, Math.PI * 2); ctx.fill()
-    ctx.beginPath(); ctx.arc(x, y, Math.max(1.5, size * 0.3), 0, Math.PI * 2)
+    ctx.beginPath(); ctx.arc(x, y, Math.max(1.5 * dpr, size * 0.3), 0, Math.PI * 2)
     ctx.fillStyle = `rgba(${GLYPH_AMBER},${Math.min(1, alpha + 0.3)})`
     ctx.fill()
   }

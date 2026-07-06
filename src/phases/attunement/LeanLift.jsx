@@ -5,11 +5,17 @@
 // in place" — the cursor slides home, locks, returns to center, and the next
 // pair's words fade in. Both rounds move ONLY Valence (a 2nd read makes the axis
 // reliable); only the LAST round advances the beat. Roll-only; Depth held.
+import { useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { COLORS, FONTS, EASE } from '../../score/tokens'
 import { LEAN_BRINK } from '../../lib/leanCommit.js'
 import { useBrinkSlider } from '../../hooks/useBrinkSlider.js'
 import { NOCTURNE_ENABLED } from '../../world/flags.js'
+import { tipPool } from '../../world/worldStore.js'
+
+// Nocturne (canon §6) — how much of the brink-slider's -1..1 read reaches the
+// live pool nudge. Kept small: a sway, not a full-range pan.
+const POOL_TIP_SCALE = 0.12
 
 // Nocturne (canon §2) — on the dark stage the few hardcoded cream inks flip to
 // light (matching phaseTheme's --ink); byte-identical when the flag is off. The
@@ -40,6 +46,25 @@ export default function LeanLift({ live, onCommit, onAdvance, committed, subface
     committed,
     roundsLength: rounds.length,
   })
+
+  // Nocturne (canon §6) — additively couple the lean read into WorldStage's
+  // live pool nudge. Purely a read of `rb` (the slider's own render state,
+  // already computed above for the cursor) — never touches the brink-crossing
+  // detector or the commit/advance machinery in useBrinkSlider. Fail-safe: a
+  // throw here must never interrupt the choreography.
+  useEffect(() => {
+    if (!NOCTURNE_ENABLED) return
+    try { tipPool(rb * POOL_TIP_SCALE) } catch { /* never break the beat */ }
+  }, [rb])
+
+  // Release the pool nudge when this beat ends (unmount = beat exit in the
+  // score's overlay-swap flow).
+  useEffect(() => {
+    if (!NOCTURNE_ENABLED) return undefined
+    return () => {
+      try { tipPool(0) } catch { /* never break the beat */ }
+    }
+  }, [])
 
   const round = rounds[subIndex] || DEFAULT_ROUNDS[0]
   const b = Math.max(-1, Math.min(1, rb))
