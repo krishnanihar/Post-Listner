@@ -10,8 +10,12 @@ import { audioEngine } from './engine/audio'
 import { startOrchestraPreload } from './orchestra/preloader'
 import ReflectionSurface from './phases/ReflectionSurface'
 import { resetLiveSession } from './lib/liveSession.js'
-import { inkForPhase } from './lib/phaseTheme.js'
+import { inkForPhase, ink2ForPhase } from './lib/phaseTheme.js'
 import { exportJson, eraseAll } from './lib/archive.js'
+import WorldStage from './world/WorldStage.jsx'
+import { NOCTURNE_ENABLED } from './world/flags.js'
+import { setScene, resetWorld } from './world/worldStore.js'
+import { sceneForPhase } from './world/phaseScenes.js'
 
 const PHASES = ['entry', 'admirer', 'orchestra', 'settle']
 
@@ -115,6 +119,17 @@ function App() {
     if (phase === 'entry') resetLiveSession()
   }, [phase])
 
+  // Nocturne (flag-gated) — drive the WorldStage light per phase. Re-arm the
+  // whole world (clears strikes + trace) on return to entry; otherwise command
+  // the resting scene for the phase. Act I/II beats refine it live via the
+  // store. No-op when the flag is off. Kept as a sibling of the phase swap so
+  // the light is continuous across the seam (never unmounts on phase change).
+  useEffect(() => {
+    if (!NOCTURNE_ENABLED) return
+    if (phase === 'entry') resetWorld()
+    setScene(sceneForPhase(phase))
+  }, [phase])
+
   const stemsBundleRef = useRef(null)
   const revealAudioRef = useRef(null)
   // Slice 3 — Orchestra distils the conducting glyph into this ref at song
@@ -190,8 +205,12 @@ function App() {
     <MotionConfig reducedMotion="user">
     <div
       className="h-full w-full relative"
-      style={{ '--ink': inkForPhase(phase) }}
+      style={{ '--ink': inkForPhase(phase), '--ink-2': ink2ForPhase(phase) }}
     >
+      {/* Nocturne (flag-gated) — the continuous light stage, painted behind
+          every phase and never unmounted across the swap so the lamplit room
+          of Act I opens unbroken into Act II's hall. */}
+      {NOCTURNE_ENABLED && <WorldStage />}
       <AnimatePresence mode="wait">
         <motion.div
           key={phase}
