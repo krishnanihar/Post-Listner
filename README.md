@@ -1,16 +1,31 @@
-# React + Vite
+# PostListener — an opera for one listener
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A hyperinstrument for listening: a chamber opera for an audience of one, where the
+listener is the performer. Natural gestures — lean, tilt, swell, strike, turn — are read
+as musical expression. The machine generates every sound; one thing stays human-authored
+by hand: the mapping from a person's response to its meaning to a coordinate in an
+inner space of feeling. That single authored layer is the instrument's soul — taste as
+the living residue of craft. It witnesses rather than measures (no scores, no labels), and
+it is a returnable practice with no dark patterns: come back when you want, ten minutes at
+a time, and the work becomes the accumulated record of a taste changing.
 
-Currently, two official plugins are available:
+## Two acts
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Act I — The Attunement Room.** Wordless gesture writes the taste. The listener's
+  movements settle a coordinate in the feeling-space; that coordinate summons the music.
+- **Act II — The Orchestra.** Phone-as-baton. The summoned music materializes spatially
+  around the listener, who conducts it — every gesture heard, every gesture seen.
 
-## React Compiler
+## Nocturne
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Nocturne is the "opera for one listener" re-forming: a light-and-paper staging where
+**light is the material of the living instrument and paper is the material of the record**.
+It renders behind the `VITE_ENABLE_NOCTURNE` flag (default off → the shipped theme is
+unchanged). The design is defined in the canon doc:
+`docs/superpowers/specs/2026-07-06-nocturne-design-canon.md`.
 
-## Expanding the ESLint configuration
+## More
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- **Architecture** — see [`CLAUDE.md`](./CLAUDE.md) for the phase flow, audio engine,
+  the AVD spine, the relay, and the desktop journal.
+- **Design** — see the Nocturne design canon above for tokens, materials, and voice.

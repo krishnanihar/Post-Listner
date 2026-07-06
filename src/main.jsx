@@ -7,6 +7,7 @@ import ConductGlb from './conductor-glb/ConductGlb.jsx'
 import Desktop from './desktop/Desktop.jsx'
 import CloudTest from './journal/CloudTest.jsx'
 import AureolaThreePlaneTest from './aureola-three-plane/AureolaThreePlaneTest.jsx'
+import Statement from './statement/Statement.jsx'
 import { hydrateSessionStore } from './lib/sessionStore.js'
 import { requestPersistence } from './lib/archive.js'
 
@@ -17,6 +18,7 @@ const ROUTES = {
   '/journal': Desktop,
   '/cloud-test': CloudTest,
   '/aureola-three-plane-test': AureolaThreePlaneTest,
+  '/statement': Statement,
 }
 
 // Device + session detection at the root:
