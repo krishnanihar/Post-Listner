@@ -7,7 +7,7 @@
 // onSkip advances without one (falls back to the world's default variation).
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { COLORS, FONTS } from '../../score/tokens'
+import { COLORS, FONTS, EASE } from '../../score/tokens'
 import { searchTracks } from '../../lib/itunesSearch.js'
 
 export default function EraSearch({ onPick, onSkip }) {
@@ -30,7 +30,15 @@ export default function EraSearch({ onPick, onSkip }) {
   useEffect(() => { inputRef.current?.focus() }, [])
 
   return (
-    <div style={overlay}>
+    // A single settling fade as the beat crosses from moving the phone (face) to
+    // typing (era) — the typed field eases in rather than snapping over the
+    // gesture world, so the mode switch reads as one breath, not a cut.
+    <motion.div
+      style={overlay}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.55, ease: EASE.settle }}
+    >
       <div style={prompt}>a song from a time that matters to you?</div>
 
       <input
@@ -71,7 +79,7 @@ export default function EraSearch({ onPick, onSkip }) {
       <button type="button" onClick={onSkip} style={skip}>
         or just begin
       </button>
-    </div>
+    </motion.div>
   )
 }
 

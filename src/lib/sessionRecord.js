@@ -30,7 +30,14 @@ export function buildSessionRecord({
       ? avdTrajectory.map((p) => ({ t: p.t | 0, a: clampUnit(p.a), v: clampUnit(p.v), d: clampUnit(p.d) }))
       : [],
     landing: landing && landing.archetypeId
-      ? { archetypeId: landing.archetypeId, variationId: landing.variationId }
+      ? {
+          archetypeId: landing.archetypeId,
+          variationId: landing.variationId,
+          // How the song was produced: 'catalog' (Demucs stems) or 'generated'
+          // (per-session ElevenLabs track). Lets the record know its own source
+          // even though the raw audio isn't persisted locally yet.
+          mode: landing.mode === 'generated' ? 'generated' : 'catalog',
+        }
       : null,
     summary: typeof summary === 'string' ? summary : '',
   }

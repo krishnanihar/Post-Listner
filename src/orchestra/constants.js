@@ -84,6 +84,30 @@ export const STEM_GAIN_COMP = {
   OTHER:  1.0,
 }
 
+// Per-slot compensation when the 4 sources are FREQUENCY BANDS of one generated
+// mix (GenerativePlayer) rather than Demucs stems. The "VOCALS" slot here is the
+// presence band (leads/melody), which has no chronically-weak-vocals problem, so
+// its 1.5× stem boost would over-drive it — hold it at unity. The sub band is
+// trimmed slightly so it doesn't dominate; the air band is lifted because split-
+// off cymbals/shimmer read quiet. OrchestraEngine.setSourceMode('bands') selects
+// this table. Tuned further on-device (see FABLE_SPRINT.md P2).
+export const BAND_GAIN_COMP = {
+  VOCALS: 1.0,
+  DRUMS:  1.0,
+  BASS:   0.9,
+  OTHER:  1.15,
+}
+
+// Stereo WIDTH decorrelation. Every spatial source is a single mono HRTF point,
+// so the widest material — pads / air / cymbals / space, which live in the OTHER
+// slot on BOTH the Demucs-stem path and the generative band path — collapses to a
+// point. For OTHER only we add a second, short-delayed HRTF copy at a mirrored
+// azimuth offset (base ± azimuthSpreadDeg). Data-driven: add a key to widen
+// another slot; absence = unchanged mono point. Tune on-device.
+export const STEM_WIDTH = {
+  OTHER: { delayMs: 15, gain: 0.5, azimuthSpreadDeg: 40 },
+}
+
 export const GAINS = {
   TRACK_A: 0.7,                    // constant Track A level once Bloom completes
   AUDIENCE: 0.10,                  // constant audience-murmur bed during Bloom + Throne

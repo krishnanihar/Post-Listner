@@ -21,8 +21,14 @@ describe('sessionRecord — buildSessionRecord', () => {
     expect(r.endedAt).toBe(5000)
     expect(r.finalVector).toEqual({ a: 0.5, v: -0.2, d: 0.1 })
     expect(r.avdTrajectory).toHaveLength(2)
-    expect(r.landing).toEqual({ archetypeId: 'sky-seeker', variationId: 'x' })
+    expect(r.landing).toEqual({ archetypeId: 'sky-seeker', variationId: 'x', mode: 'catalog' })
     expect(r.summary).toBe('a bright one')
+  })
+  it('records the song-production mode (generated vs catalog default)', () => {
+    const gen = buildSessionRecord({ startedAt: 1, landing: { archetypeId: 'sky-seeker', variationId: 'x', mode: 'generated' } })
+    expect(gen.landing.mode).toBe('generated')
+    const cat = buildSessionRecord({ startedAt: 1, landing: { archetypeId: 'sky-seeker', variationId: 'x' } })
+    expect(cat.landing.mode).toBe('catalog')
   })
   it('clamps the final vector and tolerates missing fields', () => {
     const r = buildSessionRecord({ startedAt: 0, finalVector: { a: 9, v: -9, d: NaN } })

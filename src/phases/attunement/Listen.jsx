@@ -6,106 +6,33 @@
 // closes with the tilt — matching the Orchestra (forward = dark/inward). Both
 // rounds move ONLY Depth; only the last advances the beat. Commit logic mirrors
 // LeanLift's re-pole state machine.
-import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { COLORS, FONTS } from '../../score/tokens'
-import { isBrinkCrossing, LEAN_BRINK } from '../../lib/leanCommit.js'
+import { COLORS, FONTS, EASE } from '../../score/tokens'
+import { LEAN_BRINK } from '../../lib/leanCommit.js'
+import { useBrinkSlider } from '../../hooks/useBrinkSlider.js'
 
 const TRACK_HALF = 38
 const BRINK_PCT = 50 + LEAN_BRINK * TRACK_HALF
-const LOCK_MS = 520
-// Generous backstop: if the brink is never crossed (orientation permission
-// denied on iOS, a no-sensor device, or a listener who never tilts), the beat
-// force-commits its last sub-round so listen can never dead-end the arc.
-const SAFETY_MS = 20000
 
 const DEFAULT_ROUNDS = [
   { prompt: 'open it up, or draw it close?', topLabel: 'open · bright', bottomLabel: 'inward · dark' },
 ]
 
 // `live` = liveRef (live.current.filterNorm from pitch). onCommit(fn, subIndex)
-// writes Depth; onAdvance fires once `committed` flips (last round only).
+// writes Depth; onAdvance fires once `committed` flips (last round only). The
+// brink-slider state machine (shared with LeanLift) lives in useBrinkSlider;
+// this component is just the vertical rendering.
 export default function Listen({ live, onCommit, onAdvance, committed, subfaces }) {
   const rounds = subfaces && subfaces.length ? subfaces : DEFAULT_ROUNDS
 
-  const [subIndex, setSubIndex] = useState(0)
-  const [rb, setRb] = useState(0)
-  const [fired, setFired] = useState(false)
-  const [side, setSide] = useState(0)
-
-  const subIndexRef = useRef(0)
-  const phaseRef = useRef('leaning')          // 'leaning' | 'locking' | 'done'
-  const initRef = useRef(false)
-  const prevBRef = useRef(0)
-  const sideRef = useRef(0)
-  const rbRef = useRef(0)
-  const lockStartRef = useRef(0)
-
-  useEffect(() => {
-    let raf = 0
-    const tick = () => {
-      const fn = live.current.filterNorm
-      const b = (fn - 0.5) * 2
-      if (phaseRef.current === 'leaning') {
-        if (!initRef.current) {
-          initRef.current = true
-        } else if (isBrinkCrossing({ b, prevB: prevBRef.current })) {
-          sideRef.current = Math.sign(b)
-          setSide(Math.sign(b))
-          setFired(true)
-          onCommit(fn, subIndexRef.current)
-          phaseRef.current = 'locking'
-          lockStartRef.current = performance.now()
-        }
-        prevBRef.current = b
-        rbRef.current = b
-        setRb(b)
-      } else if (phaseRef.current === 'locking') {
-        const target = sideRef.current || 0
-        rbRef.current += (target - rbRef.current) * 0.18
-        setRb(rbRef.current)
-        if (performance.now() - lockStartRef.current > LOCK_MS) {
-          if (subIndexRef.current >= rounds.length - 1) {
-            phaseRef.current = 'done'
-          } else {
-            subIndexRef.current += 1
-            setSubIndex(subIndexRef.current)
-            initRef.current = false
-            prevBRef.current = 0
-            rbRef.current = 0
-            sideRef.current = 0
-            setRb(0)
-            setSide(0)
-            setFired(false)
-            phaseRef.current = 'leaning'
-          }
-        }
-      }
-      if (phaseRef.current !== 'done') raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [live, onCommit, rounds.length])
-
-  useEffect(() => {
-    if (!committed) return undefined
-    const t = setTimeout(onAdvance, 1100)
-    return () => clearTimeout(t)
-  }, [committed, onAdvance])
-
-  // Safety net — mirrors Rise/Face. If no brink-crossing ever commits this beat
-  // (orientation permission denied, or a device with no sensors), force-commit
-  // the last sub-round with the current read after a generous delay, so the
-  // gesture-gated beat can never permanently stall the whole experience.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      if (phaseRef.current === 'done') return
-      phaseRef.current = 'done'
-      setFired(true)
-      onCommit(live.current.filterNorm, rounds.length - 1)
-    }, SAFETY_MS)
-    return () => clearTimeout(t)
-  }, [live, onCommit, rounds.length])
+  const { subIndex, rb, fired, side } = useBrinkSlider({
+    live,
+    axisKey: 'filterNorm',
+    onCommit,
+    onAdvance,
+    committed,
+    roundsLength: rounds.length,
+  })
 
   const round = rounds[subIndex] || DEFAULT_ROUNDS[0]
   const b = Math.max(-1, Math.min(1, rb))
@@ -128,7 +55,7 @@ export default function Listen({ live, onCommit, onAdvance, committed, subfaces 
             style={{
               ...cursor,
               top: `${cursorTopPct}%`,
-              transition: fired ? 'top 0.5s cubic-bezier(0.22,1,0.36,1)' : 'none',
+              transition: fired ? `top 0.5s ${EASE.settleCss}` : 'none',
               boxShadow: `0 0 ${8 + Math.max(openHeat, inwardHeat) * 16}px ${COLORS.scoreAmber}`,
             }}
           />
@@ -138,7 +65,7 @@ export default function Listen({ live, onCommit, onAdvance, committed, subfaces 
               aria-hidden
               initial={{ opacity: 0.6, scale: 0.5 }}
               animate={{ opacity: 0, scale: 2.2 }}
-              transition={{ duration: 0.9, ease: 'easeOut' }}
+              transition={{ duration: 0.9, ease: EASE.reveal }}
               style={{
                 position: 'absolute', left: '50%',
                 top: `${50 - side * TRACK_HALF}%`,

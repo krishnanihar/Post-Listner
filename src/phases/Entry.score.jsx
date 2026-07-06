@@ -15,6 +15,9 @@ export default function Entry({ onNext }) {
   const videoRef = useRef(null)
   const droneStopRef = useRef(null)
   const tailTimerRef = useRef(null)
+  // Entry threshold bed — a cinematic swell layered over the 60 Hz drone so the
+  // opening builds anticipation instead of sitting near-silent (redesign area 3).
+  const thresholdRef = useRef(null)
 
   const beginIntro = useCallback(() => {
     if (stage !== 'intro') return
@@ -41,6 +44,28 @@ export default function Entry({ onNext }) {
 
     if (!droneStopRef.current) {
       droneStopRef.current = audioEngine.playDrone(60, 0.04)
+    }
+
+    // Threshold swell — one-shot, layered over the drone, started inside this
+    // begin tap (a user gesture, so autoplay is permitted). Fades itself in.
+    if (!thresholdRef.current) {
+      try {
+        const bed = new Audio('/intro/threshold.mp3')
+        bed.volume = 0.0
+        thresholdRef.current = bed
+        bed.play().then(() => {
+          // Quick fade-in so it swells rather than starts abruptly.
+          const t0 = performance.now()
+          const fade = () => {
+            const p = Math.min(1, (performance.now() - t0) / 1500)
+            if (thresholdRef.current === bed) {
+              bed.volume = 0.5 * p
+              if (p < 1) requestAnimationFrame(fade)
+            }
+          }
+          requestAnimationFrame(fade)
+        }).catch(() => { /* autoplay/asset absent — drone still carries it */ })
+      } catch { /* no Audio */ }
     }
 
     // Play the video silently — the Admirer's voice has taken over the
@@ -86,11 +111,28 @@ export default function Entry({ onNext }) {
     advance()
   }
 
+  const stopThreshold = () => {
+    const bed = thresholdRef.current
+    if (!bed) return
+    thresholdRef.current = null
+    // Short fade so it doesn't cut abruptly into the Admirer's arrival.
+    const t0 = performance.now()
+    const start = bed.volume
+    const fade = () => {
+      const p = Math.min(1, (performance.now() - t0) / 600)
+      bed.volume = start * (1 - p)
+      if (p < 1) requestAnimationFrame(fade)
+      else { try { bed.pause() } catch { /* ignore */ } }
+    }
+    requestAnimationFrame(fade)
+  }
+
   const advance = () => {
     if (droneStopRef.current) {
       droneStopRef.current()
       droneStopRef.current = null
     }
+    stopThreshold()
     onNext({ name: name.trim() })
   }
 
@@ -104,6 +146,10 @@ export default function Entry({ onNext }) {
       if (tailTimerRef.current) {
         clearTimeout(tailTimerRef.current)
         tailTimerRef.current = null
+      }
+      if (thresholdRef.current) {
+        try { thresholdRef.current.pause() } catch { /* ignore */ }
+        thresholdRef.current = null
       }
     }
   }, [])

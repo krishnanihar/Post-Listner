@@ -10,8 +10,10 @@ import QuestionDisplay from './QuestionDisplay'
 import { useAdmirerRoom } from '../hooks/useAdmirerRoom.js'
 import { getAvd, resetAvd } from '../lib/avdStore.js'
 import { mapAvdToStems } from '../lib/avdToStems.js'
+import { startGenerativeTrack, LIVE_MUSIC_GEN_ENABLED, GEN_BLOOM_WAIT_MS } from '../lib/musicGen.js'
 import { avdRecorder } from '../lib/avdRecorder.js'
 import { buildSessionRecord } from '../lib/sessionRecord.js'
+import { putAudio } from '../lib/archive.js'
 import { useAttunementScore } from '../hooks/useAttunementScore.js'
 import { archetypeRing } from '../lib/archetypeRing.js'
 import LeanLift from './attunement/LeanLift'
@@ -55,6 +57,18 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   const [showArrivalContinue, setShowArrivalContinue] = useState(false)
   const stemsBundleRef = useRef(null)
   const playerRef = useRef(null)
+  // Generative path (flag-gated by VITE_ENABLE_LIVE_MUSIC_GEN). genPromiseRef
+  // holds the in-flight per-session generation; genPlayerRef the resolved,
+  // started-silent GenerativePlayer. When the flag is off, both stay null and
+  // every path below is the unchanged catalog-stem flow.
+  const genPromiseRef = useRef(null)
+  const genPlayerRef = useRef(null)
+  // Set once the generative track can no longer win (the catalog committed at
+  // bloom, or the rite unmounted). Generation takes ~18–21s but the bloom wait
+  // is only 4s, so a generation almost always resolves AFTER the seam has moved
+  // on; without this guard its .then would start() an orphaned, forever-looping
+  // player that nothing stops. When cancelled, the late resolve stops itself.
+  const genCancelledRef = useRef(false)
   // Idempotency guard for the orchestra handoff. The score's bloom is the
   // intended trigger; this also makes a stray agent commitEntry call a no-op
   // so the record is persisted and onNext fires exactly once.
@@ -105,6 +119,34 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     loadStemsSilently(mapAvdToStems(getAvd(), { era: getEra() }))
   }, [loadStemsSilently])
 
+  // Era-commit → fire per-session generative music (flag-gated). By this beat
+  // `face` has fixed the archetype (the AVD vector is hard-snapped to its
+  // centroid) and `era` fixes the decade, so the composition plan has all it
+  // needs. The result becomes the Act1→Act2 handoff at bloom IF it's ready;
+  // otherwise the speculative catalog player (loaded at Rise) is the fallback,
+  // so the sacred seam never waits on the network. Fires at most once.
+  const maybeStartGeneration = useCallback(() => {
+    if (!LIVE_MUSIC_GEN_ENABLED || genPromiseRef.current) return
+    const ctx = getAudioCtx?.()
+    if (!ctx) return
+    const archetypeId = mapAvdToStems(getAvd(), { era: getEra() }).archetypeId
+    const p = startGenerativeTrack({ ctx, avd: getAvd(), archetypeId, eraYear: getEra() })
+    genPromiseRef.current = p
+      ? p.then((player) => {
+          if (!player) return null
+          // Late-arriving orphan guard: if the seam already moved on (catalog
+          // won at bloom, or the rite was abandoned), stop this player now
+          // instead of leaking a forever-looping graph.
+          if (genCancelledRef.current) {
+            try { player.stop?.() } catch { /* ignore */ }
+            return null
+          }
+          genPlayerRef.current = player
+          return player
+        })
+      : null
+  }, [getAudioCtx])
+
   // When the score finalizes, build + persist the rich session record, then
   // hand off to orchestra. The 600ms delay lets the bloom's expansion ramp
   // breathe before the phase swaps.
@@ -119,11 +161,21 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
         endedAt: rec?.endedAt ?? Date.now(),
         finalVector: rec?.finalVector ?? getAvd(),
         avdTrajectory: rec?.trajectory ?? [],
-        landing: bundle ? { archetypeId: bundle.archetypeId, variationId: bundle.variationId } : null,
+        landing: bundle ? { archetypeId: bundle.archetypeId, variationId: bundle.variationId, mode: bundle.mode } : null,
         summary: entry?.summary || '',
         rand: Math.random(),
       })
       appendEntry(record)
+      // If the winning track was generated, persist its raw bytes locally under
+      // the same session id (fire-and-forget; degrades gracefully without
+      // IndexedDB). Then free the ~MBs of retained bytes.
+      const gp = genPlayerRef.current
+      if (gp && gp.encodedBytes && revealAudioRef?.current === gp) {
+        try {
+          putAudio(record.id, new Blob([gp.encodedBytes], { type: 'audio/mpeg' })).catch(() => {})
+        } catch { /* IndexedDB unavailable */ }
+        gp.releaseEncoded()
+      }
     } catch (e) {
       console.warn('[attunement] session record persist failed', e)
     }
@@ -132,7 +184,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
       // the entry message at settle.
       onNext({ stemsBundle: stemsBundleRef.current, summary: entry?.summary })
     }, 600)
-  }, [onNext])
+  }, [onNext, revealAudioRef])
 
   // Whether a pre-baked voice clip is currently playing. Drives the amber dot
   // pulse + the "speaking" state label (replaces the old SDK isSpeaking).
@@ -189,6 +241,38 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   // (reusing onCommitEntry's body — the seam the Orchestra depends on).
   // FIX 2 — async: await the load so the 600ms onNext can't race a slow reload.
   const onBloom = useCallback(async () => {
+    // Generative winner path (flag-gated). If a generation is in flight, give it
+    // a bounded window to finish; if it resolves to a live player, it becomes
+    // the handoff and the speculative catalog player is stopped. Any timeout or
+    // failure falls straight through to the catalog path below — the seam never
+    // blocks on the network.
+    if (LIVE_MUSIC_GEN_ENABLED && genPromiseRef.current) {
+      const genPlayer = await Promise.race([
+        genPromiseRef.current,
+        new Promise((resolve) => setTimeout(() => resolve(null), GEN_BLOOM_WAIT_MS)),
+      ]).catch(() => null)
+      if (genPlayer && genPlayerRef.current === genPlayer) {
+        // Generated track won. Invalidate any STILL-IN-FLIGHT speculative catalog
+        // load (loadStemsSilently checks this token) so it can't resolve later and
+        // clobber the generated winner as the handoff. Then stop the already-
+        // started catalog player so two graphs don't run, and hand off the generated one.
+        loadTokenRef.current++
+        const cat = playerRef.current
+        if (cat && cat !== genPlayer) { try { cat.stop?.() } catch { /* ignore */ } }
+        if (revealAudioRef) revealAudioRef.current = genPlayer
+        stemsBundleRef.current = { ...mapAvdToStems(getAvd(), { era: getEra() }), mode: 'generated' }
+        fireMoment(1.0, 'startGeneration')
+        advanceFormationStage(2)
+        beginExpansion()
+        onCommitEntry({ summary: '' })
+        return
+      }
+      // Catalog wins — a generation still in flight must not later start() an
+      // orphan player once it resolves. Its .then reads this and stops itself.
+      genCancelledRef.current = true
+      // else: not ready / failed — fall through to the catalog path.
+    }
+
     const bundle = mapAvdToStems(getAvd(), { era: getEra() })
     // Gate the commit on the load so the 600ms onNext can't race a slow
     // reload (which would let Orchestra detach a stale/empty player). Reload on
@@ -206,7 +290,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     advanceFormationStage(2)
     beginExpansion()
     onCommitEntry({ summary: '' })
-  }, [loadStemsSilently, beginExpansion, onCommitEntry])
+  }, [loadStemsSilently, beginExpansion, onCommitEntry, revealAudioRef])
 
   const score = useAttunementScore({
     onExpansion: onScoreExpansion,
@@ -472,17 +556,33 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   // Stop the orphan StemPlayer on unmount if the rite was abandoned.
   useEffect(() => {
     return () => {
-      // Only stop the player if the rite was ABANDONED (not committed). On a
-      // committed bloom this player is the live handoff — Orchestra mounts next
-      // (AnimatePresence mode="wait" unmounts us first) and calls
-      // detachAndGetSources() on it; stopping it here nulls its sources and the
-      // song dies at the seam.
-      const player = playerRef.current
-      if (player && !committedRef.current && revealAudioRef?.current === player) {
-        try { player.stop?.() } catch { /* ignore */ }
-        if (revealAudioRef) revealAudioRef.current = null
+      // A generation still in flight at unmount must stop itself when it later
+      // resolves (its .then reads this) — otherwise it starts an orphan graph.
+      genCancelledRef.current = true
+      // Never stop the WINNER on a committed bloom — it's the live handoff.
+      // Orchestra mounts next (AnimatePresence mode="wait" unmounts us first)
+      // and calls detachAndGetSources() on revealAudioRef.current; stopping it
+      // here nulls its sources and the song dies at the seam.
+      const cat = playerRef.current
+      const gen = genPlayerRef.current
+      if (!committedRef.current) {
+        // Abandoned rite — stop every player we started so nothing keeps running.
+        if (cat && revealAudioRef?.current === cat) {
+          try { cat.stop?.() } catch { /* ignore */ }
+        }
+        if (gen && gen !== cat) { try { gen.stop?.() } catch { /* ignore */ } }
+        if (revealAudioRef && (revealAudioRef.current === cat || revealAudioRef.current === gen)) {
+          revealAudioRef.current = null
+        }
+      } else {
+        // Committed — revealAudioRef.current is the winner (Orchestra owns it).
+        // Stop only the LOSER so it doesn't keep running silently.
+        const winner = revealAudioRef?.current
+        if (cat && cat !== winner) { try { cat.stop?.() } catch { /* ignore */ } }
+        if (gen && gen !== winner) { try { gen.stop?.() } catch { /* ignore */ } }
       }
       playerRef.current = null
+      genPlayerRef.current = null
     }
   }, [])
 
@@ -633,8 +733,8 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
         {/* The era beat — search a song; its year picks the version. */}
         {movementId === 'era' && (
           <EraSearch
-            onPick={(year) => { setEra(year); score.advance() }}
-            onSkip={() => score.advance()}
+            onPick={(year) => { setEra(year); maybeStartGeneration(); score.advance() }}
+            onSkip={() => { maybeStartGeneration(); score.advance() }}
           />
         )}
 

@@ -25,6 +25,10 @@ const FULL_AT = 0.7
 export default function Rise({ live, onCommit, onAdvance, committed }) {
   const [meter, setMeter] = useState(0)
   const [fired, setFired] = useState(false)
+  // The sharpness (jerk) of the sealing strike — a sharp strike cuts a bigger
+  // flash, a soft one a gentler swell. This is the first place articulation
+  // (Act-2's filter Q-spike) is taught.
+  const [strikeArt, setStrikeArt] = useState(0)
   const meterRef = useRef(0)
   const firedRef = useRef(false)
   const prevDownRef = useRef(0)
@@ -43,6 +47,7 @@ export default function Rise({ live, onCommit, onAdvance, committed }) {
         // A new down-stroke, with enough build behind it, seals the rise.
         if (dc > prevDownRef.current && meterRef.current >= COMMIT_MIN_METER) {
           firedRef.current = true
+          setStrikeArt(live.current.strikeArticulation ?? 0)
           setFired(true)
           onCommit()
         }
@@ -103,17 +108,19 @@ export default function Rise({ live, onCommit, onAdvance, committed }) {
           ▾
         </motion.div>
 
-        {/* Impact flash on the strike. */}
+        {/* Impact flash on the strike — a sharp strike (high articulation) cuts a
+            bigger, brighter ring; a soft one a gentler swell. Teaches articulation. */}
         {fired && (
           <motion.div
             aria-hidden
-            initial={{ opacity: 0.6, scale: 0.5 }}
-            animate={{ opacity: 0, scale: 2.4 }}
+            initial={{ opacity: 0.5 + strikeArt * 0.4, scale: 0.5 }}
+            animate={{ opacity: 0, scale: 1.8 + strikeArt * 1.8 }}
             transition={{ duration: 0.9, ease: 'easeOut' }}
             style={{
               position: 'absolute', left: '50%', bottom: -6,
               width: 40, height: 40, marginLeft: -20,
-              borderRadius: '50%', border: `1px solid ${COLORS.scoreAmber}`,
+              borderRadius: '50%',
+              border: `${1 + strikeArt * 1.5}px solid ${COLORS.scoreAmber}`,
             }}
           />
         )}
@@ -122,7 +129,7 @@ export default function Rise({ live, onCommit, onAdvance, committed }) {
       <div style={hintWrap}>
         <PhoneRiseHint dimmed={fired} />
         <div style={{ ...affordance, opacity: fired ? 0 : 0.75 }}>
-          lift the energy with bigger moves — then strike down to mark the peak. later, this is how you'll swell the music.
+          lift the energy with bigger moves — then strike down to seal it. a sharp strike cuts, a soft one swells — later, that's how you shape each accent.
         </div>
       </div>
     </div>

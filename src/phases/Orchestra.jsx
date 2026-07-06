@@ -11,7 +11,6 @@ import {
   END_FADE_DURATION,
   CLOSING_CARD_DURATION,
 } from '../orchestra/constants.js'
-import StemPlayer from '../lib/stemPlayer.js'
 import { scoreArchetype } from '../lib/scoreArchetype.js'
 import { distillGlyph } from '../lib/glyph.js'
 import { useVisibilityAudioPause } from '../hooks/useVisibilityAudioPause.js'
@@ -34,6 +33,12 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
   // Slice 3 — raw conducting path [[pan, filterNorm, t], ...] accumulated
   // during the experience phase, distilled into the journal glyph at song end.
   const glyphBufRef = useRef([])
+
+  // Throne feedback glyph — a faint amber gesture correlate drawn on a canvas
+  // over the (previously bare black) Throne, so an audio change can be
+  // attributed to your own motion. Driven by the same gesture the engine gets.
+  const glyphCanvasRef = useRef(null)
+  const glyphFxRef = useRef({ rings: [], reduced: false })
 
   // Battery: suspend stem playback while the app is backgrounded. Safe here —
   // the live Admirer conversation is already over by the Orchestra phase.
@@ -90,9 +95,14 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
       // so the engine knows when to fade out.
       try {
         const handoff = revealAudioRef.current
-        if (handoff instanceof StemPlayer) {
-          // 4-stem path: detach the running BufferSources from Reveal's
-          // sum bus and route them through the spatial graph.
+        // Duck-typed handoff: both StemPlayer (4 Demucs stems) and
+        // GenerativePlayer (4 frequency bands of one generated mix) expose the
+        // same detachAndGetSources() contract. The engine's per-slot gain table
+        // is selected from the player's sourceMode ('stems' default / 'bands').
+        if (handoff && typeof handoff.detachAndGetSources === 'function') {
+          engine.setSourceMode(handoff.sourceMode === 'bands' ? 'bands' : 'stems')
+          // Detach the running sources from the preview sum bus and route them
+          // through the spatial graph.
           const sources = handoff.detachAndGetSources()
           if (sources) {
             engine.connectStems({
@@ -102,8 +112,9 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
               other:  sources.other,
             })
           }
-          // Pull the longest stem buffer's duration as the song length.
-          const dur = Math.max(
+          // Song length: GenerativePlayer exposes .duration directly; StemPlayer
+          // falls back to the longest of its 4 stem buffers.
+          const dur = handoff.duration ?? Math.max(
             handoff.buffers?.vocals?.duration || 0,
             handoff.buffers?.drums?.duration  || 0,
             handoff.buffers?.bass?.duration   || 0,
@@ -181,6 +192,13 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
 
     engine.startAudience()
 
+    // Honor prefers-reduced-motion for the feedback glyph (essential conducting
+    // motion itself is exempt per WCAG 2.5.4, but we soften the correlate).
+    try {
+      glyphFxRef.current.reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches || false
+      glyphFxRef.current.rings = []
+    } catch { /* no matchMedia */ }
+
     if (navigator.wakeLock) {
       navigator.wakeLock.request('screen')
         .then(lock => { wakeLockRef.current = lock })
@@ -245,6 +263,16 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
         if (gesture.downbeat.fired && navigator.vibrate) {
           navigator.vibrate(15)
         }
+        // Feed the feedback glyph: spawn a ring on the downbeat (unless reduced).
+        if (gesture.downbeat.fired && !glyphFxRef.current.reduced) {
+          const rings = glyphFxRef.current.rings
+          rings.push({ start: timestamp, intensity: gesture.downbeat.intensity || 0.5 })
+          if (rings.length > 6) rings.shift()
+        }
+        // The feedback glyph is decoration — isolate it so it can NEVER take
+        // down the sacred conducting loop (which also drives the song-end fade/stop).
+        const gc = glyphCanvasRef.current
+        if (gc) { try { drawThroneGlyph(gc, gesture, glyphFxRef.current, timestamp) } catch { /* non-essential */ } }
         // Stream gesture snapshot to viewers at ~60 fps. Shape matches what
         // src/conductor-codex/motion.js::mapRelayMessage expects: raw α/β/γ
         // for the desktop-side calibration deltas (q omitted — viewer falls
@@ -288,7 +316,9 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
         if (glyphRef) glyphRef.current = distillGlyph(glyphBufRef.current)
         const ref = revealAudioRef.current
         if (ref) {
-          if (ref instanceof StemPlayer) ref.stop()
+          // StemPlayer / GenerativePlayer both expose stop(); the AUDIO-element
+          // fallback only has pause().
+          if (typeof ref.detachAndGetSources === 'function') ref.stop()
           else if (typeof ref.pause === 'function') ref.pause()
         }
         setPhase('closing')
@@ -386,13 +416,19 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
 
         {phase === 'experience' && (
           <motion.div key="experience" className="h-full w-full"
-            style={{ background: '#000000', touchAction: 'none' }}
+            style={{ background: '#000000', touchAction: 'none', position: 'relative' }}
             initial={{ opacity: 1 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             transition={{ duration: 1 }}
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
-          />
+          >
+            {/* Throne feedback glyph — peripheral amber correlate of your gesture. */}
+            <canvas
+              ref={glyphCanvasRef}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+            />
+          </motion.div>
         )}
 
         {phase === 'closing' && (
@@ -410,4 +446,58 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
       </AnimatePresence>
     </div>
   )
+}
+
+// Draw the Throne feedback glyph: a soft amber dot that tracks the conducting
+// gesture (roll → x, pitch → y), swells with gesture size, and rings out on the
+// downbeat. Peripheral and calm by design — proof the hand is doing something,
+// not a HUD. Allocation-light per frame (one gradient, small ring array).
+const GLYPH_AMBER = '212,160,83' // #D4A053
+function drawThroneGlyph(canvas, gesture, fx, now) {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  const dpr = Math.min(2, (typeof window !== 'undefined' && window.devicePixelRatio) || 1)
+  const w = canvas.clientWidth || canvas.width
+  const h = canvas.clientHeight || canvas.height
+  if (!w || !h) return
+  const pxW = Math.round(w * dpr)
+  const pxH = Math.round(h * dpr)
+  if (canvas.width !== pxW || canvas.height !== pxH) { canvas.width = pxW; canvas.height = pxH }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  ctx.clearRect(0, 0, w, h)
+
+  // Finite-guard the inputs: a non-finite gesture field (NaN slips past `??`,
+  // which only catches null/undefined) would make createRadialGradient throw.
+  const num = (v, fb) => (Number.isFinite(v) ? (v < 0 ? 0 : v > 1 ? 1 : v) : fb)
+  const pan = num(gesture.pan, 0.5)
+  const fn = num(gesture.filterNorm, 0.5)
+  const gain = num(gesture.gestureGain, 0)
+  const reduced = fx.reduced
+  const x = w * (0.5 + (pan - 0.5) * 0.6) // keep it in the central 60%
+  const y = h * (0.5 - (fn - 0.5) * 0.5)  // brighter/higher tilt → higher
+
+  // Downbeat rings — expand + fade over ~900ms.
+  const rings = fx.rings
+  for (let i = rings.length - 1; i >= 0; i--) {
+    const age = (now - rings[i].start) / 900
+    if (age >= 1) { rings.splice(i, 1); continue }
+    const r = 20 + age * (60 + rings[i].intensity * 120)
+    ctx.beginPath()
+    ctx.arc(x, y, r, 0, Math.PI * 2)
+    ctx.strokeStyle = `rgba(${GLYPH_AMBER},${(1 - age) * 0.35})`
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+  }
+
+  // Core dot + soft glow, swelling with gesture size.
+  const base = 10 + gain * (reduced ? 12 : 40)
+  const glow = ctx.createRadialGradient(x, y, 0, x, y, base * 2.4)
+  glow.addColorStop(0, `rgba(${GLYPH_AMBER},${reduced ? 0.26 : 0.4})`)
+  glow.addColorStop(1, `rgba(${GLYPH_AMBER},0)`)
+  ctx.fillStyle = glow
+  ctx.beginPath(); ctx.arc(x, y, base * 2.4, 0, Math.PI * 2); ctx.fill()
+
+  ctx.beginPath(); ctx.arc(x, y, Math.max(2.5, base * 0.32), 0, Math.PI * 2)
+  ctx.fillStyle = `rgba(${GLYPH_AMBER},0.75)`
+  ctx.fill()
 }

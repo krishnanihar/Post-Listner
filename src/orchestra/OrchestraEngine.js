@@ -4,10 +4,12 @@ import {
   BLOOM_DURATION,
   END_FADE_DURATION,
   STEMS,
+  STEM_WIDTH,
   EARLY_REFLECTIONS,
   YAW_SPOTLIGHT,
   GAINS,
   STEM_GAIN_COMP,
+  BAND_GAIN_COMP,
   CONDUCTING,
   distanceCutoff,
 } from './constants.js'
@@ -67,6 +69,19 @@ export default class OrchestraEngine {
 
     this._driftSeeds = Object.fromEntries(STEM_NAMES.map(n => [n, Math.random() * 100]))
     this._lastT = 0
+
+    // Per-slot gain compensation table. Defaults to the Demucs-stem table; the
+    // generative path calls setSourceMode('bands') to swap in BAND_GAIN_COMP,
+    // because the 4 slots then carry frequency bands of one mix, not stems.
+    this._gainComp = STEM_GAIN_COMP
+  }
+
+  /**
+   * Select which per-slot gain-compensation table to use.
+   * @param {'stems'|'bands'} mode
+   */
+  setSourceMode(mode) {
+    this._gainComp = mode === 'bands' ? BAND_GAIN_COMP : STEM_GAIN_COMP
   }
 
   // ─── Preload ─────────────────────────────────────────────────────────────────
@@ -184,6 +199,41 @@ export default class OrchestraEngine {
 
       stem.conductingFilter.connect(stem.reverbSend)
       stem.reverbSend.connect(this.reverbBus)
+
+      // Optional stereo-WIDTH branch (purely additive — the direct + reverb
+      // paths above are untouched). A short delay decorrelates this second HRTF
+      // copy so the two points read as stereo width, not a comb-filtered point.
+      const widthCfg = STEM_WIDTH[name]
+      if (widthCfg) {
+        try {
+          stem.widthDelay = ctx.createDelay(0.05)
+          stem.widthDelay.delayTime.value = widthCfg.delayMs / 1000
+
+          stem.widthGain = ctx.createGain()
+          stem.widthGain.gain.value = widthCfg.gain
+
+          stem.widthPanner = ctx.createPanner()
+          stem.widthPanner.panningModel = 'HRTF'
+          stem.widthPanner.distanceModel = 'inverse'
+          stem.widthPanner.refDistance = 1
+          stem.widthPanner.maxDistance = 20
+          stem.widthPanner.rolloffFactor = 1
+          stem.widthPanner.coneInnerAngle = 360
+          stem.widthPanner.coneOuterAngle = 360
+          const widthAz = cfg.azimuth + widthCfg.azimuthSpreadDeg
+          const wpos = sphericalToCartesian(widthAz, cfg.elevation, cfg.distance)
+          stem.widthPanner.positionX.value = wpos.x
+          stem.widthPanner.positionY.value = wpos.y
+          stem.widthPanner.positionZ.value = wpos.z
+
+          stem.conductingFilter.connect(stem.widthDelay)
+          stem.widthDelay.connect(stem.widthGain)
+          stem.widthGain.connect(stem.widthPanner)
+          stem.widthPanner.connect(this.directBus)
+        } catch (e) {
+          console.warn(`OrchestraEngine: failed to build width branch for ${name}`, e)
+        }
+      }
 
       this.stems[name] = stem
     }
@@ -313,7 +363,7 @@ export default class OrchestraEngine {
     // (STEM_GAIN_COMP) corrects for the chronically-weak vocals stem.
     const trackAGain = this._getTrackAGain(t, songDuration)
     for (const name of STEM_NAMES) {
-      this.stems[name].gain.gain.setTargetAtTime(trackAGain * STEM_GAIN_COMP[name], now, 0.3)
+      this.stems[name].gain.gain.setTargetAtTime(trackAGain * this._gainComp[name], now, 0.3)
     }
 
     // Binaural gain — fade in once Briefing ends, hold through Throne, fade
@@ -372,7 +422,7 @@ export default class OrchestraEngine {
       )
 
       const trackAGain = this._getTrackAGain(t, this._songDuration || 9999)
-      const finalGain = clamp(trackAGain * dynamicsGain * spotlightLin * STEM_GAIN_COMP[name], 0, 1.5)
+      const finalGain = clamp(trackAGain * dynamicsGain * spotlightLin * this._gainComp[name], 0, 1.5)
       stem.gain.gain.setTargetAtTime(finalGain, now, CONDUCTING.INTENSITY_TC)
 
       // Per-stem conducting filter cutoff. Base cutoff comes from pitch (filterNorm).

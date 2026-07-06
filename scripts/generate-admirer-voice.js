@@ -75,6 +75,11 @@ const LINES = {
   // PROPOSED COPY — flag for owner approval before generating.
   'welcome-return':
     "you're back. good — lean toward whatever's pulling at you.",
+  // The Settle closing line — the brief closing card after the song ends was
+  // silent (its old closing voice was the removed live agent). Warm, unhurried,
+  // leaves the door open.
+  'settle-close':
+    "that's the shape of it, for now. the room stays where you left it. come back when you want more of it.",
   // The end-of-Act-1 reflection: 12 gesture-mirror clips + 6 world readings.
   ...reflectionLines(),
 }

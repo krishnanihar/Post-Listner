@@ -1,11 +1,30 @@
-// ElevenLabs Music Generation API wrapper
+// ElevenLabs generative-music client (music_v2, composition-plan aware).
+//
+// The API key stays server-side: this posts to the `/api/music` proxy
+// (api/music.js), which adds ELEVENLABS_API_KEY and forwards to ElevenLabs.
+// Returns an object-URL for the generated MP3 blob, ready for
+// GenerativePlayer.load(ctx, url).
+//
+// Mock mode (VITE_MOCK_ELEVENLABS=true or VITE_MOCK_MUSIC=true) returns a silent
+// WAV so the whole seam (generate → decode → band-split → handoff) can be
+// exercised in dev/tests without spend. A silent buffer decodes fine; its RMS is
+// ~0 so GenerativePlayer's normalization clamps to unity and it plays silence.
 
-const MUSIC_API_URL = 'https://api.elevenlabs.io/v1/music'
+const MUSIC_PROXY_URL = '/api/music'
 const SFX_API_URL = 'https://api.elevenlabs.io/v1/text-to-sound-effects'
-const TIMEOUT_MS = 120000 // 120 second ceiling (music API is slower than SFX)
+const TIMEOUT_MS = 120000
 
-// Mock mode: set VITE_MOCK_ELEVENLABS=true in .env to skip API calls during testing
-const MOCK_MODE = import.meta.env.VITE_MOCK_ELEVENLABS === 'true'
+const MOCK_MODE =
+  import.meta.env.VITE_MOCK_ELEVENLABS === 'true' ||
+  import.meta.env.VITE_MOCK_MUSIC === 'true'
+
+// Model id is env-overridable so a music_v2 rollout / rename doesn't need a code
+// change. Defaults to music_v2 (the current generative model per the brief).
+export const MUSIC_MODEL_ID = import.meta.env.VITE_MUSIC_MODEL_ID || 'music_v2'
+
+// Default generated-track length. ~3:30 generates in ~18s (spike: ~5s/audio-min),
+// comfortably inside the Act-1 tail + Briefing (12s) + Bloom (24s) cover window.
+export const DEFAULT_MUSIC_LENGTH_MS = 210000
 
 function createSilentAudioUrl(durationSec = 30) {
   const sampleRate = 8000
@@ -17,11 +36,9 @@ function createSilentAudioUrl(durationSec = 30) {
   const dataSize = numSamples * blockAlign
   const buffer = new ArrayBuffer(44 + dataSize)
   const view = new DataView(buffer)
-
   const writeString = (offset, str) => {
     for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i))
   }
-
   writeString(0, 'RIFF')
   view.setUint32(4, 36 + dataSize, true)
   writeString(8, 'WAVE')
@@ -35,47 +52,29 @@ function createSilentAudioUrl(durationSec = 30) {
   view.setUint16(34, bitsPerSample, true)
   writeString(36, 'data')
   view.setUint32(40, dataSize, true)
-  // samples are already zeroed (silent)
-
   const blob = new Blob([buffer], { type: 'audio/wav' })
   return URL.createObjectURL(blob)
 }
 
-function getApiKey() {
-  const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY
-  if (!apiKey) throw new Error('VITE_ELEVENLABS_API_KEY is not set')
-  return apiKey
-}
-
-async function fetchAudioBlob(url, body, timeoutMs = TIMEOUT_MS) {
+async function postForBlob(url, body, timeoutMs = TIMEOUT_MS) {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-
   try {
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'xi-api-key': getApiKey(),
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
       signal: controller.signal,
     })
-
     if (!response.ok) {
-      const errorBody = await response.json().catch(() => null)
-      const message = errorBody?.detail?.message || errorBody?.detail || `status ${response.status}`
-      const error = new Error(`ElevenLabs API error ${response.status}: ${message}`)
-      error.detail = errorBody?.detail
-      throw error
+      const errText = await response.text().catch(() => '')
+      throw new Error(`music proxy error ${response.status}: ${errText.slice(0, 300)}`)
     }
-
     const blob = await response.blob()
     return URL.createObjectURL(blob)
-
   } catch (err) {
     if (err.name === 'AbortError') {
-      throw new Error(`Music generation timed out after ${timeoutMs / 1000} seconds`)
+      throw new Error(`Music generation timed out after ${timeoutMs / 1000}s`)
     }
     throw err
   } finally {
@@ -83,62 +82,43 @@ async function fetchAudioBlob(url, body, timeoutMs = TIMEOUT_MS) {
   }
 }
 
-export async function generateMusic(prompt, isRetry = false) {
+/**
+ * Generate a track from either a composition plan (object) or a prose prompt
+ * (string). Returns an object-URL for the MP3 blob.
+ * @param {object|string} planOrPrompt
+ * @param {{durationMs?:number}} [opts]
+ */
+export async function generateMusicTrack(planOrPrompt, { durationMs = DEFAULT_MUSIC_LENGTH_MS } = {}) {
   if (MOCK_MODE) {
-    console.log('[ElevenLabs mock] generateMusic skipped — returning silent audio')
-    await new Promise(r => setTimeout(r, 1500)) // simulate latency
-    return createSilentAudioUrl(30)
+    await new Promise((r) => setTimeout(r, 300))
+    return createSilentAudioUrl(Math.round(durationMs / 1000))
   }
-  try {
-    return await fetchAudioBlob(MUSIC_API_URL, {
-      prompt,
-      music_length_ms: 30000,
-      force_instrumental: true,
-      model_id: 'music_v1',
-    })
-  } catch (err) {
-    // Auto-retry with prompt suggestion on bad_prompt errors
-    if (err.detail?.status === 'bad_prompt' && err.detail.prompt_suggestion && !isRetry) {
-      return generateMusic(err.detail.prompt_suggestion, true)
-    }
-    throw err
+  const body = { model_id: MUSIC_MODEL_ID }
+  if (planOrPrompt && typeof planOrPrompt === 'object') {
+    body.composition_plan = planOrPrompt
+    body.respect_sections_durations = true
+  } else {
+    body.prompt = String(planOrPrompt || '')
+    body.music_length_ms = durationMs
+    body.force_instrumental = true
   }
+  return postForBlob(MUSIC_PROXY_URL, body)
 }
 
-export async function generateMusicWithPlan(compositionPlan) {
-  if (MOCK_MODE) {
-    console.log('[ElevenLabs mock] generateMusicWithPlan skipped — returning silent audio')
-    await new Promise(r => setTimeout(r, 1500))
-    return createSilentAudioUrl(30)
-  }
-  try {
-    return await fetchAudioBlob(MUSIC_API_URL, {
-      composition_plan: compositionPlan,
-      force_instrumental: true,
-      model_id: 'music_v1',
-    })
-  } catch (err) {
-    // Auto-retry with plan suggestion on bad_composition_plan errors
-    if (err.detail?.status === 'bad_composition_plan' && err.detail.composition_plan_suggestion) {
-      return fetchAudioBlob(MUSIC_API_URL, {
-        composition_plan: err.detail.composition_plan_suggestion,
-        force_instrumental: true,
-        model_id: 'music_v1',
-      })
-    }
-    throw err
-  }
-}
-
+// SFX utility (dev/offline asset generation). Direct client call — used by
+// scripts and dev tools, not on the live per-session path.
 export async function generateSoundEffect(text, durationSeconds = 2) {
   if (MOCK_MODE) {
-    console.log('[ElevenLabs mock] generateSoundEffect skipped — returning silent audio')
-    await new Promise(r => setTimeout(r, 500))
+    await new Promise((r) => setTimeout(r, 200))
     return createSilentAudioUrl(durationSeconds)
   }
-  return fetchAudioBlob(SFX_API_URL, {
-    text,
-    duration_seconds: durationSeconds,
-    prompt_influence: 0.8,
-  }, 30000) // 30s timeout for short SFX
+  const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY
+  if (!apiKey) throw new Error('VITE_ELEVENLABS_API_KEY is not set')
+  const response = await fetch(SFX_API_URL, {
+    method: 'POST',
+    headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, duration_seconds: durationSeconds, prompt_influence: 0.8 }),
+  })
+  if (!response.ok) throw new Error(`SFX API error ${response.status}`)
+  return URL.createObjectURL(await response.blob())
 }

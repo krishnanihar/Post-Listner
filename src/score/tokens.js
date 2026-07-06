@@ -21,3 +21,14 @@ export const STROKE = {
   secondaryMark: 0.9,
   tactus: 1.0,
 }
+
+// Shared easing vocabulary so the Act-1 overlays read as one lesson (redesign
+// area 5). `settle` = the decisive out-expo used for cursor/commit glides
+// (Framer array form); `settleCss` = the same curve as a CSS string; `reveal` /
+// `breathe` = Framer named eases for flashes and ambient loops.
+export const EASE = {
+  settle: [0.22, 1, 0.36, 1],
+  settleCss: 'cubic-bezier(0.22,1,0.36,1)',
+  reveal: 'easeOut',
+  breathe: 'easeInOut',
+}

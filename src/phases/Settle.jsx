@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import Paper from '../score/Paper'
 import { COLORS, FONTS } from '../score/tokens'
@@ -6,13 +6,33 @@ import { getEntries } from '../lib/sessionStore.js'
 import { daysOfPractice, nextMilestone } from '../lib/longitudinal.js'
 
 // The brief closing card after the song ends. The live ElevenLabs agent has
-// been removed (the Admirer is pre-baked TTS now); Settle is currently a
-// silent card that lingers briefly, then routes home. A closing voice line
-// can be added later as another pre-baked clip.
+// been removed (the Admirer is pre-baked TTS now); Settle now plays a warm
+// pre-baked closing line (public/admirer/voice/settle-close.mp3) over the card,
+// then routes home. Played via a plain HTMLAudioElement — the page has had
+// audio + user-gesture the whole session, so autoplay is permitted here.
 const FIRST_SESSION_DURATION_MS = 9000
 const ONGOING_DURATION_MS = 6000
 
 export default function Settle({ onComplete }) {
+  const closeAudioRef = useRef(null)
+  useEffect(() => {
+    let audio
+    try {
+      audio = new Audio('/admirer/voice/settle-close.mp3')
+      audio.volume = 0.9
+      closeAudioRef.current = audio
+      // A short beat after the card fades in, so the voice doesn't clip the seam.
+      const t = setTimeout(() => { audio.play().catch(() => { /* autoplay/asset absent */ }) }, 700)
+      return () => {
+        clearTimeout(t)
+        try { audio.pause() } catch { /* ignore */ }
+        closeAudioRef.current = null
+      }
+    } catch {
+      return undefined
+    }
+  }, [])
+
   // Settle runs AFTER the opening phase's commitEntry, so getEntries().length
   // is 1 (not 0) on the very first session. Use <= 1 as the first-session check.
   const entries = getEntries()
