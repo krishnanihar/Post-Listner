@@ -1,7 +1,19 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import Paper from '../score/Paper'
-import { COLORS } from '../score/tokens'
+import { COLORS, NOCTURNE } from '../score/tokens'
+import { NOCTURNE_ENABLED } from '../world/flags.js'
+
+// Nocturne (canon §6) — on the dark stage the baton becomes the Trace damping to
+// a still cursor over the same silent 12s (a settling sweep, not a scale — the
+// SVG <g> scale trap is avoided by damping the rotation amplitude toward 0).
+const N = NOCTURNE_ENABLED
+const INK = N ? NOCTURNE.candle : COLORS.inkCream
+const ARC_INK = N ? NOCTURNE.candle : COLORS.inkCreamSecondary
+const ARC_OPACITY = N ? 0.22 : 0.35
+// Damping keyframes settle the sweep to a held point; shipped path is the
+// original infinite ±22° arc.
+const BATON_ROTATE = N ? [-22, 22, -18, 18, -13, 13, -7, 7, -3, 3, 0] : [-22, 22, -22]
 
 /**
  * Orchestra v3 BriefingScreen — silent threshold rite.
@@ -35,63 +47,71 @@ export default function BriefingScreen({ onComplete, durationMs = 12000 }) {
     return () => timers.forEach(clearTimeout)
   }, [onComplete, durationMs])
 
+  const batonTransition = N
+    ? { duration: durationMs / 1000, ease: 'easeInOut' } // one settling sweep
+    : { duration: 4, repeat: Infinity, ease: 'easeInOut' } // 4s arc ≈ 60 BPM
+
+  const inner = (
+    <>
+      {/* Centered baton in slow conductor's-arc motion */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <svg
+          viewBox="-100 -100 200 200"
+          preserveAspectRatio="xMidYMid meet"
+          style={{ width: 240, height: 240 }}
+        >
+          {/* Faint arc-path hint — suggests the gesture envelope */}
+          <ellipse
+            cx="0" cy="0" rx="60" ry="36"
+            fill="none"
+            stroke={ARC_INK}
+            strokeWidth="0.4"
+            strokeDasharray="2 4"
+            opacity={ARC_OPACITY}
+          />
+
+          {/* Animated baton group — pivot around the handle (bottom-center) */}
+          <motion.g
+            animate={{ rotate: BATON_ROTATE }}
+            transition={batonTransition}
+            style={{ transformOrigin: '0px 50px' }}
+          >
+            {/* Baton shaft — thin tapered line, ~80px long */}
+            <line
+              x1="0" y1="50"
+              x2="0" y2="-30"
+              stroke={INK}
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+            {/* Tip — small dot at the lighter end */}
+            <circle cx="0" cy="-30" r="2" fill={INK} />
+            {/* Handle — slightly thicker, suggests grip */}
+            <line
+              x1="0" y1="50"
+              x2="0" y2="42"
+              stroke={INK}
+              strokeWidth="4"
+              strokeLinecap="round"
+            />
+          </motion.g>
+        </svg>
+      </div>
+    </>
+  )
+
   return (
     <div style={{ position: 'absolute', inset: 0 }}>
-      <Paper variant="cream">
-        {/* Centered baton in slow conductor's-arc motion */}
-        <div style={{
-          position: 'absolute', inset: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <svg
-            viewBox="-100 -100 200 200"
-            preserveAspectRatio="xMidYMid meet"
-            style={{ width: 240, height: 240 }}
-          >
-            {/* Faint arc-path hint — suggests the gesture envelope */}
-            <ellipse
-              cx="0" cy="0" rx="60" ry="36"
-              fill="none"
-              stroke={COLORS.inkCreamSecondary}
-              strokeWidth="0.4"
-              strokeDasharray="2 4"
-              opacity="0.35"
-            />
-
-            {/* Animated baton group — pivot around the handle (bottom-center) */}
-            <motion.g
-              animate={{
-                rotate: [-22, 22, -22],
-              }}
-              transition={{
-                duration: 4,        // 4-second arc cycle ≈ 60 BPM gesture
-                repeat: Infinity,
-                ease: 'easeInOut',
-              }}
-              style={{ transformOrigin: '0px 50px' }}
-            >
-              {/* Baton shaft — thin tapered line, ~80px long */}
-              <line
-                x1="0" y1="50"
-                x2="0" y2="-30"
-                stroke={COLORS.inkCream}
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-              {/* Tip — small dot at the lighter end */}
-              <circle cx="0" cy="-30" r="2" fill={COLORS.inkCream} />
-              {/* Handle — slightly thicker, suggests grip */}
-              <line
-                x1="0" y1="50"
-                x2="0" y2="42"
-                stroke={COLORS.inkCream}
-                strokeWidth="4"
-                strokeLinecap="round"
-              />
-            </motion.g>
-          </svg>
-        </div>
-      </Paper>
+      {/* Nocturne — the baton sits on the dark stage (the WorldStage colour), so
+          Briefing is continuous with the world; shipped path keeps cream paper. */}
+      {N ? (
+        <div style={{ position: 'absolute', inset: 0, background: NOCTURNE.stageBlack }}>{inner}</div>
+      ) : (
+        <Paper variant="cream">{inner}</Paper>
+      )}
 
       {/* Dim-to-black overlay — final threshold into the spatial bed */}
       <motion.div

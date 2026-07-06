@@ -1,9 +1,17 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import Paper from '../score/Paper'
+import StageSurface from '../world/StageSurface.jsx'
 import { COLORS, FONTS } from '../score/tokens'
 import { audioEngine } from '../engine/audio'
 import { getUserName, setUserName } from '../lib/sessionStore.js'
+import { NOCTURNE_ENABLED } from '../world/flags.js'
+import { playSfx } from '../world/worldSound.js'
+
+// Nocturne (canon §2, §6) — the Overture. The name stage becomes "signing the
+// program" on the dark stage (the WorldStage lamp pool shows through); its cream
+// inks flip to light. Byte-identical when the flag is off.
+const INK = NOCTURNE_ENABLED ? '#E8E4DD' : '#1C1814'
+const INK2 = NOCTURNE_ENABLED ? '#8A7556' : '#6B5840'
 
 export default function Entry({ onNext }) {
   const [stage, setStage] = useState('intro')
@@ -25,6 +33,9 @@ export default function Entry({ onNext }) {
     // 60 Hz felt anchor under the rite, started inside the user gesture.
     audioEngine.init()
     audioEngine.resume()
+
+    // Nocturne (canon §5) — the lamp comes up as the rite begins. Fail-silent.
+    if (NOCTURNE_ENABLED) playSfx('lamp-up', { volume: 0.5 })
 
     // iOS gates device-motion AND device-orientation behind SEPARATE permission
     // prompts, each of which must be requested inside a user gesture — this tap
@@ -103,6 +114,8 @@ export default function Entry({ onNext }) {
     const trimmed = name.trim()
     // Empty is allowed — the user may begin without a name.
     if (trimmed) {
+      // Nocturne (canon §6) — signing the program: a pen writing one word.
+      if (NOCTURNE_ENABLED) playSfx('page-write', { volume: 0.5 })
       setUserName(trimmed)
       try {
         localStorage.setItem('postlistener_name', trimmed)
@@ -157,7 +170,7 @@ export default function Entry({ onNext }) {
   const showVideo = stage === 'intro' || stage === 'video'
 
   return (
-    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', backgroundColor: '#0a0a0f' }}>
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', backgroundColor: NOCTURNE_ENABLED ? 'transparent' : '#0a0a0f' }}>
       {/* Single video element — blurred while stage='intro', clear during 'video'. */}
       {showVideo && (
         <video
@@ -231,7 +244,7 @@ export default function Entry({ onNext }) {
             transition={{ duration: 0.9, ease: 'easeInOut' }}
             style={{ position: 'absolute', inset: 0, zIndex: 3 }}
           >
-            <Paper variant="cream">
+            <StageSurface>
               <div style={{
                 position: 'absolute', inset: 0,
                 display: 'flex', flexDirection: 'column',
@@ -242,7 +255,7 @@ export default function Entry({ onNext }) {
                   <>
                     <div style={{
                       fontFamily: FONTS.serif, fontStyle: 'italic',
-                      fontSize: 18, color: COLORS.inkCream, textAlign: 'center',
+                      fontSize: 18, color: INK, textAlign: 'center',
                     }}>
                       welcome back, {returningName}
                     </div>
@@ -264,7 +277,7 @@ export default function Entry({ onNext }) {
                   <>
                     <div style={{
                       fontFamily: FONTS.serif, fontStyle: 'italic',
-                      fontSize: 18, color: COLORS.inkCream, textAlign: 'center',
+                      fontSize: 18, color: INK, textAlign: 'center',
                     }}>
                       what should i call you?
                     </div>
@@ -279,9 +292,9 @@ export default function Entry({ onNext }) {
                       style={{
                         width: 220,
                         padding: '12px 16px',
-                        border: `1px solid ${COLORS.inkCreamSecondary}`,
+                        border: `1px solid ${INK2}`,
                         background: 'transparent',
-                        color: COLORS.inkCream,
+                        color: INK,
                         fontFamily: FONTS.serif,
                         fontSize: 16,
                         outline: 'none',
@@ -294,7 +307,7 @@ export default function Entry({ onNext }) {
                       style={{
                         background: 'transparent',
                         border: 'none',
-                        color: name.trim() ? COLORS.scoreAmber : COLORS.inkCreamSecondary,
+                        color: name.trim() ? COLORS.scoreAmber : INK2,
                         fontFamily: FONTS.serif, fontStyle: 'italic',
                         fontSize: 14,
                         cursor: 'pointer',
@@ -305,7 +318,7 @@ export default function Entry({ onNext }) {
                   </>
                 )}
               </div>
-            </Paper>
+            </StageSurface>
           </motion.div>
         )}
       </AnimatePresence>

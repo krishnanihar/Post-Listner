@@ -8,7 +8,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { COLORS, FONTS, EASE } from '../../score/tokens'
+import { NOCTURNE_ENABLED } from '../../world/flags.js'
 import { searchTracks } from '../../lib/itunesSearch.js'
+// Nocturne (canon §2) — hardcoded cream inks flip to light on the dark stage
+// (matching phaseTheme's --ink); byte-identical when the flag is off. INK2 stays
+// a hex string so the faint `${INK2}22` alpha-suffixed divider still works.
+const INK = NOCTURNE_ENABLED ? '#E8E4DD' : '#1C1814'
+const INK2 = NOCTURNE_ENABLED ? '#8A7556' : '#6B5840'
 
 export default function EraSearch({ onPick, onSkip }) {
   const [query, setQuery] = useState('')
@@ -67,8 +73,8 @@ export default function EraSearch({ onPick, onSkip }) {
               style={resultRow}
             >
               <span style={resultText}>
-                <span style={{ color: COLORS.inkCream }}>{r.title}</span>
-                <span style={{ color: COLORS.inkCreamSecondary }}> · {r.artist}</span>
+                <span style={{ color: INK }}>{r.title}</span>
+                <span style={{ color: INK2 }}> · {r.artist}</span>
               </span>
               {r.year && <span style={resultYear}>{r.year}</span>}
             </motion.button>
@@ -99,9 +105,9 @@ const prompt = {
 const input = {
   width: '100%', maxWidth: 320,
   padding: '11px 14px',
-  border: `1px solid ${COLORS.inkCreamSecondary}`,
+  border: `1px solid ${INK2}`,
   background: 'transparent',
-  color: COLORS.inkCream,
+  color: INK,
   fontFamily: FONTS.serif, fontSize: 16,
   outline: 'none', borderRadius: 6, textAlign: 'center',
 }
@@ -115,7 +121,7 @@ const resultRow = {
   padding: '10px 12px',
   background: 'transparent', border: 'none', cursor: 'pointer',
   textAlign: 'left',
-  borderBottom: `1px solid ${COLORS.inkCreamSecondary}22`,
+  borderBottom: `1px solid ${INK2}22`,
 }
 const resultText = {
   fontFamily: FONTS.serif, fontSize: 14, lineHeight: 1.3,
@@ -128,5 +134,5 @@ const skip = {
   marginTop: 8,
   background: 'transparent', border: 'none', cursor: 'pointer',
   fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 13,
-  color: COLORS.inkCreamSecondary, opacity: 0.7,
+  color: INK2, opacity: 0.7,
 }

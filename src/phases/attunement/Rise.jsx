@@ -10,6 +10,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { COLORS, FONTS } from '../../score/tokens'
+import { NOCTURNE_ENABLED } from '../../world/flags.js'
+// Nocturne (canon §2) — hardcoded cream inks flip to light on the dark stage
+// (matching phaseTheme's --ink); byte-identical when the flag is off.
+const INK = NOCTURNE_ENABLED ? '#E8E4DD' : '#1C1814'
+const INK2 = NOCTURNE_ENABLED ? '#8A7556' : '#6B5840'
 
 // Must build at least this much before a down-stroke counts (a stray early
 // strike with no build is ignored).
@@ -146,7 +151,7 @@ function PhoneRiseHint({ dimmed }) {
         transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut', times: [0, 0.2, 0.4, 0.6, 1] }}
         style={{
           width: 30, height: 50, borderRadius: 7,
-          border: `1.5px solid var(--ink, ${COLORS.inkCream})`,
+          border: `1.5px solid var(--ink, ${INK})`,
           margin: '0 auto',
         }}
       />
@@ -180,6 +185,6 @@ const hintWrap = {
 }
 const affordance = {
   fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 14,
-  color: COLORS.inkCreamSecondary, textAlign: 'center', transition: 'opacity 0.5s',
+  color: INK2, textAlign: 'center', transition: 'opacity 0.5s',
   maxWidth: 280,
 }

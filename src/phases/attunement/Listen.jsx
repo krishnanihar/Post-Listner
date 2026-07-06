@@ -8,7 +8,12 @@
 // LeanLift's re-pole state machine.
 import { motion } from 'framer-motion'
 import { COLORS, FONTS, EASE } from '../../score/tokens'
+import { NOCTURNE_ENABLED } from '../../world/flags.js'
 import { LEAN_BRINK } from '../../lib/leanCommit.js'
+// Nocturne (canon §2) — hardcoded cream inks flip to light on the dark stage
+// (matching phaseTheme's --ink); byte-identical when the flag is off.
+const INK = NOCTURNE_ENABLED ? '#E8E4DD' : '#1C1814'
+const INK2 = NOCTURNE_ENABLED ? '#8A7556' : '#6B5840'
 import { useBrinkSlider } from '../../hooks/useBrinkSlider.js'
 
 const TRACK_HALF = 38
@@ -101,7 +106,7 @@ function PoleLabel({ text, place, heat }) {
   return (
     <div style={{
       fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 15,
-      color: heat > 0.15 ? COLORS.inkCream : COLORS.inkCreamSecondary,
+      color: heat > 0.15 ? INK : INK2,
       opacity: 0.5 + heat * 0.5,
       transition: 'opacity 0.25s, color 0.25s',
       textAlign: 'center',
@@ -126,7 +131,7 @@ function PhoneNodHint({ dimmed }) {
         transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
         style={{
           width: 50, height: 30, borderRadius: 7,
-          border: `1.5px solid var(--ink, ${COLORS.inkCream})`,
+          border: `1.5px solid var(--ink, ${INK})`,
           display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
           paddingRight: 5,
         }}
@@ -181,5 +186,5 @@ const arrow = {
 }
 const affordance = {
   fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 14,
-  color: COLORS.inkCreamSecondary, textAlign: 'center', transition: 'opacity 0.5s',
+  color: INK2, textAlign: 'center', transition: 'opacity 0.5s',
 }

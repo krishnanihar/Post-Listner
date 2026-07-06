@@ -9,7 +9,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { COLORS, FONTS } from '../../score/tokens'
+import { NOCTURNE_ENABLED } from '../../world/flags.js'
 import { archetypeRing, nearestArchetypeToYaw } from '../../lib/archetypeRing.js'
+// Nocturne (canon §2) — the one hardcoded secondary ink flips to light on the
+// dark stage (matching phaseTheme's --ink); byte-identical when the flag is off.
+const INK2 = NOCTURNE_ENABLED ? '#8A7556' : '#6B5840'
 
 const SAFETY_MS = 15000
 
@@ -146,5 +150,5 @@ const hintWrap = {
 }
 const affordance = {
   fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 14,
-  color: COLORS.inkCreamSecondary, textAlign: 'center', transition: 'opacity 0.5s',
+  color: INK2, textAlign: 'center', transition: 'opacity 0.5s',
 }

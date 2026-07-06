@@ -9,6 +9,13 @@ import { motion } from 'framer-motion'
 import { COLORS, FONTS, EASE } from '../../score/tokens'
 import { LEAN_BRINK } from '../../lib/leanCommit.js'
 import { useBrinkSlider } from '../../hooks/useBrinkSlider.js'
+import { NOCTURNE_ENABLED } from '../../world/flags.js'
+
+// Nocturne (canon §2) — on the dark stage the few hardcoded cream inks flip to
+// light (matching phaseTheme's --ink); byte-identical when the flag is off. The
+// var(--ink) structural colours are flipped centrally by phaseTheme.
+const INK = NOCTURNE_ENABLED ? '#E8E4DD' : '#1C1814'
+const INK2 = NOCTURNE_ENABLED ? '#8A7556' : '#6B5840'
 
 const TRACK_HALF = 38
 const BRINK_PCT = 50 + LEAN_BRINK * TRACK_HALF
@@ -102,7 +109,7 @@ function PoleLabel({ text, align, heat }) {
     <div style={{
       position: 'absolute', top: 0, [align]: 0,
       fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 16,
-      color: heat > 0.15 ? COLORS.inkCream : COLORS.inkCreamSecondary,
+      color: heat > 0.15 ? INK : INK2,
       opacity: 0.5 + heat * 0.5,
       transition: 'opacity 0.25s, color 0.25s',
       maxWidth: 120,
@@ -126,7 +133,7 @@ function PhoneTiltHint({ dimmed }) {
         transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
         style={{
           width: 30, height: 50, borderRadius: 7,
-          border: `1.5px solid var(--ink, ${COLORS.inkCream})`,
+          border: `1.5px solid var(--ink, ${INK})`,
           display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
           paddingTop: 5,
         }}
@@ -181,5 +188,5 @@ const arrow = {
 }
 const affordance = {
   fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 14,
-  color: COLORS.inkCreamSecondary, textAlign: 'center', transition: 'opacity 0.5s',
+  color: INK2, textAlign: 'center', transition: 'opacity 0.5s',
 }
