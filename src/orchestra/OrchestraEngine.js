@@ -16,6 +16,7 @@ import {
 import { HALL_IR_FILE, AUDIENCE_FILES } from './scripts.js'
 import { lerp, clamp, sphericalToCartesian } from '../chamber/utils/math.js'
 import { ENABLE_GYRO_ENERGY_COUPLING } from '../conducting/index.js'
+import { FALTER_ENABLED } from '../world/flags.js'
 
 const STEM_NAMES = ['VOCALS', 'DRUMS', 'BASS', 'OTHER']
 
@@ -52,6 +53,7 @@ export default class OrchestraEngine {
     this.reflectionPanners = []
     this.hallConvolver = null
     this.hallWetGain = null
+    this.falterGain = null // Nocturne — only created when VITE_ENABLE_FALTER
     this.directBus = null
 
     this.audienceSources = []
@@ -139,7 +141,21 @@ export default class OrchestraEngine {
 
       this.reverbBus.connect(this.hallConvolver)
       this.hallConvolver.connect(this.hallWetGain)
-      this.hallWetGain.connect(this.directBus)
+      // Nocturne diegetic falter (canon §7). A dedicated unity-gain node on the
+      // hall wet path, inserted ONLY when VITE_ENABLE_FALTER is on — so when the
+      // flag is off the audio graph is byte-identical to the shipped version
+      // (no node, hallWetGain → directBus directly). When on, falterGain stays
+      // 1.0 (transparent) until setFalterReverbScale eases it down as the hand
+      // falters; it never fights the bloom envelope (tick() drives hallWetGain,
+      // this node sits after it) or the gyro coupling (per-stem sends).
+      if (FALTER_ENABLED) {
+        this.falterGain = ctx.createGain()
+        this.falterGain.gain.value = 1.0
+        this.hallWetGain.connect(this.falterGain)
+        this.falterGain.connect(this.directBus)
+      } else {
+        this.hallWetGain.connect(this.directBus)
+      }
     }
 
     // Early reflections (6 surfaces, image-source method, shared across stems)
@@ -465,6 +481,17 @@ export default class OrchestraEngine {
     if (downbeat && downbeat.fired) {
       this._applyDownbeat(downbeat.intensity)
     }
+  }
+
+  // Nocturne diegetic falter (canon §7). Scale the hall wet by `factor` ∈ [0,1]
+  // (1 = full reverb, ~0.85 = leaned away). No-op unless VITE_ENABLE_FALTER
+  // created the dedicated falterGain node — so this can never touch the shipped
+  // graph. Sits AFTER hallWetGain, so it composes with (never fights) the bloom
+  // envelope and the gyro coupling. Gentle time-constant so the room breathes.
+  setFalterReverbScale(factor) {
+    if (!this.falterGain || !this.ctx) return
+    const f = clamp(Number.isFinite(factor) ? factor : 1, 0, 1)
+    this.falterGain.gain.setTargetAtTime(f, this.ctx.currentTime, 0.08)
   }
 
   _applyDownbeat(intensity) {

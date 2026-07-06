@@ -14,6 +14,25 @@ import {
 import { scoreArchetype } from '../lib/scoreArchetype.js'
 import { distillGlyph } from '../lib/glyph.js'
 import { useVisibilityAudioPause } from '../hooks/useVisibilityAudioPause.js'
+import TraceGlyph from '../world/TraceGlyph.jsx'
+import { drawTraceGlyph } from '../world/traceModel.js'
+import { NOCTURNE_ENABLED, THRONE_INTRO_RAMP_ENABLED, FALTER_ENABLED } from '../world/flags.js'
+import {
+  pushConducting,
+  setBloom,
+  setFalter,
+  activateConducting,
+  deactivateConducting,
+} from '../world/conductingBridge.js'
+import { createFalterState, stepFalter, reverbSendFactor } from '../lib/falter.js'
+import { BLOOM_DURATION } from '../orchestra/constants.js'
+
+// Nocturne Act-II legibility (canon §7). The "instrument introduces itself":
+// the first INTRO_RAMP_SEC of Throne runs conducting-response gains hotter so
+// the first gestures unmistakably answer. FALTER_OPTS keys the diegetic falter
+// off sustained high ARTICULATION (0..1 normalized), device-tunable.
+const INTRO_RAMP_SEC = 20
+const FALTER_OPTS = { jerkThreshold: 0.5, sustainMs: 4000 }
 
 export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx, relayRef, glyphRef }) {
   const [phase, setPhase] = useState(() => isPreloadComplete() ? 'awaiting-tap' : 'loading') // loading | awaiting-tap | briefing | experience | closing
@@ -39,6 +58,12 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
   // attributed to your own motion. Driven by the same gesture the engine gets.
   const glyphCanvasRef = useRef(null)
   const glyphFxRef = useRef({ rings: [], reduced: false })
+
+  // Nocturne — the diegetic falter detector state + a dt clock for it (kept
+  // separate from the master timeline refs so the light never perturbs the
+  // sacred loop). Only used behind flags.
+  const falterStateRef = useRef(createFalterState())
+  const falterPrevTsRef = useRef(0)
 
   // Battery: suspend stem playback while the app is backgrounded. Safe here —
   // the live Admirer conversation is already over by the Orchestra phase.
@@ -152,6 +177,7 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
       if (engineRef.current) engineRef.current.stopAll()
       if (conductingRef.current) conductingRef.current.stop()
       if (wakeLockRef.current) wakeLockRef.current.release().catch(() => {})
+      if (NOCTURNE_ENABLED) deactivateConducting()
     }
   }, [])
 
@@ -207,6 +233,13 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
 
     setPhase('experience')
 
+    // Nocturne — arm the light's Act-II channel (no-op when the flag is off).
+    if (NOCTURNE_ENABLED) {
+      falterStateRef.current = createFalterState()
+      falterPrevTsRef.current = 0
+      activateConducting()
+    }
+
     // rAF loop — t is seconds since briefing-onset (NOT absolute audio
     // context time). Bloom fades in from t=BRIEFING_DURATION; song body
     // runs from t=PHASES.THRONE_START until t=songDuration; closing card
@@ -251,7 +284,22 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
 
       if (conducting) {
         const gesture = conducting.getData()
-        engine.applyConducting(gesture)
+        // Nocturne intro-ramp AUDIO arm (canon §7): the first INTRO_RAMP_SEC of
+        // Throne runs the dynamics hotter (+30%→nominal) so the first gestures
+        // unmistakably answer. Behind VITE_ENABLE_THRONE_INTRO_RAMP — the else
+        // branch is the byte-identical shipped call. `elapsed - BLOOM_DURATION`
+        // is seconds into Throne (negative during bloom → no boost).
+        if (THRONE_INTRO_RAMP_ENABLED) {
+          const throneElapsed = elapsed - BLOOM_DURATION
+          if (throneElapsed >= 0 && throneElapsed < INTRO_RAMP_SEC) {
+            const boost = 1 + 0.3 * (1 - throneElapsed / INTRO_RAMP_SEC)
+            engine.applyConducting({ ...gesture, gestureGain: (gesture.gestureGain || 0) * boost })
+          } else {
+            engine.applyConducting(gesture)
+          }
+        } else {
+          engine.applyConducting(gesture)
+        }
         // Slice 3 — record the conducting path for the journal glyph.
         // roll→x (pan), pitch→y (filterNorm), both calibrated 0..1; t is ms
         // since the experience-phase rAF loop started.
@@ -272,7 +320,7 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
         // The feedback glyph is decoration — isolate it so it can NEVER take
         // down the sacred conducting loop (which also drives the song-end fade/stop).
         const gc = glyphCanvasRef.current
-        if (gc) { try { drawThroneGlyph(gc, gesture, glyphFxRef.current, timestamp) } catch { /* non-essential */ } }
+        if (gc) { try { drawTraceGlyph(gc, gesture, glyphFxRef.current, timestamp) } catch { /* non-essential */ } }
         // Stream gesture snapshot to viewers at ~60 fps. Shape matches what
         // src/conductor-codex/motion.js::mapRelayMessage expects: raw α/β/γ
         // for the desktop-side calibration deltas (q omitted — viewer falls
@@ -300,6 +348,26 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
           })
           lastGestureSent = timestamp
         }
+
+        // Nocturne — hand the light its Act-II values. All decoration: a single
+        // try/catch, zero-alloc field writes to the bridge (WorldStage does the
+        // compositing on its OWN loop), so this can NEVER perturb the sacred
+        // conducting loop. Bloom breadth couples the light to the reverb (both
+        // widen together). The falter arm (behind its own flag) eases the hall
+        // wet down under sustained chaos and tells the light to lean away.
+        try {
+          if (FALTER_ENABLED) {
+            const dtMs = falterPrevTsRef.current ? (timestamp - falterPrevTsRef.current) : 16
+            stepFalter(falterStateRef.current, gesture.articulation, dtMs, FALTER_OPTS)
+            engine.setFalterReverbScale(reverbSendFactor(falterStateRef.current))
+          }
+          falterPrevTsRef.current = timestamp
+          if (NOCTURNE_ENABLED) {
+            pushConducting(gesture)
+            setBloom((t - PHASES.BLOOM_START) / BLOOM_DURATION)
+            setFalter(FALTER_ENABLED ? falterStateRef.current.reduction : 0)
+          }
+        } catch { /* non-essential — the light must never break conducting */ }
       }
 
       // Trigger master fade once we hit the end-fade window
@@ -311,6 +379,7 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
       // Transition to closing card after the song completes
       if (t >= songDuration) {
         engine.stopAll()
+        if (NOCTURNE_ENABLED) deactivateConducting()
         // Slice 3 — distil the recorded conducting path into the glyph and
         // hand it to App (via the shared ref) for the entry relayed at settle.
         if (glyphRef) glyphRef.current = distillGlyph(glyphBufRef.current)
@@ -423,11 +492,9 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
           >
-            {/* Throne feedback glyph — peripheral amber correlate of your gesture. */}
-            <canvas
-              ref={glyphCanvasRef}
-              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
-            />
+            {/* The Trace — peripheral amber correlate of your gesture (extracted
+                to src/world; behavior-identical to the shipped Throne glyph). */}
+            <TraceGlyph ref={glyphCanvasRef} />
           </motion.div>
         )}
 
@@ -448,56 +515,3 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
   )
 }
 
-// Draw the Throne feedback glyph: a soft amber dot that tracks the conducting
-// gesture (roll → x, pitch → y), swells with gesture size, and rings out on the
-// downbeat. Peripheral and calm by design — proof the hand is doing something,
-// not a HUD. Allocation-light per frame (one gradient, small ring array).
-const GLYPH_AMBER = '212,160,83' // #D4A053
-function drawThroneGlyph(canvas, gesture, fx, now) {
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-  const dpr = Math.min(2, (typeof window !== 'undefined' && window.devicePixelRatio) || 1)
-  const w = canvas.clientWidth || canvas.width
-  const h = canvas.clientHeight || canvas.height
-  if (!w || !h) return
-  const pxW = Math.round(w * dpr)
-  const pxH = Math.round(h * dpr)
-  if (canvas.width !== pxW || canvas.height !== pxH) { canvas.width = pxW; canvas.height = pxH }
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-  ctx.clearRect(0, 0, w, h)
-
-  // Finite-guard the inputs: a non-finite gesture field (NaN slips past `??`,
-  // which only catches null/undefined) would make createRadialGradient throw.
-  const num = (v, fb) => (Number.isFinite(v) ? (v < 0 ? 0 : v > 1 ? 1 : v) : fb)
-  const pan = num(gesture.pan, 0.5)
-  const fn = num(gesture.filterNorm, 0.5)
-  const gain = num(gesture.gestureGain, 0)
-  const reduced = fx.reduced
-  const x = w * (0.5 + (pan - 0.5) * 0.6) // keep it in the central 60%
-  const y = h * (0.5 - (fn - 0.5) * 0.5)  // brighter/higher tilt → higher
-
-  // Downbeat rings — expand + fade over ~900ms.
-  const rings = fx.rings
-  for (let i = rings.length - 1; i >= 0; i--) {
-    const age = (now - rings[i].start) / 900
-    if (age >= 1) { rings.splice(i, 1); continue }
-    const r = 20 + age * (60 + rings[i].intensity * 120)
-    ctx.beginPath()
-    ctx.arc(x, y, r, 0, Math.PI * 2)
-    ctx.strokeStyle = `rgba(${GLYPH_AMBER},${(1 - age) * 0.35})`
-    ctx.lineWidth = 1.5
-    ctx.stroke()
-  }
-
-  // Core dot + soft glow, swelling with gesture size.
-  const base = 10 + gain * (reduced ? 12 : 40)
-  const glow = ctx.createRadialGradient(x, y, 0, x, y, base * 2.4)
-  glow.addColorStop(0, `rgba(${GLYPH_AMBER},${reduced ? 0.26 : 0.4})`)
-  glow.addColorStop(1, `rgba(${GLYPH_AMBER},0)`)
-  ctx.fillStyle = glow
-  ctx.beginPath(); ctx.arc(x, y, base * 2.4, 0, Math.PI * 2); ctx.fill()
-
-  ctx.beginPath(); ctx.arc(x, y, Math.max(2.5, base * 0.32), 0, Math.PI * 2)
-  ctx.fillStyle = `rgba(${GLYPH_AMBER},0.75)`
-  ctx.fill()
-}
