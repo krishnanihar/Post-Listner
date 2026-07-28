@@ -16,6 +16,9 @@ import { setLiveBreadth } from '../../world/worldStore.js'
 // (matching phaseTheme's --ink); byte-identical when the flag is off.
 const INK = NOCTURNE_ENABLED ? '#E8E4DD' : '#1C1814'
 const INK2 = NOCTURNE_ENABLED ? '#8A7556' : '#6B5840'
+// The energy meter's trough, in the ink of whichever stage we're on.
+const TROUGH_FILL = NOCTURNE_ENABLED ? 'rgba(232,228,221,0.07)' : 'rgba(28,24,20,0.06)'
+const TROUGH_EDGE = NOCTURNE_ENABLED ? 'rgba(232,228,221,0.14)' : 'rgba(28,24,20,0.12)'
 
 // Nocturne (canon §6) — how much of the rise meter (0..1) reaches the live
 // breadth override. Kept modest: a widening cue, not the bloom itself.
@@ -32,7 +35,12 @@ const FULL_AT = 0.7
 // `live` is the score hook's liveRef: live.current.swell (gesture size 0..1) and
 // live.current.downbeatCount (monotonic strike counter). onCommit() seals the
 // build (the score reads its own peak-swell + rode-the-peak); onAdvance moves on.
-export default function Rise({ live, onCommit, onAdvance, committed }) {
+// `cueDimmed` — the Prompter has finished speaking this beat's invitation, so
+// the WRITTEN instruction can recede and leave the listener with the light, the
+// bed, and their hands. Only ever true when a voice clip actually sounded (see
+// Admirer.onScoreAsk), so a missing mp3 keeps the full cue on screen.
+// Presentation only — it touches no gesture, commit, or advance path.
+export default function Rise({ live, onCommit, onAdvance, committed, cueDimmed }) {
   const [meter, setMeter] = useState(0)
   const [fired, setFired] = useState(false)
   // The sharpness (jerk) of the sealing strike — a sharp strike cuts a bigger
@@ -103,6 +111,10 @@ export default function Rise({ live, onCommit, onAdvance, committed }) {
     return () => clearTimeout(t)
   }, [committed, onAdvance])
 
+  // Once the spoken cue has landed (or the beat is sealed) the written
+  // instruction recedes; the amber state — cursor, fill, ring — stays, because
+  // that is the gesture itself, not the manual.
+  const receded = fired || cueDimmed
   const fill = Math.min(1, meter / FULL_AT)
   const high = fill > 0.5
 
@@ -112,7 +124,7 @@ export default function Rise({ live, onCommit, onAdvance, committed }) {
 
       {/* Vertical energy meter */}
       <div style={meterWrap}>
-        <div style={meterTrack}>
+        <div style={{ ...meterTrack, opacity: receded ? 0.45 : 1 }}>
           <motion.div
             aria-hidden
             style={{
@@ -155,8 +167,8 @@ export default function Rise({ live, onCommit, onAdvance, committed }) {
       </div>
 
       <div style={hintWrap}>
-        <PhoneRiseHint dimmed={fired} />
-        <div style={{ ...affordance, opacity: fired ? 0 : 0.75 }}>
+        <PhoneRiseHint dimmed={receded} />
+        <div style={{ ...affordance, opacity: receded ? 0 : 0.75 }}>
           lift the energy with bigger moves — then strike down to seal it. a sharp strike cuts, a soft one swells — later, that's how you shape each accent.
         </div>
       </div>
@@ -196,12 +208,15 @@ const meterWrap = {
   position: 'relative',
 }
 const meterTrack = {
-  // A faint trough on cream (the rise beat is cream-only); the amber fill child
-  // rises inside it.
+  // A faint trough the amber fill child rises inside. The colour is
+  // theme-relative: on the dark Nocturne stage a dark-ink trough is invisible,
+  // so it flips to a light one (same literal-hex, byte-identical-when-off
+  // discipline as INK/INK2 above).
   position: 'relative', width: 10, height: 200, borderRadius: 5,
-  background: 'rgba(28,24,20,0.06)',
-  border: '1px solid rgba(28,24,20,0.12)',
+  background: TROUGH_FILL,
+  border: `1px solid ${TROUGH_EDGE}`,
   overflow: 'hidden',
+  transition: 'opacity 0.9s',
 }
 const hintWrap = {
   display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,

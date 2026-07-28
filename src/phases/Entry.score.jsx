@@ -10,6 +10,10 @@ import { playSfx, preloadSfx } from '../world/worldSound.js'
 // Nocturne (canon §2, §6) — the Overture. The name stage becomes "signing the
 // program" on the dark stage (the WorldStage lamp pool shows through); its cream
 // inks flip to light. Byte-identical when the flag is off.
+// How long after the lamp comes up the listener's chair settles, so the two
+// diegetic cues read as a sequence rather than one thicker noise.
+const SEAT_CUE_DELAY_MS = 1400
+
 const INK = NOCTURNE_ENABLED ? '#E8E4DD' : '#1C1814'
 const INK2 = NOCTURNE_ENABLED ? '#8A7556' : '#6B5840'
 
@@ -26,6 +30,8 @@ export default function Entry({ onNext }) {
   // Entry threshold bed — a cinematic swell layered over the 60 Hz drone so the
   // opening builds anticipation instead of sitting near-silent (redesign area 3).
   const thresholdRef = useRef(null)
+  // Pending 'seat' cue (the headphone rite), cleared if the phase unmounts first.
+  const seatTimerRef = useRef(null)
 
   const beginIntro = useCallback(() => {
     if (stage !== 'intro') return
@@ -36,6 +42,14 @@ export default function Entry({ onNext }) {
 
     // Nocturne (canon §5) — the lamp comes up as the rite begins. Fail-silent.
     if (NOCTURNE_ENABLED) playSfx('lamp-up', { volume: 0.5 })
+
+    // …and then the listener takes their seat (canon §6 — the headphone rite).
+    // Delayed so the two cues read as a sequence — the lamp finds the stage,
+    // then a chair settles on it — rather than one thicker noise. Started from
+    // inside this tap, so it inherits the gesture's autoplay permission.
+    if (NOCTURNE_ENABLED) {
+      seatTimerRef.current = setTimeout(() => playSfx('seat', { volume: 0.35 }), SEAT_CUE_DELAY_MS)
+    }
 
     // Warm the rest of the diegetic SFX cache inside this same user gesture, so
     // later cues (page-write, beat-commit, bloom, coda…) don't race their own
@@ -171,6 +185,10 @@ export default function Entry({ onNext }) {
       if (thresholdRef.current) {
         try { thresholdRef.current.pause() } catch { /* ignore */ }
         thresholdRef.current = null
+      }
+      if (seatTimerRef.current) {
+        clearTimeout(seatTimerRef.current)
+        seatTimerRef.current = null
       }
     }
   }, [])

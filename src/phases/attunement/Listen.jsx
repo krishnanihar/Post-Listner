@@ -27,7 +27,12 @@ const DEFAULT_ROUNDS = [
 // writes Depth; onAdvance fires once `committed` flips (last round only). The
 // brink-slider state machine (shared with LeanLift) lives in useBrinkSlider;
 // this component is just the vertical rendering.
-export default function Listen({ live, onCommit, onAdvance, committed, subfaces }) {
+// `cueDimmed` — the Prompter has finished speaking this beat's invitation, so
+// the WRITTEN instruction can recede and leave the listener with the light, the
+// bed, and their hands. Only ever true when a voice clip actually sounded (see
+// Admirer.onScoreAsk), so a missing mp3 keeps the full cue on screen.
+// Presentation only — it touches no gesture, commit, or advance path.
+export default function Listen({ live, onCommit, onAdvance, committed, subfaces, cueDimmed }) {
   const rounds = subfaces && subfaces.length ? subfaces : DEFAULT_ROUNDS
 
   const { subIndex, rb, fired, side } = useBrinkSlider({
@@ -39,6 +44,10 @@ export default function Listen({ live, onCommit, onAdvance, committed, subfaces 
     roundsLength: rounds.length,
   })
 
+  // Once the spoken cue has landed (or the beat is sealed) the written
+  // instruction recedes; the amber state — cursor, fill, ring — stays, because
+  // that is the gesture itself, not the manual.
+  const receded = fired || cueDimmed
   const round = rounds[subIndex] || DEFAULT_ROUNDS[0]
   const b = Math.max(-1, Math.min(1, rb))
   const openHeat = b > 0 ? Math.min(1, b / LEAN_BRINK) : 0     // tilt back → open (top)
@@ -53,9 +62,9 @@ export default function Listen({ live, onCommit, onAdvance, committed, subfaces 
         <PoleLabel text={round.topLabel} place="top" heat={openHeat} />
 
         <div style={trackWrap}>
-          <div style={track} />
-          <div style={{ ...tick, top: `${100 - BRINK_PCT}%` }} />
-          <div style={{ ...tick, top: `${BRINK_PCT}%` }} />
+          <div style={{ ...track, opacity: receded ? 0.08 : 0.2 }} />
+          <div style={{ ...tick, top: `${100 - BRINK_PCT}%`, opacity: receded ? 0.06 : 0.22 }} />
+          <div style={{ ...tick, top: `${BRINK_PCT}%`, opacity: receded ? 0.06 : 0.22 }} />
           <div
             style={{
               ...cursor,
@@ -93,8 +102,8 @@ export default function Listen({ live, onCommit, onAdvance, committed, subfaces 
       </div>
 
       <div style={hintWrap}>
-        <PhoneNodHint dimmed={fired} />
-        <div style={{ ...affordance, opacity: fired ? 0 : 0.75 }}>
+        <PhoneNodHint dimmed={receded} />
+        <div style={{ ...affordance, opacity: receded ? 0 : 0.75 }}>
           tilt back to open it, forward to draw it close. the same tilt brightens or dims the sound later.
         </div>
       </div>

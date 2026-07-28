@@ -17,7 +17,12 @@ const INK2 = NOCTURNE_ENABLED ? '#8A7556' : '#6B5840'
 
 const SAFETY_MS = 15000
 
-export default function Face({ live, onCommit, onAdvance, committed }) {
+// `cueDimmed` — the Prompter has finished speaking this beat's invitation, so
+// the WRITTEN instruction can recede and leave the listener with the light, the
+// bed, and their hands. Only ever true when a voice clip actually sounded (see
+// Admirer.onScoreAsk), so a missing mp3 keeps the full cue on screen.
+// Presentation only — it touches no gesture, commit, or advance path.
+export default function Face({ live, onCommit, onAdvance, committed, cueDimmed }) {
   const ring = useMemo(() => archetypeRing(), [])
   const [relYaw, setRelYaw] = useState(0)
   const [fired, setFired] = useState(false)
@@ -59,6 +64,11 @@ export default function Face({ live, onCommit, onAdvance, committed }) {
 
   const facedId = nearestArchetypeToYaw(relYaw, ring)
   const pointerPct = 50 + (Math.max(-75, Math.min(75, relYaw)) / 75) * 40
+
+  // Once the spoken cue has landed (or the beat is sealed) the written
+  // instruction recedes; the amber state — cursor, fill, ring — stays, because
+  // that is the gesture itself, not the manual.
+  const receded = fired || cueDimmed
 
   return (
     <div style={overlay}>
@@ -125,7 +135,7 @@ export default function Face({ live, onCommit, onAdvance, committed }) {
         >
           ▾
         </motion.div>
-        <div style={{ ...affordance, opacity: fired ? 0 : 0.75 }}>
+        <div style={{ ...affordance, opacity: receded ? 0 : 0.75 }}>
           turn to face it, then strike down to choose. later, turning steers which instrument leads.
         </div>
       </div>

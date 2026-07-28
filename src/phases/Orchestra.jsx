@@ -18,6 +18,7 @@ import { useVisibilityAudioPause } from '../hooks/useVisibilityAudioPause.js'
 import TraceGlyph from '../world/TraceGlyph.jsx'
 import { drawTraceGlyph } from '../world/traceModel.js'
 import { NOCTURNE_ENABLED, THRONE_INTRO_RAMP_ENABLED, FALTER_ENABLED } from '../world/flags.js'
+import { playSfx } from '../world/worldSound.js'
 import {
   pushConducting,
   setBloom,
@@ -397,6 +398,10 @@ export default function Orchestra({ avd, revealAudioRef, goToPhase, getAudioCtx,
       if (!fadeStartedRef.current && t >= songDuration - END_FADE_DURATION) {
         fadeStartedRef.current = true
         engine.fadeOut(END_FADE_DURATION)
+        // Nocturne (canon §5/§6) — the lights die to one ember as the hall goes
+        // out. The `fadeStartedRef` guard already makes this fire exactly once;
+        // playSfx is fail-silent, so it can never disturb the fade.
+        if (NOCTURNE_ENABLED) playSfx('ember', { volume: 0.4 })
       }
 
       // Transition to closing card after the song completes

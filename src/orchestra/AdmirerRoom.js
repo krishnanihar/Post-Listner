@@ -31,6 +31,27 @@ function dbToLinear(db) {
   return Math.pow(10, db / 20)
 }
 
+// How far a per-movement bed drops while the Prompter speaks over it. The beat
+// beds are the room, not background music — they duck, they never stop.
+export const SPEAKING_DUCK = 0.35
+// Smoothing constant for the duck ramp (setTargetAtTime). Slow enough to read
+// as the room making space, fast enough to clear the line's first syllable.
+const DUCK_TC = 0.18
+
+// Build a duck controller over a set of gain nodes whose nominal values are
+// owned by the caller's own setters (setSwell/setBalance/…). The duck is a
+// SEPARATE multiplier stage rather than a write to those gains, so ducking and
+// the gesture-driven gain can move independently without fighting each other.
+// Returns setDuck(x∈[0,1]) — 1 = no duck, SPEAKING_DUCK = fully ducked.
+function makeDuck(ctx, duckGains, isAlive) {
+  return (x) => {
+    if (!isAlive()) return
+    const v = Math.max(0, Math.min(1, Number.isFinite(x) ? x : 1))
+    const now = ctx.currentTime
+    for (const g of duckGains) g.gain.setTargetAtTime(v, now, DUCK_TC)
+  }
+}
+
 // Map a baseline-relative device roll (degrees — the caller subtracts the
 // phone's resting position) to an azimuth offset for the voice. A small
 // deadzone keeps a still hand from nudging it; past ROLL_FULL_DEG the swing
@@ -294,17 +315,23 @@ export default class AdmirerRoom {
       panner.positionX.value = p.x
       panner.positionY.value = p.y
       panner.positionZ.value = p.z
+      // Duck stage — a separate multiplier so setBalance and setDuck can move
+      // independently (see makeDuck).
+      const duck = ctx.createGain()
+      duck.gain.value = 1
       src.connect(gain)
-      gain.connect(panner)
+      gain.connect(duck)
+      duck.connect(panner)
       panner.connect(this.directBus)
       panner.connect(this.reverbBus)
       src.start(ctx.currentTime)
-      return { src, gain, panner }
+      return { src, gain, duck, panner }
     }
     const init = equalPowerGains(0)
     const left = make(leftBuffer, -60, init.left)
     const right = make(rightBuffer, 60, init.right)
     let stopped = false
+    const alive = () => !this._disposed && !stopped
     return {
       setBalance: (b) => {
         if (this._disposed || stopped) return
@@ -313,11 +340,12 @@ export default class AdmirerRoom {
         left.gain.gain.setTargetAtTime(g.left, now, 0.05)
         right.gain.gain.setTargetAtTime(g.right, now, 0.05)
       },
+      setDuck: makeDuck(ctx, [left.duck, right.duck], alive),
       stop: () => {
         stopped = true
         for (const n of [left, right]) {
           try { n.src.stop() } catch { /* ignore */ }
-          try { n.src.disconnect(); n.gain.disconnect(); n.panner.disconnect() } catch { /* ignore */ }
+          try { n.src.disconnect(); n.gain.disconnect(); n.duck.disconnect(); n.panner.disconnect() } catch { /* ignore */ }
         }
       },
     }
@@ -348,12 +376,15 @@ export default class AdmirerRoom {
       panner.positionX.value = p.x
       panner.positionY.value = p.y
       panner.positionZ.value = p.z
+      const duck = ctx.createGain()
+      duck.gain.value = 1
       src.connect(gain)
-      gain.connect(panner)
+      gain.connect(duck)
+      duck.connect(panner)
       panner.connect(this.directBus)
       panner.connect(this.reverbBus)
       src.start(ctx.currentTime)
-      return { src, gain, panner, azimuthDeg }
+      return { src, gain, duck, panner, azimuthDeg }
     })
     let stopped = false
     const azimuths = nodes.map((n) => n.azimuthDeg)
@@ -369,11 +400,12 @@ export default class AdmirerRoom {
           n.gain.gain.setTargetAtTime(0.18 + 0.62 * prox, now, 0.08)
         }
       },
+      setDuck: makeDuck(ctx, nodes.map((n) => n.duck), () => !this._disposed && !stopped),
       stop: () => {
         stopped = true
         for (const n of nodes) {
           try { n.src.stop() } catch { /* ignore */ }
-          try { n.src.disconnect(); n.gain.disconnect(); n.panner.disconnect() } catch { /* ignore */ }
+          try { n.src.disconnect(); n.gain.disconnect(); n.duck.disconnect(); n.panner.disconnect() } catch { /* ignore */ }
         }
       },
     }
@@ -403,8 +435,11 @@ export default class AdmirerRoom {
     panner.positionX.value = p.x
     panner.positionY.value = p.y
     panner.positionZ.value = p.z
+    const duck = ctx.createGain()
+    duck.gain.value = 1
     src.connect(gain)
-    gain.connect(panner)
+    gain.connect(duck)
+    duck.connect(panner)
     panner.connect(this.directBus)
     panner.connect(this.reverbBus)
     src.start(ctx.currentTime)
@@ -414,6 +449,10 @@ export default class AdmirerRoom {
         if (this._disposed || stopped) return
         gain.gain.setTargetAtTime(0.15 + 0.85 * Math.max(0, Math.min(1, g)), ctx.currentTime, 0.12)
       },
+      setDuck: makeDuck(ctx, [duck], () => !this._disposed && !stopped),
+      // The down-stroke transient. Deliberately connected to the panner AFTER
+      // the duck stage: the strike is the listener's own action landing, so it
+      // must cut through even while the Prompter is speaking over the bed.
       markBeat: (intensity = 1) => {
         if (this._disposed || stopped) return
         const now = ctx.currentTime
@@ -438,7 +477,7 @@ export default class AdmirerRoom {
       stop: () => {
         stopped = true
         try { src.stop() } catch { /* ignore */ }
-        try { src.disconnect(); gain.disconnect(); panner.disconnect() } catch { /* ignore */ }
+        try { src.disconnect(); gain.disconnect(); duck.disconnect(); panner.disconnect() } catch { /* ignore */ }
       },
     }
   }
@@ -510,9 +549,12 @@ export default class AdmirerRoom {
     panner.positionX.value = p.x
     panner.positionY.value = p.y
     panner.positionZ.value = p.z
+    const duck = ctx.createGain()
+    duck.gain.value = 1
     src.connect(gain)
     gain.connect(lp)
-    lp.connect(panner)
+    lp.connect(duck)
+    duck.connect(panner)
     panner.connect(this.directBus)
     panner.connect(this.reverbBus)
     src.start(ctx.currentTime)
@@ -520,6 +562,7 @@ export default class AdmirerRoom {
     const MIN_HZ = 350
     const MAX_HZ = 6000
     return {
+      setDuck: makeDuck(ctx, [duck], () => !this._disposed && !stopped),
       // t∈[0,1]: 0 = dark/inward, 1 = open/bright. Exponential cutoff sweep.
       setBrightness: (t) => {
         if (this._disposed || stopped) return
@@ -530,7 +573,7 @@ export default class AdmirerRoom {
       stop: () => {
         stopped = true
         try { src.stop() } catch { /* ignore */ }
-        try { src.disconnect(); gain.disconnect(); lp.disconnect(); panner.disconnect() } catch { /* ignore */ }
+        try { src.disconnect(); gain.disconnect(); lp.disconnect(); duck.disconnect(); panner.disconnect() } catch { /* ignore */ }
       },
     }
   }

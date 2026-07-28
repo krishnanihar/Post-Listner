@@ -56,9 +56,30 @@ describe('attunementMovements', () => {
     }
     expect(subs[1].gain).toBeLessThan(subs[0].gain)
   })
-  it('every movement has ask: null (the on-screen cues carry the prompts; no agent)', () => {
+  // The `ask` fields were all null while the spoken-cue path was unbuilt (the
+  // on-screen cues carried every prompt). They now carry the Prompter's spoken
+  // invitation for the gesture beats — see lib/prompterScript.js, which owns
+  // the wording, and prompterScript.test.js for the copy invariants.
+  it('gives every gesture beat a non-empty spoken ask', () => {
+    for (const id of ['leanLift', 'listen', 'rise', 'face', 'era']) {
+      const ask = getMovement(id).ask
+      expect(typeof ask, id).toBe('string')
+      expect(ask.trim().length, id).toBeGreaterThan(0)
+    }
+  })
+
+  it('leaves arrival, reflect and bloom with ask: null', () => {
+    for (const id of ['arrival', 'reflect', 'bloom']) {
+      expect(getMovement(id).ask, id).toBe(null)
+    }
+  })
+
+  it('declares an ask for every movement or explicitly null — never undefined', () => {
+    // useAttunementScore guards on `m?.ask`, so an undefined field would read
+    // as "silent" by accident rather than by decision.
     for (const id of MOVEMENT_ORDER) {
-      expect(getMovement(id).ask).toBe(null)
+      expect(getMovement(id), id).toHaveProperty('ask')
+      expect(getMovement(id).ask, id).not.toBeUndefined()
     }
   })
 })

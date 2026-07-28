@@ -1,14 +1,20 @@
-// Nocturne feature flags. All Nocturne rendering + theme sits behind
-// VITE_ENABLE_NOCTURNE (default off → the shipped cream/dark theme is
-// byte-identical; WorldStage renders nothing; phaseTheme.inkForPhase unchanged).
-// Same discipline as VITE_ENABLE_LIVE_MUSIC_GEN. Read once at module load.
+// Nocturne feature flags.
+//
+// As of the ui-refinements/audio-enhancement pass these default **on**: Nocturne
+// is the shipped experience, not an experiment. The opt-out is explicit —
+// VITE_ENABLE_NOCTURNE=false restores the original cream/dark theme (every
+// call site still branches on the flag, so the flag-off build is unchanged).
+// Same shape as VITE_ENABLE_LIVE_MUSIC_GEN, inverted. Read once at module load.
 
 export const NOCTURNE_ENABLED =
-  import.meta.env.VITE_ENABLE_NOCTURNE === 'true'
+  import.meta.env.VITE_ENABLE_NOCTURNE !== 'false'
 
-// Act-II legibility flags (canon §7). Default off; byte-identical audio when off.
+// Act-II legibility flags (canon §7). Also default on now.
 export const THRONE_INTRO_RAMP_ENABLED =
-  import.meta.env.VITE_ENABLE_THRONE_INTRO_RAMP === 'true'
+  import.meta.env.VITE_ENABLE_THRONE_INTRO_RAMP !== 'false'
 
+// The one flag that alters the Act-II AUDIO graph (it inserts a dedicated
+// hall-wet node, OrchestraEngine.falterGain). If the diegetic falter reads
+// wrong on device, VITE_ENABLE_FALTER=false is the first thing to switch back.
 export const FALTER_ENABLED =
-  import.meta.env.VITE_ENABLE_FALTER === 'true'
+  import.meta.env.VITE_ENABLE_FALTER !== 'false'

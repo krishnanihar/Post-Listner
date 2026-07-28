@@ -21,6 +21,10 @@ import { playSfx } from '../world/worldSound.js'
 
 const MAX_DPR = 2
 
+// How long after the field opens the Prompter's line lands, so the night-air
+// cue and the voice read as a sequence rather than a stack.
+const CONSTELLATION_LINE_DELAY_MS = 1200
+
 export default function Constellation({ onExit }) {
   const canvasRef = useRef(null)
   const [own, setOwn] = useState([])
@@ -30,7 +34,24 @@ export default function Constellation({ onExit }) {
   useEffect(() => {
     const id = requestAnimationFrame(() => setVisible(true))
     playSfx('constellation-open', { volume: 0.4 }) // night air opening (canon §5)
-    return () => cancelAnimationFrame(id)
+    // …and the Prompter's one honest line over it (canon §8): "others are
+    // practicing too. none of them are named." Delayed so it lands after the
+    // night air has opened rather than under it. Plain HTMLAudioElement — the
+    // Coda has no HRTF room, and the session has had audio + user gesture
+    // throughout, so autoplay is permitted. Fail-silent, like every other line.
+    let voice = null
+    const t = setTimeout(() => {
+      try {
+        voice = new Audio('/admirer/voice/constellation-line.mp3')
+        voice.volume = 0.85
+        voice.play().catch(() => { /* autoplay blocked or clip absent */ })
+      } catch { /* no Audio */ }
+    }, CONSTELLATION_LINE_DELAY_MS)
+    return () => {
+      cancelAnimationFrame(id)
+      clearTimeout(t)
+      try { voice?.pause() } catch { /* ignore */ }
+    }
   }, [])
 
   useEffect(() => {

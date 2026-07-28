@@ -8,6 +8,7 @@ import { fireMoment, resetMoments } from '../lib/momentBus.js'
 import { advanceFormationStage, resetFormationStage } from '../lib/formationStage.js'
 import QuestionDisplay from './QuestionDisplay'
 import { useAdmirerRoom } from '../hooks/useAdmirerRoom.js'
+import { SPEAKING_DUCK } from '../orchestra/AdmirerRoom.js'
 import { getAvd, resetAvd } from '../lib/avdStore.js'
 import { mapAvdToStems } from '../lib/avdToStems.js'
 import { startGenerativeTrack, LIVE_MUSIC_GEN_ENABLED, GEN_BLOOM_WAIT_MS } from '../lib/musicGen.js'
@@ -23,6 +24,7 @@ import Listen from './attunement/Listen'
 import EraSearch from './attunement/EraSearch'
 import { FRAGMENTS } from '../lib/fragmentBank.js'
 import { allClipIds, mirrorClipId, readingClipId, mirrorText, readingText } from '../lib/reflectionScript.js'
+import { allClipIds as prompterClipIds, sealClipId } from '../lib/prompterScript.js'
 import { getReflection, resetReflection } from '../lib/reflectionState.js'
 import { setEra, getEra, resetEra } from '../lib/eraSelection.js'
 import { NOCTURNE_ENABLED } from '../world/flags.js'
@@ -34,10 +36,15 @@ import { playSfx } from '../world/worldSound.js'
 // Only lines listed here have a clip on disk; others are skipped silently so
 // the on-screen movement cues still carry the prompt. The live ElevenLabs agent
 // has been fully removed. Includes the welcome (+ its 3 paced segments + the
-// returning-user line) and the 18 reflection clips.
+// returning-user line), the 18 reflection clips, and the Prompter's spoken
+// score (the per-beat asks + seals + transitions — see lib/prompterScript.js).
+// Listing an id here only means "try to play it": if the mp3 isn't on disk yet
+// the fetch/decode fails and playVoiceLine's catch resolves silently, leaving
+// the beat's on-screen cue to carry the prompt.
 const AVAILABLE_VOICE_LINES = new Set([
   'welcome', 'welcome-1', 'welcome-2', 'welcome-3', 'welcome-return',
   ...allClipIds(),
+  ...prompterClipIds(),
 ])
 
 // The first-time welcome, paced into three segments played in sequence (see
@@ -51,6 +58,11 @@ const WELCOME_SEGMENTS = ['welcome-1', 'welcome-2', 'welcome-3']
 // intimate), reached properly when the score's advance() fires on the last end.
 const WELCOME_PAUSE_MS = 300
 const WELCOME_WIDEN_STEP = 0.05
+
+// How long after a beat's commit-sfx the Prompter's transfer line lands. Long
+// enough that the resonator/pizzicato has bloomed and the line reads as a
+// response to it rather than a layer on top of it.
+const SEAL_LINE_DELAY_MS = 900
 
 // The Admirer phase. Voice is pre-baked TTS clips played through the HRTF room
 // (no live agent). Kept as an inner component for a stable single mount point.
@@ -204,7 +216,11 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   // present in AVAILABLE_VOICE_LINES (no clip on disk yet) resolve immediately
   // so callers/sequences never stall — the on-screen movement cue carries the
   // prompt in that case. onEnded always fires exactly once.
-  const playVoiceLine = useCallback((lineId, { onEnded } = {}) => {
+  // `onStart` fires ONLY when a clip actually reaches the room — i.e. the mp3
+  // existed, decoded, and is now sounding. Callers use it to tell "the Prompter
+  // spoke" apart from "there was nothing to say", which is what decides whether
+  // the on-screen cue is allowed to fade (see onScoreAsk).
+  const playVoiceLine = useCallback((lineId, { onEnded, onStart } = {}) => {
     const room = getRoom?.()
     const ctx = getAudioCtx?.()
     if (!room || !ctx || !AVAILABLE_VOICE_LINES.has(lineId)) { onEnded?.(); return }
@@ -215,6 +231,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
       .then((b) => ctx.decodeAudioData(b))
       .then((buf) => {
         setSpeaking(true)
+        onStart?.()
         room.playVoiceClip(buf, { onEnded: finish })
       })
       .catch((e) => { console.warn('[admirer] voice line failed:', lineId, e); finish() })
@@ -231,11 +248,28 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     }
   }, [])
 
-  // Score → asking: when a movement begins, play that movement's pre-baked ask
-  // clip if one exists. Until the per-movement asks are authored + generated,
-  // this is a silent no-op and the overlay's on-screen cue carries the prompt.
+  // Score → asking: when a movement begins, the Prompter voices that beat's
+  // invitation (lib/prompterScript.js ASKS, baked as `ask-<movementId>.mp3`).
+  //
+  // This is the audio-first turn: the spoken line, not the screen, is what
+  // teaches the gesture. So once the line has FINISHED we dim the beat's
+  // written instruction — the long affordance sentence and the phone pictogram —
+  // and leave the listener with the light, the bed, and their own hands.
+  //
+  // The fail-safe is the whole point: `cueDimmed` is only ever set true after
+  // onStart confirmed a clip actually sounded. A missing or undecodable mp3
+  // means the room said nothing, so the full written cue stays on screen and
+  // the beat is exactly as discoverable as it is today.
+  const [cueDimmed, setCueDimmed] = useState(false)
+  const askSpokeRef = useRef(false)
   const onScoreAsk = useCallback((movementId) => {
-    playVoiceLine(`ask-${movementId}`)
+    // New beat: the previous beat's dim never carries over.
+    setCueDimmed(false)
+    askSpokeRef.current = false
+    playVoiceLine(`ask-${movementId}`, {
+      onStart: () => { askSpokeRef.current = true },
+      onEnded: () => { if (askSpokeRef.current) setCueDimmed(true) },
+    })
   }, [playVoiceLine])
 
   // Score → bloom (the act-1 → act-2 handoff). Ensure the faced archetype's
@@ -318,6 +352,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   // stroke per gesture beat (leanLift, listen, rise, face).
   const prevMovementIdRef = useRef(null)
   const traceBeatsRef = useRef(new Set())
+  const sealTimersRef = useRef([])
   useEffect(() => {
     if (!NOCTURNE_ENABLED) return
     const curId = score.movement?.id || null
@@ -340,8 +375,22 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
       // A diegetic seal from the room (canon §5): a warm resonator for the
       // valence/arousal beats, a deep pizzicato for the depth/facing beats.
       playSfx((prevId === 'leanLift' || prevId === 'rise') ? 'beat-commit-warm' : 'beat-commit-deep')
+      // …and then the Prompter's transfer line (canon §8) — the moment the
+      // listener is told their gesture was KEPT ("the orchestra will remember
+      // this lean."). Delayed past the sfx so the two don't stack on the same
+      // instant; fail-silent like every other voice line, so a missing clip
+      // simply leaves the seal wordless.
+      const t = setTimeout(() => playVoiceLine(sealClipId(prevId)), SEAL_LINE_DELAY_MS)
+      sealTimersRef.current.push(t)
     }
-  }, [score.movement?.id])
+  }, [score.movement?.id, playVoiceLine])
+
+  // Clear any pending seal-line timer on unmount so a late line can't fire into
+  // a torn-down room (the phase swap at bloom is the case that matters).
+  useEffect(() => () => {
+    for (const t of sealTimersRef.current) clearTimeout(t)
+    sealTimersRef.current = []
+  }, [])
 
   // Arrival choreography: footsteps walk up (far → close), then the Admirer
   // speaks — the full welcome (paced into 3 segments) for a first-time
@@ -362,6 +411,13 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     let tries = 0
     let timer = null
     let pauseTimer = null
+
+    // Nocturne (canon §5) — the room's door. The listener has just crossed from
+    // the Overture into the Attunement Room, and until now that crossing was
+    // silent: the far hall door opens onto the quiet room, and only THEN do the
+    // footsteps start toward the seat. Fires once (this effect runs once) and
+    // is fail-silent, so it can never delay the arrival choreography below.
+    if (NOCTURNE_ENABLED) playSfx('threshold', { volume: 0.4 })
 
     // Start the network fetch early (no ctx needed) so it overlaps the room
     // poll; DECODE with the confirmed ctx inside begin(). Capturing the ctx here
@@ -399,7 +455,14 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
       // reveal. The final segment finishes into leanLift via finishArrival.
       const playSegment = (i) => {
         if (cancelled) return
-        if (i >= WELCOME_SEGMENTS.length) { finishArrival(); return }
+        if (i >= WELCOME_SEGMENTS.length) {
+          // Canon §8 — the Prompter names its own role once, on a first
+          // session only, after the welcome has landed. finishArrival() is
+          // reached either way (playVoiceLine always settles onEnded, whether
+          // the clip played or was absent), so the arc can never stall here.
+          playVoiceLine('prompter-intro', { onEnded: finishArrival })
+          return
+        }
         playVoiceLine(WELCOME_SEGMENTS[i], {
           onEnded: () => {
             if (cancelled) return
@@ -457,6 +520,12 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
       const energy = r.energy || 'low'
       const world = r.world || 'hearth-keeper'
       setReflectionCaption(mirrorText(warmth, depth, energy))
+      // Canon §8 — the Prompter opens the reflection ("here is what your hands
+      // just wrote.") before the mirror itself. Chained through onEnded so the
+      // two never overlap; an absent clip settles immediately and the mirror
+      // follows exactly as it does today.
+      playVoiceLine('reflect-open', { onEnded: () => {
+      if (cancelled) return
       playVoiceLine(mirrorClipId(warmth, depth, energy), {
         onEnded: () => {
           if (cancelled) return
@@ -466,6 +535,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
           })
         },
       })
+      } })
     }, 0)
     return () => { cancelled = true; clearTimeout(t) }
   }, [score.movement?.id, playVoiceLine])
@@ -541,6 +611,14 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
     }
   }, [score.movement?.id, getRoom, getAudioCtx])
 
+  // Whether the Prompter is currently speaking, readable from the per-frame
+  // loop below (which is where ducking is applied — see there for why).
+  const speakingRef = useRef(false)
+  useEffect(() => { speakingRef.current = speaking }, [speaking])
+  // The duck value last written to the active handle (null = nothing written
+  // yet for this handle), so the per-frame loop only ramps on a change.
+  const appliedDuckRef = useRef(null)
+
   // Drive the active room handle from the live gesture each frame.
   useEffect(() => {
     let raf = 0
@@ -571,6 +649,22 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
         if (score.movement?.id === 'face' && h.spotlight) {
           h.spotlight(score.live.current.relYaw)
         }
+        // Duck the bed while the Prompter speaks over it, lift it back when the
+        // line ends. The beds are the room, not background music — they never
+        // stop, they only make space. Applied here rather than in an effect
+        // because the handle is created asynchronously (the bed has to fetch +
+        // decode first), so a beat whose line starts before its bed is ready
+        // would otherwise come up un-ducked. Only written on CHANGE, so this
+        // costs one ref compare per frame and schedules no ramps at rest.
+        const wantDuck = speakingRef.current ? SPEAKING_DUCK : 1
+        if (h.setDuck && appliedDuckRef.current !== wantDuck) {
+          appliedDuckRef.current = wantDuck
+          try { h.setDuck(wantDuck) } catch { /* never break the beat */ }
+        }
+      } else {
+        // No handle yet (or the beat ended) — forget what we applied so the
+        // next bed gets an explicit write rather than inheriting this state.
+        appliedDuckRef.current = null
       }
       raf = requestAnimationFrame(tick)
     }
@@ -634,7 +728,10 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
   let stateLabel
   let stateKey
   if (hasError) {
-    stateLabel = 'the Admirer could not arrive. try again later.'
+    // "the Prompter" — canon §8's rename. This is the one user-VISIBLE place
+    // the role was still called the Admirer, which would now contradict the
+    // spoken prompter-intro line.
+    stateLabel = 'the prompter could not arrive. try again later.'
     stateKey = 'error'
   } else if (movementId === 'era') {
     // The search beat has its own prompt; keep the top label quiet.
@@ -745,6 +842,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
             onCommit={score.commit}
             onAdvance={score.advance}
             subfaces={score.movement?.subfaces}
+            cueDimmed={cueDimmed}
           />
         )}
         {movementId === 'listen' && (
@@ -754,6 +852,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
             onCommit={score.commit}
             onAdvance={score.advance}
             subfaces={score.movement?.subfaces}
+            cueDimmed={cueDimmed}
           />
         )}
         {movementId === 'rise' && (
@@ -762,6 +861,7 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
             committed={score.state.status === 'committed'}
             onCommit={score.commit}
             onAdvance={score.advance}
+            cueDimmed={cueDimmed}
           />
         )}
         {movementId === 'face' && (
@@ -770,10 +870,15 @@ function AdmirerInner({ onNext, getAudioCtx, revealAudioRef }) {
             committed={score.state.status === 'committed'}
             onCommit={score.commit}
             onAdvance={score.advance}
+            cueDimmed={cueDimmed}
           />
         )}
 
-        {/* The era beat — search a song; its year picks the version. */}
+        {/* The era beat — search a song; its year picks the version.
+            No cueDimmed here: era is the one TYPED beat, and its search field,
+            results, and skip affordance all have to stay legible after the
+            Prompter's line. The spoken ask still plays — the screen just
+            doesn't recede behind it. */}
         {movementId === 'era' && (
           <EraSearch
             onPick={(year) => { setEra(year); maybeStartGeneration(); score.advance() }}

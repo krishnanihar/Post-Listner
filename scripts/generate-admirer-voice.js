@@ -19,6 +19,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { allLines as reflectionLines } from '../src/lib/reflectionScript.js'
+import { allLines as prompterLines } from '../src/lib/prompterScript.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
@@ -49,8 +50,9 @@ const VOICE_SETTINGS = {
 }
 
 // ── the line bank ────────────────────────────────────────────────────────────
-// id → text. The other authored lines (per-movement asks) get added here as
-// the redesign proceeds.
+// id → text. The welcome/settle lines are authored inline here; the reflection
+// and Prompter banks are imported from their copy modules (see the spreads at
+// the bottom) so the runtime and this script always agree on the wording.
 const LINES = {
   // The full first-session welcome. Kept whole for backward-compat/rollback;
   // Admirer.jsx's arrival choreography plays the welcome-1/2/3 split below
@@ -82,6 +84,11 @@ const LINES = {
     "that's the shape of it, for now. the room stays where you left it. come back when you want more of it.",
   // The end-of-Act-1 reflection: 12 gesture-mirror clips + 6 world readings.
   ...reflectionLines(),
+  // The Prompter's spoken score: the per-beat asks (which carry the gesture
+  // instruction that used to live only on screen), the canon-§8 seal/transfer
+  // lines, and the transitions. Imported so the copy can't drift from the
+  // runtime's — src/lib/prompterScript.js is the single source of truth.
+  ...prompterLines(),
 }
 
 const OUT_DIR = resolve(ROOT, 'public/admirer/voice')

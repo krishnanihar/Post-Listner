@@ -35,7 +35,12 @@ const DEFAULT_ROUNDS = [
 // round only). `subfaces` is the beat's sub-round list (prompt + pole labels).
 // The brink-slider state machine (shared with Listen) lives in useBrinkSlider;
 // this component is just the horizontal rendering.
-export default function LeanLift({ live, onCommit, onAdvance, committed, subfaces }) {
+// `cueDimmed` — the Prompter has finished speaking this beat's invitation, so
+// the WRITTEN instruction can recede and leave the listener with the light, the
+// bed, and their hands. It is only ever true when a voice clip actually
+// sounded (see Admirer.onScoreAsk), so a missing mp3 keeps the full cue on
+// screen. Presentation only — it touches no gesture, commit, or advance path.
+export default function LeanLift({ live, onCommit, onAdvance, committed, subfaces, cueDimmed }) {
   const rounds = subfaces && subfaces.length ? subfaces : DEFAULT_ROUNDS
 
   const { subIndex, rb, fired, side } = useBrinkSlider({
@@ -67,6 +72,11 @@ export default function LeanLift({ live, onCommit, onAdvance, committed, subface
   }, [])
 
   const round = rounds[subIndex] || DEFAULT_ROUNDS[0]
+  // Once the spoken cue has landed (or the lean is sealed) the written
+  // instruction and the track chrome recede; the amber cursor and the pole
+  // words stay, because those are the choice itself, not the manual.
+  const receded = fired || cueDimmed
+  const chrome = receded ? 0.06 : 0.22
   const b = Math.max(-1, Math.min(1, rb))
   const leftHeat = b < 0 ? Math.min(1, -b / LEAN_BRINK) : 0
   const rightHeat = b > 0 ? Math.min(1, b / LEAN_BRINK) : 0
@@ -81,9 +91,9 @@ export default function LeanLift({ live, onCommit, onAdvance, committed, subface
         <PoleLabel text={round.rightLabel} align="right" heat={rightHeat} />
 
         <div style={trackWrap}>
-          <div style={track} />
-          <div style={{ ...tick, left: `${100 - BRINK_PCT}%` }} />
-          <div style={{ ...tick, left: `${BRINK_PCT}%` }} />
+          <div style={{ ...track, opacity: receded ? 0.08 : 0.2 }} />
+          <div style={{ ...tick, left: `${100 - BRINK_PCT}%`, opacity: chrome }} />
+          <div style={{ ...tick, left: `${BRINK_PCT}%`, opacity: chrome }} />
           <div
             style={{
               ...cursor,
@@ -120,8 +130,8 @@ export default function LeanLift({ live, onCommit, onAdvance, committed, subface
       </div>
 
       <div style={hintWrap}>
-        <PhoneTiltHint dimmed={fired} />
-        <div style={{ ...affordance, opacity: fired ? 0 : 0.75 }}>
+        <PhoneTiltHint dimmed={receded} />
+        <div style={{ ...affordance, opacity: receded ? 0 : 0.75 }}>
           tilt your phone toward the one that pulls — a lean like this will place the sound around you, later.
         </div>
       </div>
@@ -188,10 +198,12 @@ const trackWrap = {
 const track = {
   position: 'absolute', left: '10%', right: '10%', top: '50%', height: 1,
   background: 'var(--ink, currentColor)', opacity: 0.2,
+  transition: 'opacity 0.9s',
 }
 const tick = {
   position: 'absolute', top: '50%', width: 1, height: 9, marginTop: -4.5,
   background: 'var(--ink, currentColor)', opacity: 0.22,
+  transition: 'opacity 0.9s',
 }
 const cursor = {
   position: 'absolute', top: '50%', width: 9, height: 9, marginTop: -4.5, marginLeft: -4.5,
